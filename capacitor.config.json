@@ -1,0 +1,21 @@
+{
+  "appId": "app.audiohub.player",
+  "appName": "Audiohub",
+  "webDir": "dist",
+  "backgroundColor": "#101012",
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#101012"
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true },
+    "CapacitorCookies": { "enabled": true },
+    "SplashScreen": {
+      "launchShowDuration": 900,
+      "launchAutoHide": true,
+      "backgroundColor": "#101012",
+      "showSpinner": false
+    },
+    "StatusBar": { "overlaysWebView": true, "style": "DARK" }
+  }
+}

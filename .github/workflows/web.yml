@@ -1,0 +1,72 @@
+name: Web app
+
+# Builds the same app for the browser (iPhone / iPad: Safari → Share → Add to
+# Home Screen) and publishes it on GitHub Pages.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: web
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Build
+        env:
+          VITE_APP_VERSION: web-${{ github.run_number }}
+        run: npx vite build
+      - name: Mirror the latest APK on Pages (faster downloads for in-app updates)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag=$(gh release list -R "$GITHUB_REPOSITORY" --limit 20 --json tagName,isDraft,isPrerelease --jq '[.[] | select(.isDraft|not) | select(.tagName|startswith("v"))][0].tagName' || true)
+          if [ -n "$tag" ]; then
+            mkdir -p dist/app
+            gh release download "$tag" -R "$GITHUB_REPOSITORY" --pattern '*.apk' --dir dist/app --clobber
+            f=$(ls dist/app/*.apk | head -1)
+            mv "$f" dist/app/Audiohub.apk
+            ver="${tag#v}"
+            gh_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$(basename "$f")"
+            printf '{"version":"%s","apk":"app/Audiohub.apk","github":"%s"}\n' "$ver" "$gh_url" > dist/app/latest.json
+            ls -la dist/app; cat dist/app/latest.json
+          fi
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

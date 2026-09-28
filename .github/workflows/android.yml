@@ -1,0 +1,158 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
+      - name: Fetch built-in voice engine (sherpa-onnx)
+        working-directory: android/app
+        run: |
+          mkdir -p libs
+          for v in 1.13.8 1.13.7 1.13.6 1.13.5 1.13.4 1.13.3 1.13.2 1.13.1 1.13.0 1.12.15 1.12.14 1.12.13; do
+            for url in \
+              "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/sherpa-onnx-$v.aar" \
+              "https://huggingface.co/csukuangfj2/sherpa-onnx-libs/resolve/main/android/aar/sherpa-onnx-$v.aar"; do
+              if curl -fsSL --retry 3 -o libs/sherpa-onnx.aar "$url"; then
+                echo "Using sherpa-onnx $v from $url"; ls -lh libs; exit 0
+              fi
+            done
+          done
+          echo "::error::Could not download the sherpa-onnx AAR"; exit 1
+
+      - name: Install & build web app
+        env:
+          VITE_APP_VERSION: ${{ env.VERSION_NAME }}
+          # Optional sync server: .env.production (empty = no sync).
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: Prepare signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.AUDIOHUB_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.AUDIOHUB_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.AUDIOHUB_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.AUDIOHUB_KEY_PASSWORD }}
+        run: |
+          KS="$RUNNER_TEMP/inkwell.jks"
+          if [ -n "$KEYSTORE_B64" ]; then
+            # One secret is enough: password/alias default to the values the
+            # keystore was generated with; override with the other secrets if needed.
+            echo "$KEYSTORE_B64" | tr -d ' \n\r' | base64 -d > "$KS"
+            KS_PASS="${KS_PASS:-inkwell-ci}"
+            KEY_ALIAS="${KEY_ALIAS:-inkwell}"
+            KEY_PASS="${KEY_PASS:-$KS_PASS}"
+            echo "Signing with the permanent release key (updates install over each other)."
+          else
+            echo "::warning::No AUDIOHUB_KEYSTORE_BASE64 secret - signing with a throwaway key; each build needs an uninstall first."
+            # No release key configured: generate a throwaway key so the APK still installs.
+            KS_PASS=inkwell-ci KEY_PASS=inkwell-ci KEY_ALIAS=inkwell
+            keytool -genkeypair -keystore "$KS" -storepass "$KS_PASS" -alias "$KEY_ALIAS" -keypass "$KEY_PASS" \
+              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Inkwell,O=Inkwell,C=US"
+          fi
+          {
+            echo "INKWELL_KEYSTORE=$KS"
+            echo "INKWELL_KEYSTORE_PASSWORD=$KS_PASS"
+            echo "INKWELL_KEY_ALIAS=$KEY_ALIAS"
+            echo "INKWELL_KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          mkdir -p ../out
+          cp app/build/outputs/apk/release/app-release.apk "../out/Audiohub-v${VERSION_NAME}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Audiohub-v${{ env.VERSION_NAME }}
+          path: out/*.apk
+
+      - name: Publish GitHub release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: Audiohub v${{ env.VERSION_NAME }}
+          target_commitish: ${{ github.sha }}
+          files: out/*.apk
+          body: |
+            Audiohub for Android — download the APK below and open it on your phone
+            (allow "Install unknown apps" for your browser or file manager when asked).
+
+            Built from ${{ github.sha }} on `${{ github.ref_name }}`.
+
+      # Also serve this APK from GitHub Pages (a fast CDN) for in-app updates,
+      # alongside the web app that was just built.
+      - name: Prepare Pages (web app + APK)
+        if: github.event_name != 'pull_request'
+        run: |
+          rm -rf pages && cp -r dist pages
+          mkdir -p pages/app
+          cp "out/Audiohub-v${VERSION_NAME}.apk" pages/app/Audiohub.apk
+          printf '{"version":"%s","apk":"app/Audiohub.apk","github":"https://github.com/%s/releases/download/v%s/Audiohub-v%s.apk"}\n' "$VERSION_NAME" "$GITHUB_REPOSITORY" "$VERSION_NAME" "$VERSION_NAME" > pages/app/latest.json
+          cat pages/app/latest.json
+
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: pages
+
+  pages:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
