@@ -6,6 +6,8 @@ read-aloud voices and a polished player.**
 
 Built with Preact + Vite, packaged for Android with Capacitor 8.
 
+📖 **New here? Read the [FAQ](FAQ.md)** — setup for Audiobookshelf, Tailscale, qBittorrent, debrid, sync and the web relay, plus troubleshooting.
+
 ---
 
 ## Features
