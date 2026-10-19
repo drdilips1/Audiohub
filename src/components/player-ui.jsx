@@ -3,6 +3,7 @@ import { wallpaperUrl, useCustomWallpaper } from '../lib/wallpaper.js';
 import { loadImage } from '../lib/image.js';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import * as player from '../lib/player.js';
+import { isNative as isNativeEngine } from '../lib/engine.js';
 import { Cover, toast } from './common.jsx';
 import { Icon, SkipIcon } from './icons.jsx';
 import { fmtTime } from '../lib/format.js';
@@ -18,6 +19,20 @@ export function usePlayer() {
   const [s, setS] = useState(player.getState());
   useEffect(() => player.subscribe(setS), []);
   return s;
+}
+
+/** Just which book / part is playing and whether it plays: no redraw on every second of playback. */
+export function usePlayerBasics() {
+  const pick = (s) => ({ book: s.book ? { uid: s.book.uid } : null, playing: !!s.playing, index: s.index });
+  const [v, setV] = useState(() => pick(player.getState()));
+  useEffect(
+    () =>
+      player.subscribe((s) =>
+        setV((cur) => (cur.book?.uid === s.book?.uid && cur.playing === !!s.playing && cur.index === s.index ? cur : pick(s)))
+      ),
+    []
+  );
+  return v;
 }
 
 export function useCoverColor(book) {
@@ -113,7 +128,7 @@ export function MiniPlayer() {
   );
 }
 
-const SPEEDS = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+const SPEEDS = [0.75, 0.9, 1, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5, 1.6, 1.7, 1.75, 1.8, 1.9, 2, 2.25, 2.5, 3];
 const SLEEP = [5, 10, 15, 30, 45, 60, 90];
 
 export function FullPlayer() {
@@ -231,7 +246,11 @@ export function FullPlayer() {
         />
         <div class="fp-times">
           <span>{fmtTime(t)}</span>
-          {total > dur + 1 && <span class="fp-total">{Math.round((g / total) * 100)}% of book · {fmtTime(total - g)} left</span>}
+          {total > dur + 1 && (
+            <span class="fp-total">
+              {Math.min(99, Math.round((g / total) * 100))}% of book · {s.rate && s.rate !== 1 ? `${fmtTime((total - g) / s.rate)} left at ${s.rate}×` : `${fmtTime(total - g)} left`}
+            </span>
+          )}
           <span>-{fmtTime(Math.max(0, dur - t))}</span>
         </div>
       </div>
@@ -323,6 +342,35 @@ export function FullPlayer() {
                   ))}
                 </div>
                 <input type="range" min="0.5" max="3" step="0.05" value={s.rate} style={{ '--pct': ((s.rate - 0.5) / 2.5) * 100 + '%' }} onInput={(e) => player.setRate(+(+e.currentTarget.value).toFixed(2))} />
+                {isNativeEngine && (
+                  <>
+                    <label class="set-row">
+                      <div>
+                        <b>Skip silence</b>
+                        <small>Cuts the quiet gaps between sentences.</small>
+                      </div>
+                      <input type="checkbox" class="switch" checked={!!st.skipSilence} onChange={(e) => player.setAudio({ skipSilence: e.currentTarget.checked })} />
+                    </label>
+                    <div class="set-row">
+                      <div>
+                        <b>Volume boost</b>
+                        <small>Makes quiet recordings louder.</small>
+                      </div>
+                    </div>
+                    <div class="chips">
+                      {[
+                        [0, 'Off'],
+                        [3, 'Low'],
+                        [6, 'Medium'],
+                        [10, 'High'],
+                      ].map(([db, label]) => (
+                        <button class={'pill small' + ((st.boost || 0) === db ? ' active' : '')} onClick={() => player.setAudio({ boost: db })}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </>
             )}
             {sheet === 'sleep' && (
@@ -399,7 +447,7 @@ export function FullPlayer() {
                         >
                           <span class="ch-num">{i + 1}</span>
                           <span class="ch-title">{c.title}</span>
-                          <span class="ch-time">{c.end ? fmtTime(c.end - c.start) : ''}</span>
+                          <span class="ch-time">{c.end > c.start ? (c.estimated ? '≈ ' : '') + fmtTime(c.end - c.start) : ''}</span>
                         </button>
                       </li>
                     );

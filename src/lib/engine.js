@@ -42,6 +42,11 @@ function nativeEngine(h) {
       if (playing || !e.playWhenReady || e.ended || suppressed) h.playing(playing);
     }
   });
+  Native.addListener('advanced', (e) => {
+    pos = 0;
+    dur = 0;
+    h.advanced?.(e.item || 0);
+  });
   Native.addListener('ended', () => {
     playing = false;
     h.ended();
@@ -59,6 +64,10 @@ function nativeEngine(h) {
       wantPlay = autoplay;
       await Native.load({ url, headers: headers || {}, position: start, autoplay, rate, ...meta });
     },
+    setSkipSilence: (on) => Native.setSkipSilence({ on: !!on }),
+    setBoost: (db) => Native.setBoost({ db: Number(db) || 0 }),
+    /** The parts after the current one, played next by the phone itself. */
+    queue: (items) => Native.queue({ items }),
     play: () => ((wantPlay = true), Native.play()),
     pause: () => ((wantPlay = false), Native.pause()),
     seek(t) {

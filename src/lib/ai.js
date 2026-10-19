@@ -41,7 +41,8 @@ const routerList = persisted('aiRouterModels', { t: 0, ids: [] });
 async function freeRouterModels() {
   const hit = routerList.get();
   if (hit.ids.length && Date.now() - hit.t < 12 * 3600e3) return hit.ids;
-  const res = await fetch('https://openrouter.ai/api/v1/models');
+  // A slow or blocked list must not hold up the question: give up after 5 s (the saved or built-in list is used).
+  const res = await fetch('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error('list');
   const { data = [] } = await res.json();
   const rank = (id) => {
@@ -61,14 +62,12 @@ async function freeRouterModels() {
   return ids;
 }
 
+// Never waits for the list: the saved one (or the built-in fallback) is used at once
+// and refreshed in the background when it's old.
 async function modelsFor(p) {
   if (!p.discover) return p.models;
-  try {
-    const ids = await p.discover();
-    return ids.length ? ids : p.models;
-  } catch {
-    return routerList.get().ids.length ? routerList.get().ids : p.models;
-  }
+  p.discover().catch(() => {});
+  return routerList.get().ids.length ? routerList.get().ids : p.models;
 }
 
 // OpenRouter refuses free models until the account allows them in its privacy settings.
@@ -83,7 +82,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function call(p, model, prompt, json) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 45000);
+  const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const res = await fetch(p.url, {
       method: 'POST',
@@ -132,13 +131,46 @@ export function parseJson(text) {
  * rate-limited or failing reply it waits briefly, retries once, then moves on
  * to the next model and the next service.
  */
-export async function askAi(prompt, { json = false } = {}) {
+export async function askAi(prompt, { json = false, skip = [] } = {}) {
   const ready = PROVIDERS.filter(keyOf);
   if (!ready.length) throw new Error('Add a free AI key (Groq or OpenRouter) in Settings → AI first');
-  let order = (await Promise.all(ready.map(async (p) => (await modelsFor(p)).map((m) => [p, m])))).flat();
+  // Services in their fixed order (Groq, the fastest, first); within a service the model that last worked leads.
   const last = ai.get().last;
-  const li = order.findIndex(([p, m]) => `${p.id}/${m}` === last);
-  if (li > 0) order = [order[li], ...order.filter((_, i) => i !== li)];
+  const lists = await Promise.all(
+    ready.map(async (p) => {
+      let ms = (await modelsFor(p)).map((m) => [p, m]);
+      const li = ms.findIndex(([, m]) => `${p.id}/${m}` === last);
+      if (li > 0) ms = [ms[li], ...ms.filter((_, i) => i !== li)];
+      // Skip models whose answer wasn't usable (e.g. "I don't know this book"), if others exist.
+      const rest = ms.filter(([, m]) => !skip.includes(`${p.id}/${m}`));
+      return rest.length ? rest : ms;
+    })
+  );
+  const order = lists.flat();
+  // A slow answer (busy model, a "thinking" model) shouldn't hold you up: after 10 s the
+  // next service is asked as well, and whichever answers first is used.
+  const others = lists.slice(1).flat();
+  if (!others.length) return chain(order, prompt, json, ready);
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let hedging = false;
+    let failures = 0;
+    const win = (t) => !settled && ((settled = true), resolve(t));
+    const fail = (e) => {
+      failures++;
+      // The full chain already tried every service: give up unless the second try is still going.
+      if (!settled && (!hedging || failures === 2)) (settled = true), reject(e);
+    };
+    chain(order, prompt, json, ready).then(win, fail);
+    setTimeout(() => {
+      if (settled) return;
+      hedging = true;
+      chain(others, prompt, json, ready).then(win, fail);
+    }, 10000);
+  });
+}
+
+async function chain(order, prompt, json, ready) {
   const errors = {};
   const deadKeys = new Set();
   const blocked = new Set();

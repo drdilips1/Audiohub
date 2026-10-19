@@ -1,5 +1,7 @@
 import * as qbit from './sources/qbit.js';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { memo } from 'preact/compat';
+import { Stats } from './screens/Stats.jsx';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
@@ -9,7 +11,7 @@ import { applyTheme } from './lib/theme.js';
 import { Icon } from './components/icons.jsx';
 import { Toaster, Guard } from './components/common.jsx';
 import { UpdatePrompt } from './components/update.jsx';
-import { MiniPlayer, FullPlayer, usePlayer } from './components/player-ui.jsx';
+import { MiniPlayer, FullPlayer, usePlayerBasics } from './components/player-ui.jsx';
 import { Home } from './screens/Home.jsx';
 import { Discover } from './screens/Discover.jsx';
 import { Library } from './screens/Library.jsx';
@@ -32,7 +34,16 @@ const TABS = [
   ['settings', 'Settings', 'settings'],
 ];
 const ROOTS = { home: Home, discover: Discover, podcasts: Podcasts, library: Library, tracker: Settings, settings: Settings }; // tracker: the old tab, now in Settings
-const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast };
+// A kept-alive tab: redraws only when its own data changes, not on every tab switch.
+const KeptTab = memo(function KeptTab({ Root }) {
+  return (
+    <Guard fallback={(e, retry) => <ScreenError error={e} retry={retry} />}>
+      <Root />
+    </Guard>
+  );
+});
+
+const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast, stats: Stats };
 
 export function App() {
   const [route, setRoute] = useState(nav.state());
@@ -46,7 +57,11 @@ export function App() {
     toast('Refreshed');
   };
   const st = useStore(settings);
-  const ps = usePlayer();
+  // Only whether a book is loaded: not every second of playback (that redrew the whole screen).
+  const ps = usePlayerBasics();
+  // Tabs you've opened stay alive (hidden) so switching back is instant.
+  const visited = useRef(new Set());
+  visited.current.add(route.tab);
 
   useEffect(() => nav.subscribe(setRoute), []);
   useEffect(() => {
@@ -85,11 +100,22 @@ export function App() {
         <span />
       </div>
       <PullToRefresh onRefresh={refresh} enabled={!route.overlay && (!top || top.name === 'shelf' || top.name === 'book' || top.name === 'browse')} />
-      <main key={(top?.key || route.tab) + ':' + refreshKey} class="page">
-        <Guard key={(top?.key || route.tab) + ':' + refreshKey} fallback={(e, retry) => <ScreenError error={e} retry={retry} />}>
-          <Screen {...(top?.params || {})} />
-        </Guard>
-      </main>
+      {[...visited.current].map((k) => {
+        const Root = ROOTS[k];
+        const shown = !top && k === route.tab;
+        return (
+          <main key={k + ':' + refreshKey} class="page" style={shown ? null : { display: 'none' }}>
+            <KeptTab Root={Root} />
+          </main>
+        );
+      })}
+      {top && (
+        <main key={top.key + ':' + refreshKey} class="page">
+          <Guard key={top.key + ':' + refreshKey} fallback={(e, retry) => <ScreenError error={e} retry={retry} />}>
+            <Screen {...(top.params || {})} />
+          </Guard>
+        </main>
+      )}
       {!inReader && (
         <>
           <MiniPlayer />

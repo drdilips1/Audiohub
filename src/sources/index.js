@@ -6,6 +6,7 @@ import * as ol from './openlibrary.js';
 import * as absSrc from './audiobookshelf.js';
 import * as addonSrc from './addons.js';
 import * as cloud from './debrid.js';
+import * as localSrc from './local.js';
 import * as hc from './hardcover.js';
 import * as gr from './goodreads.js';
 import * as pods from './podcasts.js';
@@ -13,7 +14,7 @@ import * as ttsb from './ttsbooks.js';
 import { audible, googleBooks } from './catalogs.js';
 import { settings } from '../lib/store.js';
 import { matches, mainTitle } from '../lib/match.js';
-import { lookup, wantsMeta } from '../lib/meta.js';
+import { lookup, wantsMeta, metaNow } from '../lib/meta.js';
 import { applyLocal, isDownloaded } from '../lib/downloads.js';
 import { translit, hasDevanagari } from '../lib/translit.js';
 
@@ -25,6 +26,7 @@ export const SOURCES = {
   ol: { name: 'Open Library', short: 'Open Library', hue: 210, kind: 'Discover', blurb: 'Trending books, rich descriptions & covers', impl: ol, hidden: true, free: true },
   au: { name: 'Audible catalog', short: 'Audible', hue: 32, kind: 'Discover', blurb: 'Audiobook listings with narrators, series & covers', impl: audible },
   gbk: { name: 'Google Books', short: 'Google Books', hue: 220, kind: 'Discover', blurb: 'Listings for almost every book in print', impl: googleBooks },
+  loc: { name: 'On this phone', short: 'Phone', hue: 160, kind: 'Listen', blurb: 'Audiobook files already on your phone', impl: localSrc },
   abs: { name: 'Audiobookshelf', short: 'My Server', hue: 265, kind: 'Listen', blurb: 'Your self-hosted audiobook server', impl: absSrc },
   tb: { name: 'TorBox', short: 'TorBox', hue: 130, kind: 'Cloud', blurb: 'Stream audiobooks from your TorBox cloud', impl: cloud },
   rd: { name: 'Real-Debrid', short: 'Real-Debrid', hue: 45, kind: 'Cloud', blurb: 'Stream audiobooks from your Real-Debrid cloud', impl: cloud },
@@ -41,7 +43,7 @@ export const SOURCES = {
 const enabled = (k) => !SOURCES[k]?.free && settings.get().sources[k === 'addon' ? 'addons' : k] !== false;
 
 // Your own services first, then listings, then free catalogues — until the user rearranges them.
-const DEFAULT_ORDER = ['abs', 'tb', 'rd', 'hc', 'gr', 'addon', 'au', 'gbk', 'ia', 'lv', 'gb', 'se', 'ol', 'hi'];
+const DEFAULT_ORDER = ['loc', 'abs', 'tb', 'rd', 'hc', 'gr', 'addon', 'au', 'gbk', 'ia', 'lv', 'gb', 'se', 'ol', 'hi'];
 /** Source keys in the user's chosen order (Settings → Sources). */
 export function sourceOrder() {
   const saved = (settings.get().sourceOrder || []).filter((k) => SOURCES[k] && !SOURCES[k].hidden);
@@ -64,14 +66,18 @@ export function sourceOf(uid) {
   return p === 'addon' ? 'addon' : p;
 }
 
-export async function getDetails(book) {
+/**
+ * Everything needed to show and play a book. `fast` (pressing play): don't wait for the
+ * online details lookup — use what's already known, so playback starts sooner.
+ */
+export async function getDetails(book, { fast = false } = {}) {
   const src = SOURCES[sourceOf(book.uid || '')];
   // No source to ask (e.g. a direct ebook link): show what we already know.
   if (!src?.impl?.details) return applyLocal({ ...book });
   let d;
   let meta;
   try {
-    [d, meta] = await Promise.all([src.impl.details(book), wantsMeta(book) ? lookup(book).catch(() => null) : null]);
+    [d, meta] = await Promise.all([src.impl.details(book), !wantsMeta(book) ? null : fast ? metaNow(book) : lookup(book).catch(() => null)]);
   } catch (e) {
     // Offline but downloaded: play from the phone anyway.
     if (isDownloaded(book.uid)) return applyLocal({ ...book, tracks: [] });
@@ -156,4 +162,4 @@ export async function findEditions(book) {
   };
 }
 
-export { ia, lv, gb, ol, absSrc, addonSrc, cloud, hc, gr, enabled };
+export { ia, lv, gb, ol, absSrc, addonSrc, cloud, localSrc, hc, gr, enabled };

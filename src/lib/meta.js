@@ -17,7 +17,7 @@ export const PROVIDERS = {
   openlibrary: { name: 'Open Library', blurb: 'Open catalogue, good for older titles' },
 };
 
-const cache = persisted('metaCache', {});
+const cache = persisted('metaCache', {}, { delay: 3000 });
 const MISS_TTL = 3 * 24 * 3600e3;
 
 /** Turn a release name into a search string: drop brackets, formats, uploader noise. */
@@ -28,7 +28,7 @@ export function queryFor(book) {
     .replace(/[._]+/g, ' ')
     .replace(/[\[({][^\])}]*[\])}]/g, ' ')
     .replace(/\|/g, ' ')
-    .replace(/\b(unabridged|abridged|audiobook|audio ?book|english|retail|\d{2,3} ?kbps|vbr|cbr|mp3|m4b|aac|flac|read by|narrated by|\d{3,4}p|web|dl)\b/gi, ' ')
+    .replace(/\b(a novel|a memoir|unabridged|abridged|audiobook|audio ?book|english|retail|\d{2,3} ?kbps|vbr|cbr|mp3|m4b|aac|flac|read by|narrated by|\d{3,4}p|web|dl)\b/gi, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -127,18 +127,21 @@ export function enabledProviders() {
 }
 
 // Small queue so a page of 30 covers doesn't fire 120 requests at once.
+// Covers come first; extra details for books that already have a cover wait until
+// no cover is waiting, one at a time.
 let active = 0;
 const queue = [];
+const later = [];
 const pending = new Map();
-function schedule(fn) {
+function schedule(fn, low = false) {
   return new Promise((resolve, reject) => {
-    queue.push({ fn, resolve, reject });
+    (low ? later : queue).push({ fn, resolve, reject });
     pump();
   });
 }
 function pump() {
-  while (active < 3 && queue.length) {
-    const { fn, resolve, reject } = queue.shift();
+  while ((active < 3 && queue.length) || (active === 0 && later.length)) {
+    const { fn, resolve, reject } = queue.length ? queue.shift() : later.shift();
     active++;
     fn()
       .then(resolve, reject)
@@ -172,16 +175,20 @@ export function lookup(book, { fresh = false } = {}) {
       merged.genres = genres;
       if (merged.cover && merged.description) break;
     }
-    cache.set((c) => ({ ...c, [key]: { t: Date.now(), v: merged } }));
+    // Saved copy: description shortened (the book page loads the full one from its source).
+    const saved = merged?.description?.length > 900 ? { ...merged, description: merged.description.slice(0, 900) + '…' } : merged;
+    cache.set((c) => ({ ...c, [key]: { t: Date.now(), v: saved } }));
     return merged;
-  }).finally(() => pending.delete(key));
+  }, !!book.cover).finally(() => pending.delete(key));
   pending.set(key, p);
   return p;
 }
 
 // Sources whose items benefit from lookups.
-const ENRICH = new Set(['tb', 'rd', 'addon', 'gr']);
+const ENRICH = new Set(['loc', 'tb', 'rd', 'addon', 'gr']);
 export const wantsMeta = (book) => !!book && ENRICH.has(book.source) && (!book.cover || book.source === 'tb' || book.source === 'rd');
+/** Metadata already found for a book (no lookup), e.g. to sort phone books by author. */
+export const metaNow = (book) => (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v || null : null);
 
 /** Hook: enriched fields for cards (cover / tidy title / author). */
 export function useMeta(book) {

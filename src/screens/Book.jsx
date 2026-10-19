@@ -19,7 +19,7 @@ import { nativeReader } from '../lib/tts.js';
 import { downloads, canDownload, downloadBook, cancelDownload, removeDownload, fmtBytes } from '../lib/downloads.js';
 import { sourceAddons } from '../sources/sourceaddons.js';
 import * as player from '../lib/player.js';
-import { usePlayer, useCoverColor } from '../components/player-ui.jsx';
+import { usePlayerBasics, useCoverColor } from '../components/player-ui.jsx';
 import { RelatedRows } from '../components/related.jsx';
 import { openUrl, openExternal, keyIdeas, savedSummary, summaryBook, aiReady } from '../sources/summaries.js';
 
@@ -34,7 +34,7 @@ export function Book({ book: initial }) {
   const [editions, setEditions] = useState(null);
   const saved = !!useStore(library)[initial.uid];
   const allProgress = useStore(progress);
-  const ps = usePlayer();
+  const ps = usePlayerBasics();
   const color = useCoverColor(book);
   const isCurrent = ps.book?.uid === book.uid;
   const [hcStatus, setHcStatus] = useState(null);
@@ -49,7 +49,12 @@ export function Book({ book: initial }) {
     let alive = true;
     setLoading(true);
     getDetails(initial)
-      .then((d) => alive && setBook(d))
+      .then((d) => {
+        if (!alive) return;
+        setBook(d);
+        // Fetch the audio link now, so Play starts at once.
+        if (d.kind === 'audio' && player.getState().book?.uid !== d.uid) player.prepare(d);
+      })
       .catch((e) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
     if (initial.kind === 'discover') findEditions(initial).then((e) => alive && setEditions(e));
@@ -171,9 +176,9 @@ export function Book({ book: initial }) {
         )}
       </div>
       {cloudEbooks.length > 0 && <CloudEbooks book={book} files={cloudEbooks} />}
-      {((canListen && canDownload && book.source !== 'tts') || (book.hash && (book.source === 'tb' || book.source === 'rd') && qb.available)) && (
+      {((canListen && canDownload && book.source !== 'tts' && book.source !== 'loc') || (book.hash && (book.source === 'tb' || book.source === 'rd') && qb.available)) && (
         <div class="book-tools">
-          {canListen && canDownload && book.source !== 'tts' &&
+          {canListen && canDownload && book.source !== 'tts' && book.source !== 'loc' &&
             (!dl || dl.status === 'error' ? (
               <button
                 class="tool"

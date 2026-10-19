@@ -25,19 +25,81 @@ export function cleanTitle(name) {
     .replace(/\.(zip|rar|7z|m4b|mp3|epub|pdf|mobi|azw3?)$/i, '')
     .replace(/[._]+/g, ' ')
     .replace(/[\[({][^\])}]*[\])}]/g, ' ')
-    .replace(/\b(unabridged|abridged|audiobook|audio ?book|\d{2,3} ?kbps|mp3|m4b|aac|flac|retail|vbr|cbr|epub|pdf|mobi|azw3|ebook)\b/gi, ' ')
+    .replace(/\b(a novel|unabridged|abridged|audiobook|audio ?book|\d{2,3} ?kbps|mp3|m4b|aac|flac|retail|vbr|cbr|epub|pdf|mobi|azw3|ebook)\b/gi, ' ')
     .replace(/\s{2,}/g, ' ')
     .replace(/^[\s\-–]+|[\s\-–]+$/g, '')
     .trim() || String(name);
 }
 
-function splitAuthor(title) {
+// ---- music in the same cloud ----------------------------------------------------
+// Many people keep music albums in TorBox / Real-Debrid too. An item is treated as
+// music (and hidden unless "Show music" is on) only when it clearly looks like it;
+// anything book-like always stays.
+const BOOKISH = /\b(audio ?books?|unabridged|abridged|narrated|read by|novel|memoir|chapters?|book \d+|m4b)\b/i;
+const MUSICAL = /\b(discography|albums?|ost|soundtrack|deluxe edition|remaster(ed)?|greatest hits|anthology|single|mixtape|live at|vinyl|hi-?res|24 ?bit|16 ?bit|\d{2,3}(\.\d)? ?khz|web-?flac|cd ?rip|feat\.?|ft\.)\b/i;
+export function looksLikeMusic(name, files = []) {
+  const n = String(name || '');
+  if (BOOKISH.test(n)) return false;
+  const fname = (f) => baseName(f.short_name || f.name || f.filename || f.path || '');
+  const audio = files.filter((f) => AUDIO.test(fname(f)));
+  if (audio.some((f) => /\.m4b$/i.test(fname(f)))) return false;
+  if (audio.some((f) => /chapter|kapitel|chapitre|capitulo|\bpart ?\d|\bdisc ?\d+.*\bpart\b/i.test(fname(f)))) return false;
+  if (MUSICAL.test(n)) return true;
+  if (audio.length >= 2 && audio.filter((f) => /\.flac$/i.test(fname(f))).length / audio.length > 0.5) return true;
+  // Single songs (e.g. saved by music apps like Eclipse, one track per item): 1–3 small
+  // files. Even a short audiobook is rarely under ~40 MB.
+  const all = audio.map((f) => Number(f.size || f.bytes) || 0);
+  if (audio.length && audio.length <= 3 && all.every(Boolean) && all.reduce((a, b) => a + b, 0) < 40e6) return true;
+  // An album: 6–30 tracks of a few MB each (under ~200 MB in all), with different titles ("01 - Song name").
+  const sizes = audio.map((f) => Number(f.size || f.bytes) || 0);
+  if (audio.length >= 6 && audio.length <= 30 && sizes.every(Boolean)) {
+    const avg = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+    const stems = audio.map((f) => fname(f).replace(/\.[a-z0-9]+$/i, '').replace(/^[\d\s._\-–)(\]\[]+/, '').replace(/[\d\s._\-–]+$/, '').toLowerCase());
+    const distinct = new Set(stems.filter(Boolean)).size / audio.length;
+    const total = sizes.reduce((a, b) => a + b, 0);
+    // A whole audiobook is rarely under ~200 MB; an album usually is.
+    if (avg < 12e6 && total < 200e6 && distinct >= 0.7) return true;
+  }
+  return false;
+}
+export const showMusic = () => !!debrid.get().showMusic;
+
+// Films and TV in the same cloud (Real-Debrid only gives the item's name):
+// "Show.S01E02.1080p.WEB-DL.x265", "Movie (2023) 2160p BluRay", season packs…
+const VIDEO = /\b(s\d{1,2}(e\d{1,3})?|season[\s._-]?\d+|\d{3,4}p|4k|uhd|hdr|x26[45]|h\.?26[45]|hevc|av1|web[\s._-]?(dl|rip)|blu[\s._-]?ray|bdrip|brrip|hdtv|dvdrip|remux|imax|nf|amzn|dsnp|hmax|atvp|ddp?\d|dts|aac2|10bit)\b|\.(mkv|avi|mp4|m4v|mov|wmv|iso|ts)$/i;
+export const looksLikeVideo = (name) => VIDEO.test(String(name || '').replace(/[._]/g, ' ')) && !/\b(audio ?books?|unabridged|m4b|mp3)\b/i.test(String(name || ''));
+
+// Looks like a person's name: 2–4 capitalised words, no digits or title words.
+const TITLE_WORDS = /\b(the|of|and|a|an|in|on|to|for|how|why|what|my|your|our|with|from|book|vol|volume|part|series|habits|money|life|world|history|power|art)\b/i;
+const nameLike = (s) => {
+  const w = String(s).trim().split(/\s+/);
+  return w.length >= 2 && w.length <= 4 && w.every((x) => /^[A-Z][\p{L}'.-]*$/u.test(x) || /^[A-Z]\.$/.test(x)) && !TITLE_WORDS.test(s);
+};
+
+// "Author - Title", or "Title - Author" when only the second half reads like a name.
+export function splitAuthor(title) {
   const m = /^(.+?)\s[-–]\s(.+)$/.exec(title);
-  return m && m[1].length < 40 ? { author: m[1], title: m[2] } : { author: '', title };
+  if (!m) return { author: '', title };
+  const [, left, right] = m;
+  const words = (x) => x.trim().split(/\s+/).length;
+  // Only the second half reads like a name, or both do and it's the shorter one.
+  if (nameLike(right) && (!nameLike(left) || words(right) < words(left))) return { author: right, title: left };
+  return left.length < 40 ? { author: left, title: right } : { author: '', title };
+}
+
+/** The audio format of a set of files ("MP3", "M4B"…): the most common extension. */
+export function audioFormat(files) {
+  const n = {};
+  for (const f of files || []) {
+    const ext = /\.([a-z0-9]{2,4})$/i.exec(baseName(f.short_name || f.name || f.filename || f.path || f.uri || ''))?.[1];
+    if (ext && AUDIO.test('x.' + ext)) n[ext.toUpperCase()] = (n[ext.toUpperCase()] || 0) + 1;
+  }
+  return Object.entries(n).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
 }
 
 function toBook(prefix, source, id, name, files, extra = {}) {
   const clean = cleanTitle(name);
+  const format = audioFormat(files) || audioFormat([{ name }]);
   const { author, title } = splitAuthor(clean);
   return {
     uid: `${prefix}:${id}`,
@@ -48,6 +110,7 @@ function toBook(prefix, source, id, name, files, extra = {}) {
     cover: '',
     rawName: name,
     parts: files.length,
+    ...(format ? { format } : {}),
     ...extra,
   };
 }
@@ -99,6 +162,7 @@ async function torboxLibraryRaw() {
       const files = (it.files || []).filter((f) => AUDIO.test(f.name || f.short_name || ''));
       const ebooks = files.length ? [] : (it.files || []).filter((f) => EBOOK.test(f.name || f.short_name || ''));
       if (!files.length && !ebooks.length) continue;
+      if (files.length && !showMusic() && looksLikeMusic(it.name, it.files || [])) continue;
       const done = code !== 't' || !!(it.download_finished || it.download_present);
       const b = toBook('tb', 'tb', `${code}:${it.id}`, it.name, files.length ? files : ebooks, code === 't' && it.hash ? { hash: String(it.hash).toLowerCase() } : {});
       if (!files.length) Object.assign(b, { kind: 'text', format: fmtOf(ebooks[0].name || ebooks[0].short_name || '') });
@@ -153,6 +217,7 @@ async function tbDetails(book) {
     tracks: files.map((f, i) => ({
       title: f.name.replace(AUDIO, ''),
       index: i,
+      size: Number(f.size || f.bytes) || 0, // estimates the part's length before it plays
       // Download links expire, so they're requested right before playback.
       resolve: async () => {
         // Still downloading on TorBox: the link would be a partial file, so report progress instead.
@@ -196,6 +261,8 @@ async function realdebridLibraryRaw() {
   return (items || [])
     .filter((t) => t.status === 'downloaded')
     .filter((t) => AUDIO.test(t.filename) || !/\.(mkv|avi|mp4|iso|exe|apk)$/i.test(t.filename))
+    .filter((t) => !looksLikeVideo(t.filename))
+    .filter((t) => showMusic() || !looksLikeMusic(t.filename))
     .map((t) => ({ ...toBook('rd', 'rd', t.id, t.filename, t.links || [], t.hash ? { hash: String(t.hash).toLowerCase() } : {}), addedAt: Date.parse(t.added) || 0 }));
 }
 
@@ -264,6 +331,7 @@ async function rdDetails(book) {
     tracks: files.map((f, i) => ({
       title: f.name.replace(AUDIO, ''),
       index: i,
+      size: Number(f.size || f.bytes) || 0, // estimates the part's length before it plays
       resolve: async () => {
         const r = await sendForm(`${RD}/unrestrict/link`, 'POST', { link: f.link }, rdHeaders());
         if (!r?.download) throw new Error('Real-Debrid did not return a link');

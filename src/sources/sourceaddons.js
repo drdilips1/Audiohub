@@ -9,7 +9,10 @@ import { infoHash, torboxCached } from './debrid.js';
 
 export const isSourceManifest = (m) => !!(m && typeof m === 'object' && m.id && m.name && m.adapters?.source?.request?.url);
 
-// Accept source manifests installed by older builds/backups even if the persisted\n// entry lost its explicit `kind: 'source'` marker. The manifest itself is authoritative.\nexport const sourceAddons = () =>\n  addons.get().filter((a) => a.kind === 'source' || isSourceManifest(a.manifest));
+// Accept source manifests installed by older builds/backups even if the persisted
+// entry lost its explicit `kind: 'source'` marker. The manifest itself is authoritative.
+export const sourceAddons = () =>
+  addons.get().filter((a) => a.kind === 'source' || isSourceManifest(a.manifest));
 
 // ---- helpers ----------------------------------------------------------------
 function fill(v, vars, encode) {

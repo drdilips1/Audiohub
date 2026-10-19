@@ -24,11 +24,25 @@ export function parseLength(v) {
   return parseFloat(s) || 0;
 }
 
+// Called for every book a catalogue returns: a light tag strip, and the browser's own
+// entity decoding only when there is an entity (a full HTML parse per book was slow).
+let decoder;
 export function stripHtml(html) {
   if (!html) return '';
   if (Array.isArray(html)) html = html.join('\n');
-  const doc = new DOMParser().parseFromString(String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n'), 'text/html');
-  return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+  let s = String(html);
+  if (s.includes('<'))
+    s = s
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+      .replace(/<[^>]*>/g, '');
+  if (s.includes('&')) {
+    decoder ||= document.createElement('textarea');
+    decoder.innerHTML = s; // a detached textarea only decodes entities; nothing runs
+    s = decoder.value;
+  }
+  return s.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 export function first(v) {

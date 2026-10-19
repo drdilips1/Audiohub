@@ -93,8 +93,12 @@ public class InkwellPlayerPlugin extends Plugin {
         // Seek by bitrate in big MP3s without a seek table, so resuming mid-book
         // doesn't have to read the file from the start.
         DefaultExtractorsFactory extractors = new DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true).setConstantBitrateSeekingAlwaysEnabled(true);
-        // Start playing after 1s of audio instead of 2.5s; speech needs little buffer.
-        DefaultLoadControl loadControl = new DefaultLoadControl.Builder().setBufferDurationsMs(15000, 60000, 1000, 2000).build();
+        // Start after 1 s of audio (2 s after a stall), then keep up to 10 minutes loaded:
+        // audio is small (~1 MB a minute at most), and a long lead rides out patchy mobile data.
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+            .setBufferDurationsMs(30000, 600000, 1000, 2000)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build();
 
         player = new ExoPlayer.Builder(getContext())
             .setMediaSourceFactory(new DefaultMediaSourceFactory(withHeaders, extractors))
@@ -121,8 +125,27 @@ public class InkwellPlayerPlugin extends Plugin {
             @Override
             public void onPlaybackStateChanged(int state) {
                 emitState();
-                if (state == Player.STATE_READY) emitProgress();
+                if (state == Player.STATE_READY) {
+                    emitProgress();
+                    if (boostMb > 0) applyBoost();
+                }
                 if (state == Player.STATE_ENDED) notifyListeners("ended", new JSObject());
+            }
+
+            // (no @Override: present in Player.Listener on current Media3, harmless otherwise)
+            public void onAudioSessionIdChanged(int audioSessionId) {
+                applyBoost();
+            }
+
+            @Override
+            public void onMediaItemTransition(MediaItem mediaItem, int reason) {
+                // Moved on to a queued part by itself: tell the app which one.
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    JSObject o = new JSObject();
+                    o.put("item", player.getCurrentMediaItemIndex());
+                    notifyListeners("advanced", o);
+                    emitProgress();
+                }
             }
 
             @Override
@@ -257,6 +280,7 @@ public class InkwellPlayerPlugin extends Plugin {
         o.put("playWhenReady", player.getPlayWhenReady());
         o.put("buffering", player.getPlaybackState() == Player.STATE_BUFFERING);
         o.put("ended", player.getPlaybackState() == Player.STATE_ENDED);
+        o.put("item", player.getCurrentMediaItemIndex());
         o.put("idle", player.getPlaybackState() == Player.STATE_IDLE);
         o.put("suppressed", player.getPlaybackSuppressionReason() != Player.PLAYBACK_SUPPRESSION_REASON_NONE);
         return o;
@@ -323,6 +347,35 @@ public class InkwellPlayerPlugin extends Plugin {
         });
     }
 
+    /** Replace what plays after the current part: [{ url, title, artist, album, artwork }]. */
+    @PluginMethod
+    public void queue(PluginCall call) {
+        onMain(call, c -> {
+            int cur = player.getCurrentMediaItemIndex();
+            int count = player.getMediaItemCount();
+            if (count > cur + 1) player.removeMediaItems(cur + 1, count);
+            com.getcapacitor.JSArray items = c.getArray("items");
+            java.util.List<MediaItem> list = new java.util.ArrayList<>();
+            if (items != null) {
+                for (int i = 0; i < items.length(); i++) {
+                    org.json.JSONObject it = items.optJSONObject(i);
+                    if (it == null) continue;
+                    String url = it.optString("url", "");
+                    if (url.isEmpty()) continue;
+                    MediaMetadata.Builder meta = new MediaMetadata.Builder()
+                        .setTitle(it.optString("title", ""))
+                        .setArtist(it.optString("artist", ""))
+                        .setAlbumTitle(it.optString("album", ""));
+                    String art = it.optString("artwork", "");
+                    if (!art.isEmpty()) meta.setArtworkUri(Uri.parse(art));
+                    list.add(new MediaItem.Builder().setUri(url).setMediaMetadata(meta.build()).build());
+                }
+            }
+            if (!list.isEmpty()) player.addMediaItems(list);
+            c.resolve();
+        });
+    }
+
     @PluginMethod
     public void play(PluginCall call) {
         onMain(call, c -> {
@@ -357,6 +410,50 @@ public class InkwellPlayerPlugin extends Plugin {
     public void setRate(PluginCall call) {
         onMain(call, c -> {
             player.setPlaybackParameters(new PlaybackParameters(c.getFloat("rate", 1f)));
+            c.resolve();
+        });
+    }
+
+    /** Skip the quiet gaps (pauses between sentences, dead air) while playing. */
+    @PluginMethod
+    public void setSkipSilence(PluginCall call) {
+        onMain(call, c -> {
+            player.setSkipSilenceEnabled(c.getBoolean("on", false));
+            c.resolve();
+        });
+    }
+
+    // Volume boost: a loudness enhancer on the player's audio session.
+    private android.media.audiofx.LoudnessEnhancer booster;
+    private int boostMb = 0; // millibels
+    private int boostSession = 0;
+
+    private void applyBoost() {
+        try {
+            int session = player.getAudioSessionId();
+            if (boostMb <= 0) {
+                if (booster != null) booster.setEnabled(false);
+                return;
+            }
+            if (session == 0) return;
+            if (booster == null || boostSession != session) {
+                if (booster != null) booster.release();
+                booster = new android.media.audiofx.LoudnessEnhancer(session);
+                boostSession = session;
+            }
+            booster.setTargetGain(boostMb);
+            booster.setEnabled(true);
+        } catch (Exception ignored) {
+            // Some phones don't offer the effect: playback simply stays at normal volume.
+        }
+    }
+
+    /** Make quiet recordings louder: 0 (off) to about 10 dB. */
+    @PluginMethod
+    public void setBoost(PluginCall call) {
+        onMain(call, c -> {
+            boostMb = (int) Math.round(Math.max(0, Math.min(15, c.getDouble("db", 0.0))) * 100);
+            applyBoost();
             c.resolve();
         });
     }

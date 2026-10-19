@@ -6,7 +6,7 @@ import { persisted } from './store.js';
 import { words, mainTitle } from './match.js';
 import * as hcSrc from '../sources/hardcover.js';
 
-const cache = persisted('ratingsCache', {}); // key -> { t, v }
+const cache = persisted('ratingsCache', {}, { delay: 2000 }); // key -> { t, v }
 
 // Server and torrent names carry extras: "Kelly Rimmer - The Things We Cannot Say",
 // authors as "Rolf Dobelli/Eric Conger/…" (author/narrator). Look ratings up by the plain

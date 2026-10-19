@@ -1,7 +1,10 @@
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Grid, Empty, Cover, toast } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
-import { library, progress, useStore, forgetBook } from '../lib/store.js';
+import { library, progress, useStore, forgetBook, persisted } from '../lib/store.js';
+import { localSrc } from '../sources/index.js';
+import { fmtDuration } from '../lib/format.js';
+import { metaNow } from '../lib/meta.js';
 import { downloads, removeDownload } from '../lib/downloads.js';
 import { forgetEbook } from '../lib/epub.js';
 import { nav } from '../lib/nav.js';
@@ -11,6 +14,7 @@ import { ShowGrid } from './Podcasts.jsx';
 const TABS = [
   ['progress', 'In progress'],
   ['saved', 'Saved'],
+  ['phone', 'On this phone'],
   ['audio', 'Audiobooks'],
   ['text', 'Ebooks'],
   ['podcasts', 'Podcasts'],
@@ -18,7 +22,33 @@ const TABS = [
   ['finished', 'Finished'],
 ];
 
+const SORTS = [
+  ['recent', 'Recent'],
+  ['title', 'Title'],
+  ['author', 'Author'],
+  ['length', 'Length'],
+];
+const surname = (name) => String(name).split(',')[0].trim().split(/\s+/).pop() || '';
+const libView = persisted('libraryView', { list: false, sort: 'recent' });
+const lengthOf = (b) => b.duration || metaNow(b)?.runtime || b.size || 0;
+// Phone and cloud books often get their author from the online lookup.
+const authorOf = (b) => metaNow(b)?.author || b.author || '';
+const titleOf = (b) => (b.source === 'loc' && metaNow(b)?.title) || b.title || '';
+const SORTERS = {
+  title: (a, b) => titleOf(a).localeCompare(titleOf(b), undefined, { numeric: true }),
+  // By surname; books with no known author go last.
+  author: (a, b) => {
+    const x = surname(authorOf(a));
+    const y = surname(authorOf(b));
+    if (!x !== !y) return x ? -1 : 1;
+    return x.localeCompare(y) || SORTERS.title(a, b);
+  },
+  length: (a, b) => lengthOf(b) - lengthOf(a),
+};
+
 export function Library() {
+  const view = useStore(libView);
+  const local = useStore(localSrc.localCfg);
   const lib = useStore(library);
   const prog = useStore(progress);
   const dls = useStore(downloads);
@@ -39,6 +69,8 @@ export function Library() {
         return started.filter((p) => p.finished).map((p) => p.book);
       case 'saved':
         return saved;
+      case 'phone':
+        return local.books || [];
       case 'podcasts':
         // Episodes you've started and not finished.
         return started.filter((p) => !p.finished && p.book.source === 'pod').map((p) => p.book);
@@ -52,10 +84,15 @@ export function Library() {
         return [...saved, ...started.map((p) => p.book)].filter((b) => b.kind === tab && b.source !== 'pod' && !seen.has(b.uid) && seen.add(b.uid));
       }
     }
-  }, [lib, prog, tab, dls]);
+  }, [lib, prog, tab, dls, local]);
+  // Phone books are listed once a folder has been scanned.
+  useEffect(() => {
+    if (tab === 'phone' && localSrc.connected() && !local.scannedAt) localSrc.rescan().catch(() => {});
+  }, [tab]);
+  const sorted = useMemo(() => (view.sort !== 'recent' && SORTERS[view.sort] ? [...fresh].sort(SORTERS[view.sort]) : fresh), [fresh, view.sort]);
   // Position saves (every few seconds while playing) give new objects for one book at
   // most: keep the same list when nothing else changed, so the grid isn't redone.
-  const items = fresh.length === last.current.length && fresh.every((b, i) => b === last.current[i]) ? last.current : (last.current = fresh);
+  const items = sorted.length === last.current.length && sorted.every((b, i) => b === last.current[i]) ? last.current : (last.current = sorted);
 
   const stats = useMemo(() => {
     const vals = Object.values(prog || {}).filter((p) => p && typeof p === 'object');
@@ -67,11 +104,16 @@ export function Library() {
     <div class="screen library">
       <div class="library-head">
         <h1 class="screen-title">Library</h1>
-        <button class={'pill small' + (editing ? ' active' : '')} onClick={() => setEditing(!editing)}>
-          {editing ? 'Done' : 'Edit'}
-        </button>
+        <div class="library-head-actions">
+          <button class="icon-btn glass" onClick={() => nav.push('stats')} aria-label="Listening stats">
+            <Icon name="chart" size={20} />
+          </button>
+          <button class={'pill small' + (editing ? ' active' : '')} onClick={() => setEditing(!editing)}>
+            {editing ? 'Done' : 'Edit'}
+          </button>
+        </div>
       </div>
-      <div class="stats">
+      <button class="stats" onClick={() => nav.push('stats')} aria-label="Listening stats">
         <div>
           <b>{stats.books}</b>
           <span>started</span>
@@ -84,7 +126,7 @@ export function Library() {
           <b>{stats.done}</b>
           <span>finished</span>
         </div>
-      </div>
+      </button>
       <div class="segmented scroll">
         {TABS.map(([k, label]) => (
           <button class={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
@@ -92,7 +134,23 @@ export function Library() {
           </button>
         ))}
       </div>
-      {tab === 'podcasts' ? (
+      {tab !== 'podcasts' && items.length > 1 && (
+        <div class="lib-tools">
+          <div class="lib-sort">
+            {SORTS.map(([k, label]) => (
+              <button class={'pill small' + (view.sort === k ? ' active' : '')} onClick={() => libView.set((v) => ({ ...v, sort: k }))}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <button class="icon-btn" aria-label={view.list ? 'Show as grid' : 'Show as list'} onClick={() => libView.set((v) => ({ ...v, list: !v.list }))}>
+            <Icon name={view.list ? 'grid' : 'list'} size={20} />
+          </button>
+        </div>
+      )}
+      {tab === 'phone' && !items.length ? (
+        <PhoneEmpty />
+      ) : tab === 'podcasts' ? (
         <div class="lib-pods">
           {items.length > 0 && (
             <>
@@ -115,7 +173,7 @@ export function Library() {
             </Empty>
           )}
         </div>
-      ) : items.length && editing ? (
+      ) : items.length && editing && tab !== 'phone' ? (
         <div class="lib-edit">
           {items.slice(0, editShown).map((b) => (
             <div class="lib-edit-row">
@@ -136,7 +194,7 @@ export function Library() {
           )}
         </div>
       ) : items.length ? (
-        <Grid items={items} />
+        view.list ? <ListView items={items} prog={prog} /> : <Grid items={items} />
       ) : (
         <Empty icon="library" title="Your shelf is empty">
           Tap the heart on any book to save it, or{' '}
@@ -148,6 +206,77 @@ export function Library() {
       )}
       <div class="footer-space" />
     </div>
+  );
+}
+
+/** One row per book: cover, title, author and how far you are. */
+function ListView({ items, prog }) {
+  const [count, setCount] = useState(80);
+  return (
+    <div class="lib-list">
+      {items.slice(0, count).map((b) => {
+        const p = prog?.[b.uid];
+        const pct = p && !p.finished ? Math.round((p.percent || 0) * 100) : 0;
+        return (
+          <button class="lib-row" onClick={() => nav.push('book', { book: b })}>
+            <Cover book={b} />
+            <div>
+              <b>{b.title}</b>
+              <small>
+                {b.author}
+                {b.duration ? ` · ${fmtDuration(b.duration)}` : ''}
+                {p?.finished ? ' · Finished' : pct ? ` · ${pct}%` : ''}
+              </small>
+              {pct > 0 && (
+                <div class="progress-bar">
+                  <div style={{ width: pct + '%' }} />
+                </div>
+              )}
+            </div>
+          </button>
+        );
+      })}
+      {items.length > count && (
+        <button class="btn ghost-wide" onClick={() => setCount(count + 80)}>
+          Show more ({items.length - count})
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** "On this phone" before a folder is chosen (or when it has no books). */
+function PhoneEmpty() {
+  const [busy, setBusy] = useState(false);
+  const run = (fn) => async () => {
+    setBusy(true);
+    try {
+      await fn();
+    } catch (e) {
+      toast(e.message);
+    }
+    setBusy(false);
+  };
+  if (!localSrc.available)
+    return (
+      <Empty icon="library" title="Books on your phone">
+        Audiobooks already on the phone show here in the Android app.
+      </Empty>
+    );
+  return (
+    <Empty icon="library" title={localSrc.connected() ? 'No books found' : 'Books on your phone'}>
+      {localSrc.connected() ? 'Nothing playable in your chosen folders yet.' : 'Choose the folder where your audiobooks are (e.g. Audiobooks). They play straight from the phone, no internet needed.'}
+      <div class="phone-actions">
+        <button class="btn primary" disabled={busy} onClick={run(localSrc.addFolder)}>
+          {busy ? <span class="spinner" /> : 'Choose folder'}
+        </button>
+        {localSrc.connected() && (
+          <button class="btn" disabled={busy} onClick={run(localSrc.rescan)}>
+            Rescan
+          </button>
+        )}
+      </div>
+    </Empty>
   );
 }
 

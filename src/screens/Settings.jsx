@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../components/icons.jsx';
 import { toast } from '../components/common.jsx';
 import { settings, addons, abs, debrid, hardcover, goodreads, useStore, exportBackup, importBackup } from '../lib/store.js';
-import { SOURCES, absSrc, addonSrc, cloud, hc, gr, sourceOrder } from '../sources/index.js';
+import { SOURCES, absSrc, addonSrc, cloud, localSrc, hc, gr, sourceOrder } from '../sources/index.js';
 import { clearHttpCache, isWeb, relayUrl, setRelayUrl, probeRelay, defaultRelayUrl } from '../lib/http.js';
 import { searchSources, sourceAddons } from '../sources/sourceaddons.js';
 import { ai, PROVIDERS as AI_PROVIDERS, testProvider } from '../lib/ai.js';
@@ -39,6 +39,67 @@ function Section({ icon, title, children }) {
       </button>
       {open && <div class="set-card">{children}</div>}
     </section>
+  );
+}
+
+function LocalBooksCard() {
+  const cfg = useStore(localSrc.localCfg);
+  const [busy, setBusy] = useState('');
+  const run = (label, fn) => async () => {
+    setBusy(label);
+    try {
+      const books = await fn();
+      toast(`${books.length} audiobook${books.length === 1 ? '' : 's'} found`);
+    } catch (e) {
+      if (!/no folder chosen/i.test(e.message)) toast(e.message);
+    } finally {
+      setBusy('');
+    }
+  };
+  if (!localSrc.available) return <p class="muted">Playing audiobook files from your phone works in the Android app.</p>;
+  return (
+    <div>
+      <p class="muted">
+        Pick the folder where your audiobooks are (for example <b>Audiobooks</b> or <b>Download</b>). Each book folder inside becomes a book — with its parts in order — and plays straight from the phone, offline too. Android asks for access to that folder only.
+      </p>
+      {cfg.folders.map((f) => (
+        <div class="set-row">
+          <div>
+            <b>{decodeURIComponent(f.name)}</b>
+            <small>{cfg.books.filter((b) => b.folder === f.uri).length} audiobooks</small>
+          </div>
+          <button class="pill small" onClick={() => localSrc.removeFolder(f.uri)}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <div class="btn-row">
+        <button class="btn primary" disabled={!!busy} onClick={run('add', localSrc.addFolder)}>
+          {busy === 'add' ? <span class="spinner" /> : <Icon name="plus" size={16} />} {cfg.folders.length ? 'Add another folder' : 'Choose a folder'}
+        </button>
+        {cfg.folders.length > 0 && (
+          <button class="btn secondary" disabled={!!busy} onClick={run('scan', localSrc.rescan)}>
+            {busy === 'scan' ? <span class="spinner" /> : <Icon name="shuffle" size={16} />} Rescan
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MusicToggle() {
+  const [on, setOn] = useState(!!debrid.get().showMusic);
+  return (
+    <Toggle
+      label="Show music too"
+      hint="Off (usual): music albums and songs in your cloud are left out, so only audiobooks show"
+      on={on}
+      onChange={(v) => {
+        debrid.patch({ showMusic: v });
+        cloud.forget?.();
+        setOn(v);
+      }}
+    />
   );
 }
 
@@ -1055,11 +1116,16 @@ export function Settings() {
       <Section icon="external" title="Tracker">
         <TrackerCard />
       </Section>
+      <Section icon="headphones" title="Books on this phone">
+        <LocalBooksCard />
+      </Section>
       <Section icon="download" title="TorBox">
         <DebridCard provider="torbox" label="TorBox" keyHint="torbox.app/settings" keyUrl="https://torbox.app/settings" />
+        <MusicToggle />
       </Section>
       <Section icon="download" title="Real-Debrid">
         <DebridCard provider="realdebrid" label="Real-Debrid" keyHint="real-debrid.com/apitoken" keyUrl="https://real-debrid.com/apitoken" />
+        <MusicToggle />
       </Section>
       <PreferredDebrid />
       <Section icon="puzzle" title="Addons">

@@ -5379,3 +5379,291 @@ button.rt {
   color: var(--faint);
   text-align: center;
 }
+
+
+/* ---- From the main app: phone books, Library sort/list, card facts, listening stats ---- */
+/* Library: sort + grid/list, list rows, phone folder actions */
+.lib-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 20px 10px;
+}
+.lib-sort {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lib-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px;
+}
+.lib-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.lib-row .cover {
+  width: 56px;
+  flex: none;
+}
+.lib-row > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lib-row b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-row small {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phone-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* Cards: cover at the top, text packed tight under it (no gaps for short titles) */
+.book-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.book-card-title {
+  margin-top: 8px;
+  max-height: calc(2 * 1.25em);
+}
+.book-card-author {
+  margin-top: 2px;
+}
+.book-card-facts {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row {
+  margin-top: 20px;
+}
+.row-scroll {
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+/* Library: the stats strip opens Listening stats */
+button.stats {
+  width: calc(100% - 40px);
+  color: inherit;
+  text-align: inherit;
+}
+
+/* Listening stats */
+.st-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 20px 0;
+}
+.st-tile,
+.st-card {
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.st-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+}
+.st-tile b {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.st-tile span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.st-card {
+  margin: 14px 20px 0;
+  padding: 16px;
+}
+.st-card h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 600;
+}
+.st-note {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.st-streak {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  text-align: center;
+}
+.st-streak div {
+  display: flex;
+  flex-direction: column;
+}
+.st-streak div + div {
+  border-left: 1px solid var(--border);
+}
+.st-streak b {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.st-streak span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.st-bars {
+  margin-top: 6px;
+}
+.st-tip {
+  min-height: 18px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+}
+.st-bars svg {
+  display: block;
+  width: 100%;
+  height: 110px;
+  overflow: visible;
+}
+.st-base {
+  stroke: var(--border);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+.st-bar {
+  fill: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.st-bar.hi {
+  fill: var(--accent);
+}
+.st-bar.sel {
+  fill: var(--text);
+}
+.st-labels {
+  display: grid;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.st-labels span {
+  white-space: nowrap;
+  overflow: visible;
+}
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 12px;
+  text-align: left;
+  color: inherit;
+}
+.st-row .cover {
+  width: 48px;
+  flex: none;
+}
+.st-row > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.st-row b,
+.st-row small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-row small {
+  color: var(--muted);
+}
+.st-row em,
+.st-author em {
+  font-style: normal;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.st-meter {
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.st-meter div {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--grad);
+}
+.st-author {
+  display: grid;
+  grid-template-columns: 9em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 14px;
+}
+.st-author span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-author .st-meter {
+  margin: 0;
+}
+.st-foot {
+  display: flex;
+  gap: 6px;
+  margin: 16px 24px 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+.st-foot .icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.book-card-facts .icon {
+  vertical-align: -1px;
+  opacity: 0.8;
+}

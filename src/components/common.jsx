@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { Component } from 'preact';
-import { hashHue } from '../lib/format.js';
+import { hashHue, fmtDuration } from '../lib/format.js';
 import { SOURCES, sourceOf } from '../sources/index.js';
 import { Icon } from './icons.jsx';
 import { nav } from '../lib/nav.js';
@@ -10,6 +10,8 @@ import { useImage } from '../lib/image.js';
 import { useMeta } from '../lib/meta.js';
 import { useTileRating } from '../lib/ratings.js';
 import { openExternal } from '../sources/summaries.js';
+import { useLocalCover } from '../sources/local.js';
+import { audioFormat } from '../sources/debrid.js';
 
 export function Cover({ book, class: cls = '', eager }) {
   const { src, failed: proxyFailed } = useImage(book?.cover || '');
@@ -55,7 +57,7 @@ export function SourceBadge({ uid, book }) {
 // Debrid/addon items borrow cover + tidy title/author from metadata providers.
 export function withMeta(book, meta) {
   if (!meta) return book;
-  const cloudItem = book.source === 'tb' || book.source === 'rd';
+  const cloudItem = book.source === 'tb' || book.source === 'rd' || book.source === 'loc';
   return {
     ...book,
     cover: book.cover || meta.cover || '',
@@ -110,11 +112,31 @@ function SafeCard({ book, wide }) {
   );
 }
 
+/** Small lines under the author: file format · length (e.g. "M4B · 11h 10m"), then the narrator. */
+function CardFacts({ book, meta }) {
+  const secs = Number(book.duration) || Number(meta?.runtime) || 0;
+  const narrator = str(book.narrator || meta?.narrator).split(',')[0].trim();
+  const format = str(book.format).toUpperCase() || (Array.isArray(book.files) ? audioFormat(book.files) : '');
+  const line = [format, secs ? fmtDuration(secs) : ''].filter(Boolean).join(' · ');
+  if (!line && !narrator) return null;
+  return (
+    <>
+      {line && <div class="book-card-facts">{line}</div>}
+      {narrator && (
+        <div class="book-card-facts">
+          <Icon name="mic" size={10} /> {narrator}
+        </div>
+      )}
+    </>
+  );
+}
+
 // Memoized, and it listens to its own book's progress only: saving the position of
 // the book that's playing (every few seconds) no longer re-renders every card.
 export const BookCard = memo(function BookCard({ book: raw, wide }) {
-  const meta = useMeta(raw);
-  const merged = withMeta(raw, meta);
+  const localCover = useLocalCover(raw);
+  const meta = useMeta(localCover ? { ...raw, cover: localCover } : raw);
+  const merged = withMeta(localCover ? { ...raw, cover: localCover } : raw, meta);
   // Data from many sources: make sure what we print is plain text / numbers.
   const book = { ...merged, title: str(merged.title), author: str(merged.author), rating: Number(merged.rating) || 0, ratings: Number(merged.ratings) || 0 };
   const prog = useStoreKey(progressStore, book.uid);
@@ -154,12 +176,13 @@ export const BookCard = memo(function BookCard({ book: raw, wide }) {
       <div class="book-card-title">{book.title}</div>
       <div class="book-card-author">{book.author || ' '}</div>
       {typeof book.why === 'string' && book.why && <div class="book-card-why">{book.why}</div>}
+      <CardFacts book={book} meta={meta} />
     </button>
   );
 });
 
 // Last contents of slow rows (your cloud, your server), shown at once on the next open.
-const rowCache = persisted('rowCache', {});
+const rowCache = persisted('rowCache', {}, { delay: 1500 });
 const ROW_KEEP = ['uid', 'source', 'kind', 'title', 'author', 'narrator', 'cover', 'year', 'duration', 'addedAt', 'hash', 'format', 'fetching', 'genres'];
 const slim = (b) => Object.fromEntries(ROW_KEEP.filter((k) => b?.[k] !== undefined).map((k) => [k, b[k]]));
 
