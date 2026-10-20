@@ -6105,3 +6105,36 @@ button.stats {
   flex: none;
 }
 
+
+/* Player: the AI companion row (Ask / Explain / Challenge / Rabbit hole / Related / Remember) */
+.fp-companion {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.fp-companion::-webkit-scrollbar {
+  display: none;
+}
+.comp-btn {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 66px;
+  padding: 8px 6px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.comp-btn span {
+  font-size: 18px;
+  line-height: 1;
+}
+.comp-btn:disabled {
+  opacity: 0.6;
+}

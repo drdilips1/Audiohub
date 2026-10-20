@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Grid, Empty, Cover, toast } from '../components/common.jsx';
+import { Grid, Empty, Cover, toast, AskButton } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
 import { library, progress, useStore, forgetBook, persisted } from '../lib/store.js';
 import { localSrc } from '../sources/index.js';
@@ -111,6 +111,7 @@ export function Library() {
           <button class={'pill small' + (editing ? ' active' : '')} onClick={() => setEditing(!editing)}>
             {editing ? 'Done' : 'Edit'}
           </button>
+          <AskButton />
         </div>
       </div>
       <button class="stats" onClick={() => nav.push('stats')} aria-label="Listening stats">
