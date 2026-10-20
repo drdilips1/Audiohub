@@ -1213,49 +1213,7 @@ export function Settings() {
       </Section>
 
       <Section icon="download" title="Data">
-        <div class="set-row">
-          <div>
-            <b>Backup</b>
-            <small>Library, progress, bookmarks & addons</small>
-          </div>
-          <div class="chips">
-            <button
-              class="pill small"
-              onClick={async () => {
-                const text = exportBackup();
-                try {
-                  await navigator.clipboard.writeText(text);
-                  toast('Backup copied to clipboard');
-                } catch {
-                  const a = document.createElement('a');
-                  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-                  a.download = 'inkwell-backup.json';
-                  a.click();
-                }
-              }}
-            >
-              Export
-            </button>
-            <label class="pill small">
-              Import
-              <input
-                type="file"
-                accept="application/json,.json"
-                hidden
-                onChange={async (e) => {
-                  const f = e.currentTarget.files?.[0];
-                  if (!f) return;
-                  try {
-                    importBackup(await f.text());
-                    toast('Backup restored');
-                  } catch (err) {
-                    toast(err.message);
-                  }
-                }}
-              />
-            </label>
-          </div>
-        </div>
+        <BackupRow />
         <div class="set-row">
           <b>Network cache</b>
           <button
@@ -1406,5 +1364,81 @@ function PlayerBackgroundPicker({ st }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Backup: copy everything to the clipboard (or a file), restore by pasting it or picking the file. */
+function BackupRow() {
+  const [keys, setKeys] = useState(true);
+  const [paste, setPaste] = useState(null); // text box open
+  const restore = (text) => {
+    try {
+      importBackup(text);
+      toast('Backup restored — reloading');
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+  return (
+    <>
+      <div class="set-row">
+        <div>
+          <b>Backup</b>
+          <small>Library, progress, podcasts, ratings, stats, settings{keys ? ', logins & API keys (TorBox, Real-Debrid, AI…)' : ''}</small>
+        </div>
+        <div class="chips">
+          <button
+            class="pill small"
+            onClick={async () => {
+              const text = exportBackup({ keys });
+              try {
+                await navigator.clipboard.writeText(text);
+                toast('Backup copied — paste it somewhere safe (e.g. a note or email to yourself)');
+              } catch {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+                a.download = 'audiohub-backup.json';
+                a.click();
+              }
+            }}
+          >
+            Export
+          </button>
+          <button class="pill small" onClick={() => setPaste(paste === null ? '' : null)}>
+            Import
+          </button>
+        </div>
+      </div>
+      <label class="set-row">
+        <div>
+          <b>Include logins & API keys</b>
+          <small>Keep the backup private when this is on</small>
+        </div>
+        <input type="checkbox" class="switch" checked={keys} onChange={(e) => setKeys(e.currentTarget.checked)} />
+      </label>
+      {paste !== null && (
+        <div class="set-form">
+          <textarea rows={4} placeholder="Paste your backup here" value={paste} onInput={(e) => setPaste(e.currentTarget.value)} />
+          <div class="btn-row">
+            <button class="btn primary" disabled={!paste.trim()} onClick={() => restore(paste)}>
+              Restore
+            </button>
+            <label class="btn secondary">
+              Pick a file
+              <input
+                type="file"
+                accept="application/json,.json,.txt,text/plain"
+                hidden
+                onChange={async (e) => {
+                  const f = e.currentTarget.files?.[0];
+                  if (f) restore(await f.text());
+                }}
+              />
+            </label>
+          </div>
+          <small class="muted">Restoring replaces this phone’s library, progress and settings with the backup’s.</small>
+        </div>
+      )}
+    </>
   );
 }

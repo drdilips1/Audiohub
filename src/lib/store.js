@@ -209,31 +209,62 @@ export function mergeRemoved(local, remote) {
   return out;
 }
 
-export function exportBackup() {
-  return JSON.stringify(
-    {
-      app: 'inkwell',
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      settings: settings.get(),
-      library: library.get(),
-      progress: progress.get(),
-      bookmarks: bookmarks.get(),
-      addons: addons.get(),
-    },
-    null,
-    2
-  );
+// Backup = everything you'd miss on a new phone. Left out: caches (rebuilt on their own) and
+// things tied to this phone (downloaded files, phone folders, sign-in sessions).
+const NOT_BACKED_UP = new Set([
+  'aiCache', 'aiRouterModels', 'bookSummaries', 'booksellerCache', 'heroCache', 'metaCache', 'podcastFeeds',
+  'ratingsCache', 'rowCache', 'transcriptCache', 'knownCharacters', 'grPages', 'sourceCache', 'moodShelves',
+  'syncStamps', 'update', 'updateRun', 'downloads', 'localBooks', 'qbitAutoLast', 'qbitLastCapture', 'askThreads',
+]);
+// Logins and API keys: in the backup unless you switch it off.
+const KEYS = new Set(['debrid', 'ai', 'abs', 'hardcover', 'qbit', 'tracker', 'voice', 'account']);
+
+export function exportBackup({ keys = true } = {}) {
+  flushAll(); // include changes from the last moment
+  const data = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const full = localStorage.key(i);
+    if (!full?.startsWith('inkwell:')) continue;
+    const k = full.slice(8);
+    if (NOT_BACKED_UP.has(k) || (!keys && KEYS.has(k))) continue;
+    try {
+      let v = JSON.parse(localStorage.getItem(full));
+      // Your sync server, but not the sign-in session (sign in again on the new phone).
+      if (k === 'account' && v) v = { url: v.url || '', anonKey: v.anonKey || '', email: v.email || '' };
+      data[k] = v;
+    } catch {}
+  }
+  return JSON.stringify({ app: 'inkwell', version: 2, exportedAt: new Date().toISOString(), keys, data });
 }
 
+/** Restore a backup (this app's, or an older one), then reload so every screen uses it. */
 export function importBackup(text) {
-  const data = JSON.parse(text);
-  if (data.app !== 'inkwell') throw new Error('Not an Inkwell backup file');
-  if (data.settings) settings.set({ ...settings.get(), ...data.settings });
-  if (data.library) library.set({ ...library.get(), ...data.library });
-  if (data.progress) progress.set({ ...progress.get(), ...data.progress });
-  if (data.bookmarks) bookmarks.set({ ...bookmarks.get(), ...data.bookmarks });
-  if (Array.isArray(data.addons)) addons.set(data.addons);
+  let backup;
+  try {
+    backup = JSON.parse(String(text).trim());
+  } catch {
+    throw new Error('That isn’t an Audiohub backup (copy the whole text)');
+  }
+  if (backup?.app !== 'inkwell') throw new Error('That isn’t an Audiohub backup');
+  // Older backups: a few stores, merged into what's here.
+  const data = backup.data || {
+    settings: { ...settings.get(), ...(backup.settings || {}) },
+    library: { ...library.get(), ...(backup.library || {}) },
+    progress: { ...progress.get(), ...(backup.progress || {}) },
+    bookmarks: { ...bookmarks.get(), ...(backup.bookmarks || {}) },
+    ...(Array.isArray(backup.addons) ? { addons: backup.addons } : {}),
+  };
+  pending.clear(); // unsaved changes must not overwrite the restored data on reload
+  for (const [k, v] of Object.entries(data)) {
+    if (NOT_BACKED_UP.has(k)) continue;
+    try {
+      localStorage.setItem('inkwell:' + k, JSON.stringify(v));
+    } catch {}
+  }
+  setTimeout(() => {
+    pending.clear();
+    location.reload();
+  }, 600);
 }
 
 export const debrid = persisted('debrid', { torbox: '', realdebrid: '' });
