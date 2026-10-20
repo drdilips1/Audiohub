@@ -3,10 +3,11 @@ import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
 import { searchSources, sourceAddons, fmtSize } from '../sources/sourceaddons.js';
 import { cloud, getDetails } from '../sources/index.js';
-import { settings, useStore, debrid } from '../lib/store.js';
+import { settings, useStore, debrid, library, toggleLibrary } from '../lib/store.js';
 import { nav } from '../lib/nav.js';
 import * as player from '../lib/player.js';
 import { waitlist, wait, cancel } from '../lib/waitlist.js';
+import { canDownload, downloadBook } from '../lib/downloads.js';
 import { translit } from '../lib/translit.js';
 import * as qb from '../sources/qbit.js';
 import { cleanTitle } from '../sources/debrid.js';
@@ -273,6 +274,37 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
     }
   };
 
+  // Save to this phone straight from the result: get it through TorBox / Real-Debrid,
+  // keep it in the library, and download every part (plays offline afterwards).
+  const save = async () => {
+    if (!need()) return;
+    const via = playVia;
+    setBusy('save');
+    setStatus({ text: readyOn(via) ? `Getting it from your ${LABEL[via]}…` : 'Contacting ' + LABEL[via] + '…', pct: null });
+    try {
+      const stub = await cloud.prepareMagnet(via, r, (text, pct) => setStatus({ text, pct }));
+      autoSend();
+      const details = await getDetails({
+        ...stub,
+        title: book?.title || stub.title,
+        author: book?.author || r.author || stub.author,
+        cover: book?.cover || stub.cover,
+      });
+      setStatus(null);
+      if (!library.get()[details.uid]) toggleLibrary(details);
+      toast('Saving to this phone — see the book page for progress');
+      downloadBook(details)
+        .then(() => toast(`Downloaded: ${details.title} — plays offline now`))
+        .catch((e) => e.message !== 'cancelled' && toast(e.message));
+    } catch (e) {
+      setStatus(null);
+      toast(e.pending ? `${e.message} — tap Save again once it's ready` : e.message);
+      onChanged();
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // Direct download links from TorBox / Real-Debrid for every file.
   const getLinks = async (via) => {
     if (!need()) return;
@@ -463,6 +495,11 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
                   {busy === 'play:' + p ? <span class="spinner" /> : <Icon name="play" size={14} />} {SHORT[p]}
                 </button>
               ))}
+            {canDownload && (
+              <button class="btn secondary play-alt" disabled={!!busy} onClick={save} aria-label="Save to this phone">
+                {busy === 'save' ? <span class="spinner" /> : <Icon name="download" size={14} />} Save
+              </button>
+            )}
             {provider && (
               <button class="btn secondary play-alt" disabled={!!busy} onClick={() => (links ? setLinks(null) : getLinks(playVia))} aria-label="Download links">
                 {busy === 'links' ? <span class="spinner" /> : <Icon name="link" size={14} />} Links
