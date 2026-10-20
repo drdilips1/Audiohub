@@ -109,6 +109,19 @@ jobs:
           name: Audiohub-v${{ env.VERSION_NAME }}
           path: out/*.apk
 
+      # Test builds: one download link to try before releasing. Not "v…", so the in-app
+      # update and the Pages mirror ignore it; it's replaced by each test build.
+      - name: Test build download
+        if: github.ref == 'refs/heads/test'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "out/Audiohub-v${VERSION_NAME}.apk" out/Audiohub-test.apk
+          gh release view test-build -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create test-build -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --prerelease --title "Test build (not an update)" \
+            --notes "For testing only. Install the latest release instead: https://github.com/$GITHUB_REPOSITORY/releases/latest"
+          gh release upload test-build -R "$GITHUB_REPOSITORY" out/Audiohub-test.apk --clobber
+
       - name: Publish GitHub release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
