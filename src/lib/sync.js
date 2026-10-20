@@ -128,7 +128,8 @@ function saveSession(s) {
 }
 
 export function configure(url, anonKey) {
-  account.patch({ url: cleanUrl(url).replace(/\/+$/, ''), anonKey: anonKey.trim() });
+  // Keep just https://xxxx.supabase.co: people often paste the API URL with /rest/v1/ on the end.
+  account.patch({ url: cleanUrl(url).replace(/^(https?:\/\/[^/]+).*$/i, '$1'), anonKey: anonKey.trim() });
 }
 
 export async function signUp(email, password) {
