@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Icon } from '../components/icons.jsx';
 import { toast } from '../components/common.jsx';
 import { useStore } from '../lib/store.js';
 import * as sync from '../lib/sync.js';
 import { ttsCfg, engines as listEngines, voices as listVoices, speak, stopSpeaking, clearAudioCache, qualityLabel, RECOMMENDED, nativeReader, Reader, EDGE_VOICES, voiceSpec } from '../lib/tts.js';
 import { CATALOG, builtinAvailable, installedIds, download as downloadVoice, remove as removeVoice, activeDownload, follow as followDownload } from '../lib/voices.js';
-import { downloads, canDownload, removeDownload, publicAvailable, fmtBytes } from '../lib/downloads.js';
+import { downloads, canDownload, removeDownload, publicAvailable, fmtBytes, unsorted, sortDownloads } from '../lib/downloads.js';
 import { settings } from '../lib/store.js';
 
 const ago = (t) => {
@@ -516,6 +516,7 @@ export function DownloadsCard() {
           </button>
         )}
       </div>
+      <SortDownloads all={all} />
       {list.map(([uid, d]) => (
         <div class="set-row">
           <div>
@@ -530,5 +531,35 @@ export function DownloadsCard() {
         </div>
       ))}
     </>
+  );
+}
+
+/** One tap: move earlier downloads into Author / Series / Title folders. */
+function SortDownloads({ all }) {
+  const [busy, setBusy] = useState('');
+  const todo = useMemo(() => unsorted(), [all]);
+  if (!todo.length && !busy) return null;
+  return (
+    <div class="set-row">
+      <div>
+        <b>Sort into Author / Series folders</b>
+        <small>{busy || `${todo.length} earlier download${todo.length > 1 ? 's are' : ' is'} in the old one-folder-per-book layout`}</small>
+      </div>
+      <button
+        class="pill small"
+        disabled={!!busy}
+        onClick={async () => {
+          setBusy('Sorting…');
+          try {
+            const { moved, failed } = await sortDownloads((i, n, title) => setBusy(`Moving ${i + 1} of ${n}: ${title}`));
+            toast(failed ? `Sorted ${moved}; ${failed} couldn't be moved (they still play)` : `Sorted ${moved} book${moved === 1 ? '' : 's'}`);
+          } finally {
+            setBusy('');
+          }
+        }}
+      >
+        {busy ? <span class="spinner small" /> : 'Sort'}
+      </button>
+    </div>
   );
 }

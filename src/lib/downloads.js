@@ -1,6 +1,7 @@
 // Offline downloads: saves every part of an audiobook to the phone, then plays
 // from the local files. Location: public Downloads/Audiohub (visible in the file
 // manager) or private app storage — chosen in Settings → Downloads.
+import { metaNow } from './meta.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { persisted, settings, summarize } from './store.js';
 
@@ -58,7 +59,7 @@ export async function downloadBook(details) {
   const job = `${uid}:${Date.now()}`;
   const target = settings.get().downloadTarget || 'public';
   const folder = folderFor(details);
-  patch(uid, { book: summarize(details), status: 'downloading', done: 0, total: 0, bytes: 0, error: '', job, tracks: [] });
+  patch(uid, { book: summarize(details), series: details.series || '', folder, status: 'downloading', done: 0, total: 0, bytes: 0, error: '', job, tracks: [] });
   const sub = Native.addListener('progress', (e) => {
     if (e.job === job) patch(uid, { current: e.received, currentTotal: e.total });
   });
@@ -128,4 +129,37 @@ export const publicAvailable = () => (canDownload ? Native.publicAvailable().the
 export function fmtBytes(n) {
   if (!n) return '0 MB';
   return n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n < 1e7 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.round(n / 1e6)} MB`;
+}
+
+/** Downloads not yet in their Author / Series / Title folder. */
+export function unsorted() {
+  return Object.entries(downloads.get()).filter(([, d]) => d.status === 'done' && d.book && d.folder !== targetFolder(d));
+}
+const targetFolder = (d) => folderFor({ ...d.book, series: d.series || metaNow(d.book)?.series || '' });
+
+/** Move earlier downloads into Author / Series / Title folders. Returns { moved, failed }. */
+export async function sortDownloads(onProgress) {
+  const todo = unsorted();
+  let moved = 0;
+  let failed = 0;
+  for (const [uid, d] of todo) {
+    onProgress?.(moved + failed, todo.length, d.book.title);
+    const folder = targetFolder(d);
+    const tracks = [];
+    let location = d.location;
+    let ok = true;
+    for (const t of d.tracks || []) {
+      try {
+        const r = await Native.move({ uri: t.uri, folder });
+        tracks.push({ ...t, uri: r.uri });
+        location = r.location;
+      } catch {
+        tracks.push(t); // stays where it was, still plays
+        ok = false;
+      }
+    }
+    patch(uid, { tracks, location, ...(ok ? { folder } : {}) });
+    ok ? moved++ : failed++;
+  }
+  return { moved, failed };
 }

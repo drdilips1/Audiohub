@@ -164,6 +164,43 @@ public class InkwellDownloadsPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void move(PluginCall call) {
+        // Move a file this app downloaded into another folder (sorting old downloads).
+        String uri = call.getString("uri", "");
+        String folder = call.getString("folder", "Audiohub");
+        try {
+            JSObject r = new JSObject();
+            if (uri.startsWith("content://") && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/" + folder);
+                if (getContext().getContentResolver().update(Uri.parse(uri), v, null, null) < 1) throw new Exception("Android didn't move it");
+                r.put("uri", uri); // same file, new folder
+                r.put("location", "Downloads/" + folder);
+            } else if (uri.startsWith("file://")) {
+                File f = new File(Uri.parse(uri).getPath());
+                File base = getContext().getExternalFilesDir(null);
+                if (base == null) base = getContext().getFilesDir();
+                File dir = new File(new File(base, "downloads"), folder);
+                //noinspection ResultOfMethodCallIgnored
+                dir.mkdirs();
+                File to = new File(dir, f.getName());
+                if (!f.getAbsolutePath().equals(to.getAbsolutePath())) {
+                    if (!f.renameTo(to)) throw new Exception("Couldn't move the file");
+                    File parent = f.getParentFile();
+                    String[] left = parent != null ? parent.list() : null;
+                    //noinspection ResultOfMethodCallIgnored
+                    if (parent != null && left != null && left.length == 0) parent.delete();
+                }
+                r.put("uri", "file://" + to.getAbsolutePath());
+                r.put("location", "App storage");
+            } else throw new Exception("Not a downloaded file");
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
+        }
+    }
+
+    @PluginMethod
     public void remove(PluginCall call) {
         String uri = call.getString("uri", "");
         try {
