@@ -2,7 +2,8 @@ name: Android APK
 
 on:
   push:
-    branches: [main]
+    # main publishes a release (and the in-app update); "test" only builds an APK to try first.
+    branches: [main, test]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -109,7 +110,7 @@ jobs:
           path: out/*.apk
 
       - name: Publish GitHub release
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
@@ -125,7 +126,7 @@ jobs:
       # Also serve this APK from GitHub Pages (a fast CDN) for in-app updates,
       # alongside the web app that was just built.
       - name: Prepare Pages (web app + APK)
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
           rm -rf pages && cp -r dist pages
           mkdir -p pages/app
@@ -134,18 +135,18 @@ jobs:
           cat pages/app/latest.json
 
       - uses: actions/configure-pages@v5
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
           enablement: true
 
       - uses: actions/upload-pages-artifact@v3
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
           path: pages
 
   pages:
     needs: build
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
       group: pages-deploy
