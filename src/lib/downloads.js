@@ -33,6 +33,23 @@ export function applyLocal(details) {
 let running = new Set();
 
 /** Download every part of `details` (from sources.getDetails). */
+/**
+ * Where a book is saved: Audiohub/Author/Series/03 - Title, or Audiohub/Author/Title
+ * without a series (the layout Audiobookshelf and most players read).
+ */
+export function folderFor(details) {
+  const first = (details.author || '').split(/,|&| and /)[0].trim();
+  const author = first ? safe(first) : 'Unknown author';
+  const title = safe(details.title);
+  const m = /^(.*?)\s*#\s*([\d.]+)\s*$/.exec(details.series || '');
+  if (m && m[1].trim()) {
+    const n = m[2].includes('.') ? m[2] : m[2].padStart(2, '0');
+    return `Audiohub/${author}/${safe(m[1])}/${n} - ${title}`;
+  }
+  if ((details.series || '').trim()) return `Audiohub/${author}/${safe(details.series)}/${title}`;
+  return `Audiohub/${author}/${title}`;
+}
+
 export async function downloadBook(details) {
   if (!canDownload) throw new Error('Downloads work in the Android app');
   const uid = details.uid;
@@ -40,7 +57,7 @@ export async function downloadBook(details) {
   running.add(uid);
   const job = `${uid}:${Date.now()}`;
   const target = settings.get().downloadTarget || 'public';
-  const folder = `Audiohub/${safe(details.author ? `${details.title} - ${details.author.split(',')[0]}` : details.title)}`;
+  const folder = folderFor(details);
   patch(uid, { book: summarize(details), status: 'downloading', done: 0, total: 0, bytes: 0, error: '', job, tracks: [] });
   const sub = Native.addListener('progress', (e) => {
     if (e.job === job) patch(uid, { current: e.received, currentTotal: e.total });
