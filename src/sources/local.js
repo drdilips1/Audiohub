@@ -6,7 +6,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { persisted, useStore } from '../lib/store.js';
 import { cleanTitle, splitAuthor, audioFormat } from './debrid.js';
 
-const Native = registerPlugin('InkwellLocal');
+export const Native = registerPlugin('InkwellLocal');
 export const available = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('InkwellLocal');
 
 export const localCfg = persisted('localBooks', { folders: [], books: [], scannedAt: 0 });

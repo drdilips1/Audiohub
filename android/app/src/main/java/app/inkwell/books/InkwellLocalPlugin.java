@@ -26,6 +26,78 @@ public class InkwellLocalPlugin extends Plugin {
     private static final Pattern IMAGE = Pattern.compile("(?i)^(cover|folder|front|album|art)[^/]*\\.(jpe?g|png|webp)$");
     private static final int MAX_FILES = 20000;
 
+    /** Save text as a file where the user chooses (Android's "Save to" screen, Downloads by default). */
+    @PluginMethod
+    public void saveFile(PluginCall call) {
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType(call.getString("mime", "application/json"));
+        i.putExtra(Intent.EXTRA_TITLE, call.getString("name", "audiohub-backup.json"));
+        startActivityForResult(call, i, "onSaveFile");
+    }
+
+    @ActivityCallback
+    private void onSaveFile(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        Uri uri = result.getData() != null ? result.getData().getData() : null;
+        if (uri == null) {
+            call.reject("cancelled");
+            return;
+        }
+        try (java.io.OutputStream out = getContext().getContentResolver().openOutputStream(uri, "wt")) {
+            if (out == null) throw new Exception("Couldn't open the file");
+            out.write(call.getString("text", "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            JSObject o = new JSObject();
+            o.put("name", nameOf(uri));
+            call.resolve(o);
+        } catch (Exception e) {
+            call.reject("Couldn't save the file: " + e.getMessage());
+        }
+    }
+
+    /** Let the user pick a file and return its text (for restoring a backup). */
+    @PluginMethod
+    public void openFile(PluginCall call) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("*/*");
+        startActivityForResult(call, i, "onOpenFile");
+    }
+
+    @ActivityCallback
+    private void onOpenFile(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        Uri uri = result.getData() != null ? result.getData().getData() : null;
+        if (uri == null) {
+            call.reject("cancelled");
+            return;
+        }
+        try (java.io.InputStream in = getContext().getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new Exception("Couldn't open the file");
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[1 << 16];
+            int n;
+            while ((n = in.read(b)) > 0) {
+                buf.write(b, 0, n);
+                if (buf.size() > 50_000_000) throw new Exception("That file is too big to be a backup");
+            }
+            JSObject o = new JSObject();
+            o.put("text", buf.toString("UTF-8"));
+            o.put("name", nameOf(uri));
+            call.resolve(o);
+        } catch (Exception e) {
+            call.reject("Couldn't read the file: " + e.getMessage());
+        }
+    }
+
+    private String nameOf(Uri uri) {
+        try (Cursor c = getContext().getContentResolver().query(uri, new String[] { android.provider.OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (c != null && c.moveToFirst()) return c.getString(0);
+        } catch (Exception ignored) {
+        }
+        return "";
+    }
+
     /** Let the user choose a folder; keeps access to it after restarts. */
     @PluginMethod
     public void pickFolder(PluginCall call) {

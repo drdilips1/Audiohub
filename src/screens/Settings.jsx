@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+// Save / open backup files with Android's own file screens.
+import { Native as Files, available as files } from '../sources/local.js';
 import { Icon } from '../components/icons.jsx';
 import { toast } from '../components/common.jsx';
 import { settings, addons, abs, debrid, hardcover, goodreads, useStore, exportBackup, importBackup } from '../lib/store.js';
@@ -1367,16 +1369,43 @@ function PlayerBackgroundPicker({ st }) {
   );
 }
 
-/** Backup: copy everything to the clipboard (or a file), restore by pasting it or picking the file. */
+/** Backup: save everything as a file; restore by picking the file (or pasting an older text backup). */
 function BackupRow() {
   const [keys, setKeys] = useState(true);
-  const [paste, setPaste] = useState(null); // text box open
+  const [paste, setPaste] = useState(null); // text box for backups copied as text (older versions)
   const restore = (text) => {
     try {
       importBackup(text);
       toast('Backup restored — reloading');
     } catch (err) {
       toast(err.message);
+    }
+  };
+  const fileName = `audiohub-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const save = async () => {
+    const text = exportBackup({ keys });
+    if (files) {
+      try {
+        const r = await Files.saveFile({ name: fileName, text, mime: 'application/json' });
+        return toast(`Backup saved${r?.name ? ` as ${r.name}` : ''}`);
+      } catch (e) {
+        if (e?.message === 'cancelled') return;
+        toast(e.message);
+      }
+    }
+    // Browser: a download.
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    a.download = fileName;
+    a.click();
+  };
+  const open = async () => {
+    if (!files) return document.getElementById('backup-file')?.click();
+    try {
+      const r = await Files.openFile();
+      restore(r.text);
+    } catch (e) {
+      if (e?.message !== 'cancelled') toast(e.message);
     }
   };
   return (
@@ -1387,56 +1416,43 @@ function BackupRow() {
           <small>Library, progress, podcasts, ratings, stats, settings{keys ? ', logins & API keys (TorBox, Real-Debrid, AI…)' : ''}</small>
         </div>
         <div class="chips">
-          <button
-            class="pill small"
-            onClick={async () => {
-              const text = exportBackup({ keys });
-              try {
-                await navigator.clipboard.writeText(text);
-                toast('Backup copied — paste it somewhere safe (e.g. a note or email to yourself)');
-              } catch {
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-                a.download = 'audiohub-backup.json';
-                a.click();
-              }
-            }}
-          >
+          <button class="pill small" onClick={save}>
             Export
           </button>
-          <button class="pill small" onClick={() => setPaste(paste === null ? '' : null)}>
+          <button class="pill small" onClick={open}>
             Import
           </button>
+          <input
+            id="backup-file"
+            type="file"
+            accept="application/json,.json,.txt,text/plain"
+            hidden
+            onChange={async (e) => {
+              const f = e.currentTarget.files?.[0];
+              if (f) restore(await f.text());
+            }}
+          />
         </div>
       </div>
       <label class="set-row">
         <div>
           <b>Include logins & API keys</b>
-          <small>Keep the backup private when this is on</small>
+          <small>Keep the backup file private when this is on</small>
         </div>
         <input type="checkbox" class="switch" checked={keys} onChange={(e) => setKeys(e.currentTarget.checked)} />
       </label>
+      <div class="set-row">
+        <small class="muted">Restoring replaces this phone’s library, progress and settings with the backup’s.</small>
+        <button class="link-btn" onClick={() => setPaste(paste === null ? '' : null)}>
+          Paste a backup instead
+        </button>
+      </div>
       {paste !== null && (
         <div class="set-form">
-          <textarea rows={4} placeholder="Paste your backup here" value={paste} onInput={(e) => setPaste(e.currentTarget.value)} />
-          <div class="btn-row">
-            <button class="btn primary" disabled={!paste.trim()} onClick={() => restore(paste)}>
-              Restore
-            </button>
-            <label class="btn secondary">
-              Pick a file
-              <input
-                type="file"
-                accept="application/json,.json,.txt,text/plain"
-                hidden
-                onChange={async (e) => {
-                  const f = e.currentTarget.files?.[0];
-                  if (f) restore(await f.text());
-                }}
-              />
-            </label>
-          </div>
-          <small class="muted">Restoring replaces this phone’s library, progress and settings with the backup’s.</small>
+          <textarea rows={4} placeholder="Paste a backup that was copied as text" value={paste} onInput={(e) => setPaste(e.currentTarget.value)} />
+          <button class="btn primary" disabled={!paste.trim()} onClick={() => restore(paste)}>
+            Restore
+          </button>
         </div>
       )}
     </>
