@@ -64,6 +64,7 @@ public final class ReadAloudEngine {
     }
 
     private static final int LOOKAHEAD = 3;
+    private static int maxPiece = 700;
 
     private static Context app;
     private static final Handler main = new Handler(Looper.getMainLooper());
@@ -178,6 +179,7 @@ public final class ReadAloudEngine {
         // Pieces of about a paragraph (Microsoft voices render long text quickly) or
         // a couple of sentences (on-device voices are slower).
         int max = "edge".equals(v.engine) ? 700 : 320;
+        maxPiece = max;
         List<Piece> list = new ArrayList<>();
         for (int i = 0; i < paras.size(); i++) {
             String t = paras.get(i) == null ? "" : paras.get(i).trim();
@@ -203,6 +205,38 @@ public final class ReadAloudEngine {
             return;
         }
         play();
+    }
+
+    /**
+     * Jumping to a paragraph: its audio isn't made yet, and a whole paragraph takes a
+     * few seconds. Speak its first sentence on its own (ready in about a second) while
+     * the rest is made.
+     */
+    private static void quickStart(int i) {
+        if (i < 0 || i >= pieces.size()) return;
+        synchronized (ready) {
+            Future<File> f = ready.get(i);
+            if (f != null && f.isDone() && !f.isCancelled()) return; // already made
+            Piece pc = pieces.get(i);
+            if (pc.text.length() <= 160) return;
+            List<String> first = EdgeTts.splitLong(pc.text, 160);
+            String lead = first.get(0);
+            String rest = pc.text.substring(Math.min(pc.text.length(), pc.text.indexOf(lead) + lead.length())).trim();
+            List<Piece> next = new ArrayList<>(pieces.subList(0, i));
+            next.add(new Piece(pc.para, lead));
+            if (!rest.isEmpty()) for (String s : EdgeTts.splitLong(rest, maxPiece)) next.add(new Piece(pc.para, s));
+            next.addAll(pieces.subList(i + 1, pieces.size()));
+            // Pieces from here on have new numbers: drop anything queued for them.
+            Iterator<Map.Entry<Integer, Future<File>>> it = ready.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<Integer, Future<File>> e = it.next();
+                if (e.getKey() >= i) {
+                    e.getValue().cancel(true);
+                    it.remove();
+                }
+            }
+            pieces = next;
+        }
     }
 
     private static int firstPieceOf(int paraIndex) {
@@ -256,6 +290,7 @@ public final class ReadAloudEngine {
         pos = firstPieceOf(Math.max(0, paraIndex));
         finished = false;
         releasePlayer();
+        quickStart(pos);
         trimQueue();
         if (playing) playCurrent();
         changed();
