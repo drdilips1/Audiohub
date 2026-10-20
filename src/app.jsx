@@ -2,6 +2,7 @@ import * as qbit from './sources/qbit.js';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { Stats } from './screens/Stats.jsx';
+import { Ask } from './screens/Ask.jsx';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
@@ -43,7 +44,7 @@ const KeptTab = memo(function KeptTab({ Root }) {
   );
 });
 
-const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast, stats: Stats };
+const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast, ask: Ask, stats: Stats };
 
 export function App() {
   const [route, setRoute] = useState(nav.state());

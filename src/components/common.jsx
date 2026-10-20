@@ -276,6 +276,19 @@ export function Skeleton() {
   );
 }
 
+/** ✨ Ask AI: about this book, or about all your books. */
+export function AskButton({ book = null, cls = 'icon-btn ask-btn glass' }) {
+  return (
+    <button
+      class={cls}
+      aria-label={book ? 'Ask AI about this book' : 'Ask AI about your books'}
+      onClick={() => nav.push('ask', book ? { book, description: book.description || '' } : {})}
+    >
+      <Icon name="sparkle" size={20} />
+    </button>
+  );
+}
+
 export function TopBar({ title, back = true, right, transparent }) {
   return (
     <header class={'topbar' + (transparent ? ' transparent' : '')}>

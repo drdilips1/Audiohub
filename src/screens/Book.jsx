@@ -1,6 +1,7 @@
 import { BgImage } from '../components/bg-image.jsx';
 import { useEffect, useState } from 'preact/hooks';
-import { Cover, SourceBadge, Row, toast } from '../components/common.jsx';
+import { Cover, SourceBadge, Row, toast, AskButton } from '../components/common.jsx';
+import { STARTERS } from '../lib/askbook.js';
 import { Icon } from '../components/icons.jsx';
 import { getDetails, findEditions, ia, hc, sourceOf } from '../sources/index.js';
 import { library, progress, toggleLibrary, useStore } from '../lib/store.js';
@@ -88,6 +89,8 @@ export function Book({ book: initial }) {
             <Icon name="back" />
           </button>
           <span />
+          <div class="topbar-right">
+          {book.source !== 'pod' && <AskButton book={book} />}
           <button
             class={'icon-btn glass' + (saved ? ' liked' : '')}
             aria-label={saved ? 'Remove from library' : 'Save to library'}
@@ -98,6 +101,7 @@ export function Book({ book: initial }) {
           >
             <Icon name="heart" fill={saved} />
           </button>
+          </div>
         </header>
         <div class="book-hero-content">
           <Cover book={book} class="book-cover" eager />
@@ -270,6 +274,8 @@ export function Book({ book: initial }) {
           )}
         </section>
       )}
+
+      {book.source !== 'sum' && book.source !== 'pod' && <AskCard book={book} description={book.description || ''} genres={book.subjects || []} />}
 
       {book.metaSource && <p class="muted pad meta-credit">Details from {book.metaSource}</p>}
       {book.subjects?.length > 0 && (
@@ -590,6 +596,31 @@ function MyRating({ book }) {
           <p class="muted small">Your ratings shape the picks in For you and on Home. Narrators you mark weak are kept out.</p>
         </div>
       )}
+    </section>
+  );
+}
+
+/** Ask AI about this book: a few quick questions; one tap opens the full screen. */
+function AskCard({ book, description, genres }) {
+  const open = (extra = {}) => nav.push('ask', { book, description, genres, ...extra });
+  return (
+    <section class="pad ask-card-wrap">
+      <h3 class="section-label">
+        <Icon name="sparkle" size={16} /> Ask AI
+      </h3>
+      <div class="ask-card">
+        <p class="muted small">Summaries, key ideas, a quiz, or anything you're curious about.</p>
+        <div class="ask-card-qs">
+          {STARTERS.slice(0, 2).map((q) => (
+            <button class="ask-q" onClick={() => open({ question: q })}>
+              {q}
+            </button>
+          ))}
+        </div>
+        <button class="btn primary ask-open" onClick={() => open()}>
+          <Icon name="sparkle" size={16} /> Ask a question
+        </button>
+      </div>
     </section>
   );
 }
