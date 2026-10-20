@@ -92,12 +92,17 @@ const cfg = () => account.get();
 export const configured = () => !!(cfg().url && cfg().anonKey);
 export const signedIn = () => !!cfg().refreshToken;
 
+/** https://xxxx.supabase.co, whatever was pasted after it (e.g. /rest/v1/ from the API URL). */
+const server = () => (cfg().url || '').replace(/^(https?:\/\/[^/]+).*$/i, '$1');
+
 async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
-  const res = await fetch(cfg().url.replace(/\/+$/, '') + path, {
+  const key = cfg().anonKey;
+  const bearer = token || (key.startsWith('eyJ') ? key : ''); // newer sb_publishable_ keys go in apikey only
+  const res = await fetch(server() + path, {
     method,
     headers: {
-      apikey: cfg().anonKey,
-      Authorization: `Bearer ${token || cfg().anonKey}`,
+      apikey: key,
+      ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
       'Content-Type': 'application/json',
       ...headers,
     },
@@ -132,19 +137,40 @@ export function configure(url, anonKey) {
   account.patch({ url: cleanUrl(url).replace(/^(https?:\/\/[^/]+).*$/i, '$1'), anonKey: anonKey.trim() });
 }
 
+// Supabase's free built-in email often never arrives; the account works without it.
+const NO_EMAIL =
+  'If the confirmation email doesn’t arrive (common with Supabase’s free email): in your Supabase project open Authentication → Sign In / Providers → Email, switch off “Confirm email” and save. Then delete this email under Authentication → Users and tap Create account again.';
+
 export async function signUp(email, password) {
-  const r = await api('/auth/v1/signup', { method: 'POST', body: { email: email.trim(), password } });
+  let r;
+  try {
+    r = await api('/auth/v1/signup', { method: 'POST', body: { email: email.trim(), password } });
+  } catch (e) {
+    if (/already registered|already exists/i.test(e.message)) throw new Error('This email already has an account: tap Sign in. ' + NO_EMAIL);
+    throw e;
+  }
   if (r?.access_token) {
+    account.patch({ status: '' });
     saveSession(r);
     await syncNow({ first: true });
     return 'Account created — you are signed in';
   }
-  account.patch({ email: email.trim() });
-  return 'Check your email to confirm the account, then sign in';
+  account.patch({ email: email.trim(), status: NO_EMAIL });
+  return 'Supabase sent a confirmation email — see the note above if it doesn’t arrive';
 }
 
 export async function signIn(email, password) {
-  const r = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email: email.trim(), password } });
+  let r;
+  try {
+    r = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email: email.trim(), password } });
+  } catch (e) {
+    if (/not confirmed/i.test(e.message)) {
+      account.patch({ status: NO_EMAIL });
+      throw new Error('This account’s email isn’t confirmed yet — see the note above');
+    }
+    throw e;
+  }
+  account.patch({ status: '' });
   saveSession(r);
   await syncNow({ first: true });
   return 'Signed in — your data is synced';
@@ -167,7 +193,7 @@ export async function resetPassword(email) {
 
 /** Google (or other OAuth providers enabled in Supabase) via the system browser. */
 export async function signInWith(provider = 'google') {
-  const url = `${cfg().url}/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(Capacitor.isNativePlatform() ? REDIRECT : location.href.split('#')[0])}`;
+  const url = `${server()}/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(Capacitor.isNativePlatform() ? REDIRECT : location.href.split('#')[0])}`;
   if (Capacitor.isNativePlatform()) await Browser.open({ url });
   else location.href = url;
 }

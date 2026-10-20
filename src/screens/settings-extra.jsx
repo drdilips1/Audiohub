@@ -108,9 +108,15 @@ export function AccountCard() {
             </button>
           </li>
           <li>
-            In <b>Project Settings → API</b>, copy the <b>Project URL</b> and the <b>anon public</b> key into the boxes below.
+            In <b>Authentication → Sign In / Providers → Email</b>, switch off <b>Confirm email</b> and save (Supabase’s free confirmation emails often never arrive).
+          </li>
+          <li>
+            In <b>Project Settings → API</b> (or the <b>Connect</b> button), copy the <b>Project URL</b> (API URL, ending in <code>.supabase.co</code>) and the <b>anon public</b> key (starts with <code>eyJ</code>) into the boxes below.
           </li>
         </ol>
+        <p class="muted small">
+          On a phone, Supabase’s editor sometimes adds extra <code>)</code> or <code>'</code> when you paste. If Run says “syntax error”, delete everything after the last line (ending in <code>user_id);</code>), or switch your browser to <b>Desktop site</b>.
+        </p>
         <pre class="sql">{sync.SETUP_SQL}</pre>
         <input placeholder="https://xxxx.supabase.co" value={url} onInput={(e) => setUrl(e.currentTarget.value)} autocapitalize="off" autocorrect="off" spellcheck={false} inputmode="url" />
         <input placeholder="anon public key (starts with eyJ…)" value={key} onInput={(e) => setKey(e.currentTarget.value)} autocapitalize="off" autocorrect="off" spellcheck={false} />
