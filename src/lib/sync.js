@@ -137,16 +137,57 @@ export function configure(url, anonKey) {
   account.patch({ url: cleanUrl(url).replace(/^(https?:\/\/[^/]+).*$/i, '$1'), anonKey: anonKey.trim() });
 }
 
-// Supabase's free built-in email often never arrives; the account works without it.
-const NO_EMAIL =
-  'If the confirmation email doesn’t arrive (common with Supabase’s free email): in your Supabase project open Authentication → Sign In / Providers → Email, switch off “Confirm email” and save. Then delete this email under Authentication → Users and tap Create account again.';
+// Supabase's free confirmation emails often never arrive. The setup SQL adds
+// audiohub_confirm(), so the app confirms the account itself: no email, no dashboard switch.
+const OLD_SQL = 'Copy the setup SQL again (Change sync server → Copy SQL) and run it in Supabase once more — it now confirms accounts without the email. Then tap Continue.';
 
-export async function signUp(email, password) {
+async function confirmEmail(email) {
+  try {
+    await api('/rest/v1/rpc/audiohub_confirm', { method: 'POST', body: { p_email: email } });
+    return true;
+  } catch {
+    return false; // set up with the older SQL
+  }
+}
+
+async function passwordLogin(email, password) {
+  const r = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
+  account.patch({ status: '' });
+  saveSession(r);
+  await syncNow({ first: true });
+}
+
+/** One button: sign in, or create the account if there isn't one — no confirmation email needed. */
+export async function continueWith(email, password) {
+  try {
+    return await signInOrCreate(email.trim(), password);
+  } catch (e) {
+    account.patch({ status: e.message }); // stays on screen (a toast is gone too fast to read)
+    throw e;
+  }
+}
+
+async function signInOrCreate(email, password) {
+  account.patch({ email, status: '' });
+  try {
+    await passwordLogin(email, password);
+    return 'Signed in — your data is synced';
+  } catch (e) {
+    if (/not confirmed/i.test(e.message)) {
+      if (!(await confirmEmail(email))) throw new Error(OLD_SQL);
+      await passwordLogin(email, password);
+      return 'Signed in — your data is synced';
+    }
+    if (!/invalid login|invalid credentials/i.test(e.message)) throw e;
+  }
+  // No account with this email and password yet: create it.
   let r;
   try {
-    r = await api('/auth/v1/signup', { method: 'POST', body: { email: email.trim(), password } });
+    r = await api('/auth/v1/signup', { method: 'POST', body: { email, password } });
   } catch (e) {
-    if (/already registered|already exists/i.test(e.message)) throw new Error('This email already has an account: tap Sign in. ' + NO_EMAIL);
+    if (/already registered|already exists/i.test(e.message)) throw new Error('Wrong password for this email. Tap “Forgot password?” if you need a new one.');
+    if (/email|rate limit|smtp|sending/i.test(e.message))
+      throw new Error('Supabase couldn’t send its confirmation email (' + e.message + '). In Supabase: Authentication → Sign In / Providers → Email → switch off “Confirm email”, save, then tap Continue again.');
     throw e;
   }
   if (r?.access_token) {
@@ -155,26 +196,20 @@ export async function signUp(email, password) {
     await syncNow({ first: true });
     return 'Account created — you are signed in';
   }
-  account.patch({ email: email.trim(), status: NO_EMAIL });
-  return 'Supabase sent a confirmation email — see the note above if it doesn’t arrive';
-}
-
-export async function signIn(email, password) {
-  let r;
+  // Created but waiting for the email: confirm it here instead.
+  if (!(await confirmEmail(email))) throw new Error(OLD_SQL);
   try {
-    r = await api('/auth/v1/token?grant_type=password', { method: 'POST', body: { email: email.trim(), password } });
+    await passwordLogin(email, password);
   } catch (e) {
-    if (/not confirmed/i.test(e.message)) {
-      account.patch({ status: NO_EMAIL });
-      throw new Error('This account’s email isn’t confirmed yet — see the note above');
-    }
+    // The email already had an account (Supabase doesn't say so when confirmation is on).
+    if (/invalid login|invalid credentials/i.test(e.message)) throw new Error('Wrong password for this email. Tap “Forgot password?” if you need a new one.');
     throw e;
   }
-  account.patch({ status: '' });
-  saveSession(r);
-  await syncNow({ first: true });
-  return 'Signed in — your data is synced';
+  return 'Account created — you are signed in';
 }
+
+export const signUp = continueWith;
+export const signIn = continueWith;
 
 /** Which sign-in methods the server has switched on, e.g. { email: true, google: false }. */
 export async function providers() {
@@ -330,4 +365,10 @@ export const SETUP_SQL = `create table if not exists public.user_data (
 alter table public.user_data enable row level security;
 drop policy if exists "own data" on public.user_data;
 create policy "own data" on public.user_data
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);`;
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create or replace function public.audiohub_confirm(p_email text) returns void
+  language sql security definer set search_path = auth, public as $$
+  update auth.users set email_confirmed_at = now()
+  where lower(email) = lower(p_email) and email_confirmed_at is null;
+$$;
+grant execute on function public.audiohub_confirm(text) to anon;`;

@@ -102,20 +102,17 @@ export function AccountCard() {
             and create a project.
           </li>
           <li>
-            Open <b>SQL Editor</b>, paste the setup SQL below and press Run.{' '}
+            Open <b>SQL Editor</b>, paste the setup SQL and press <b>Run</b>.{' '}
             <button type="button" class="link-btn" onClick={() => copy(sync.SETUP_SQL)}>
               Copy SQL
             </button>
           </li>
           <li>
-            In <b>Authentication → Sign In / Providers → Email</b>, switch off <b>Confirm email</b> and save (Supabase’s free confirmation emails often never arrive).
-          </li>
-          <li>
-            In <b>Project Settings → API</b> (or the <b>Connect</b> button), copy the <b>Project URL</b> (API URL, ending in <code>.supabase.co</code>) and the <b>anon public</b> key (starts with <code>eyJ</code>) into the boxes below.
+            Tap <b>Connect</b> at the top of your project and copy the <b>Project URL</b> and the <b>anon</b> key into the boxes below.
           </li>
         </ol>
         <p class="muted small">
-          On a phone, Supabase’s editor sometimes adds extra <code>)</code> or <code>'</code> when you paste. If Run says “syntax error”, delete everything after the last line (ending in <code>user_id);</code>), or switch your browser to <b>Desktop site</b>.
+          Phone tip: if Run says “syntax error”, the editor added extra brackets while pasting. The SQL ends with the line starting <code>grant execute</code> — delete anything after it, or switch the browser to <b>Desktop site</b>.
         </p>
         <pre class="sql">{sync.SETUP_SQL}</pre>
         <input placeholder="https://xxxx.supabase.co" value={url} onInput={(e) => setUrl(e.currentTarget.value)} autocapitalize="off" autocorrect="off" spellcheck={false} inputmode="url" />
@@ -128,18 +125,14 @@ export function AccountCard() {
   }
 
   return (
-    <form class="set-form" onSubmit={run('in', () => sync.signIn(email, pass))}>
-      <p class="muted">Sign in or create an account to back up your library, progress, addons and logins, and use them on your other devices. {a.status && <b>{a.status}</b>}</p>
+    <form class="set-form" onSubmit={run('in', () => sync.continueWith(email, pass))}>
+      <p class="muted">Enter an email and a password to sign in — or to create your account, if this is the first time. It backs up your library, progress, addons and logins, and puts them on your other devices.</p>
+      {a.status && <p class="err small">{a.status}</p>}
       <input type="email" placeholder="Email" value={email} onInput={(e) => setEmail(e.currentTarget.value)} autocapitalize="off" autocomplete="email" />
       <input type="password" placeholder="Password (6+ characters)" value={pass} onInput={(e) => setPass(e.currentTarget.value)} autocomplete="current-password" />
-      <div class="btn-row">
-        <button class="btn primary" disabled={!email || pass.length < 6 || !!busy}>
-          {busy === 'in' ? <span class="spinner" /> : null} Sign in
-        </button>
-        <button type="button" class="btn secondary" disabled={!email || pass.length < 6 || !!busy} onClick={run('up', () => sync.signUp(email, pass))}>
-          {busy === 'up' ? <span class="spinner" /> : null} Create account
-        </button>
-      </div>
+      <button class="btn primary" disabled={!email || pass.length < 6 || !!busy}>
+        {busy === 'in' ? <span class="spinner" /> : null} Continue
+      </button>
       {google && (
         <button type="button" class="btn google" disabled={!!busy} onClick={run('g', () => sync.signInWith('google'))}>
           <span class="g-logo">G</span> Continue with Google
