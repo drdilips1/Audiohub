@@ -68,7 +68,9 @@ public final class ReadAloudEngine {
     private static Context app;
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static final CopyOnWriteArraySet<Runnable> listeners = new CopyOnWriteArraySet<>();
-    private static final ExecutorService renderer = Executors.newSingleThreadExecutor(r -> new Thread(() -> {
+    // Three at a time: each Microsoft piece waits on the network, not the CPU, so
+    // rendering one after another left gaps between short pieces.
+    private static final ExecutorService renderer = Executors.newFixedThreadPool(3, r -> new Thread(() -> {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
         r.run();
     }, "kathava-read-render"));
@@ -179,7 +181,18 @@ public final class ReadAloudEngine {
         List<Piece> list = new ArrayList<>();
         for (int i = 0; i < paras.size(); i++) {
             String t = paras.get(i) == null ? "" : paras.get(i).trim();
-            if (t.isEmpty()) continue;
+            // Lines with nothing to say (a "---" divider, table bars) make the voice
+            // service return no audio, which stalled the reading.
+            if (t.isEmpty() || !t.matches("(?s).*[\\p{L}\\p{N}].*")) continue;
+            // The very first piece is kept short (about a sentence) so the voice starts
+            // within a second or two; the rest render while it plays.
+            if (list.isEmpty() && i >= from && t.length() > 160) {
+                List<String> first = EdgeTts.splitLong(t, 160);
+                list.add(new Piece(i, first.get(0)));
+                String rest = t.substring(Math.min(t.length(), t.indexOf(first.get(0)) + first.get(0).length())).trim();
+                if (!rest.isEmpty()) for (String s : EdgeTts.splitLong(rest, max)) list.add(new Piece(i, s));
+                continue;
+            }
             for (String s : EdgeTts.splitLong(t, max)) list.add(new Piece(i, s));
         }
         pieces = list;
@@ -442,19 +455,26 @@ public final class ReadAloudEngine {
                 }
                 return out;
             } catch (Exception e) {
-                // No internet / service down: continue with an offline voice.
+                // A piece that came back silent is skipped; only a real outage
+                // (no internet / service down) switches to an offline voice.
+                if (String.valueOf(e.getMessage()).contains("no audio")) throw e;
                 edgeDown = true;
                 voiceNote = "Microsoft voices unavailable (" + e.getMessage() + ") — using an offline voice";
                 main.post(ReadAloudEngine::changed);
             }
         }
-        if (("builtin".equals(engine) || "edge".equals(engine)) && voice.builtin != null && SherpaVoice.installed(app, voice.builtin.id)) {
-            File out = new File(dir, i + ".wav");
-            SherpaVoice.render(app, voice.builtin, text, 1f, out);
-            return out;
+        // Offline voices render one piece at a time.
+        synchronized (OFFLINE_LOCK) {
+            if (("builtin".equals(engine) || "edge".equals(engine)) && voice.builtin != null && SherpaVoice.installed(app, voice.builtin.id)) {
+                File out = new File(dir, i + ".wav");
+                SherpaVoice.render(app, voice.builtin, text, 1f, out);
+                return out;
+            }
+            return renderSystem(text, new File(dir, i + ".wav"));
         }
-        return renderSystem(text, new File(dir, i + ".wav"));
     }
+
+    private static final Object OFFLINE_LOCK = new Object();
 
     // ---------------------------------------------------------------- phone TTS
     private static TextToSpeech sys;

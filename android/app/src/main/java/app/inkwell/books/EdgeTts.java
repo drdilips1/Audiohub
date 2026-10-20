@@ -41,8 +41,10 @@ public final class EdgeTts {
     static String socketBase = "wss://" + BASE;
 
     private static final OkHttpClient client = new OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        // Short: if Microsoft's service doesn't connect quickly, fall back to the offline
+        // voice instead of leaving the listener waiting.
+        .connectTimeout(7, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
         .build();
 
     /** Corrects for a phone clock that is off; the token is time-based. */
@@ -204,7 +206,7 @@ public final class EdgeTts {
         });
 
         try {
-            if (!done.await(90, TimeUnit.SECONDS)) {
+            if (!done.await(30, TimeUnit.SECONDS)) {
                 ws.cancel();
                 throw new IOException("The voice service timed out");
             }
