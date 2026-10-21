@@ -6,6 +6,8 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 const Native = registerPlugin('InkwellPlayer');
 export const isNative = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('InkwellPlayer');
+/** Where the phone's player last was: { key, track, position, at } (Android only). */
+export const lastPosition = () => (isNative ? Native.lastPosition().catch(() => null) : Promise.resolve(null));
 
 /**
  * handlers: { time(pos, dur), playing(bool), waiting(), ready(), ended(), error(msg), remote(action) }

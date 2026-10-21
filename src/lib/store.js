@@ -39,6 +39,7 @@ export function persisted(key, initial, { delay = 150 } = {}) {
           } catch {}
         }
       };
+      if (!delay) return write(); // progress: saved at once, never left waiting on a timer
       pending.set(key, write);
       // Big caches are written less often (each write re-saves the whole thing).
       saveTimer = setTimeout(write, delay);
@@ -127,7 +128,7 @@ export const settings = persisted('settings', {
 });
 
 export const library = persisted('library', {}); // uid -> book summary + addedAt
-export const progress = persisted('progress', {}); // uid -> { track, time, duration, percent, finished, updatedAt, book, kind }
+export const progress = persisted('progress', {}, { delay: 0 }); // uid -> { track, time, duration, percent, finished, updatedAt, book, kind }
 export const bookmarks = persisted('bookmarks', {}); // uid -> [{ track, time, label, createdAt }]
 export const addons = persisted('addons', []); // [{ url, manifest }]
 export const abs = persisted('abs', { server: '', altServer: '', token: '', refreshToken: '', username: '', libraryId: '' });

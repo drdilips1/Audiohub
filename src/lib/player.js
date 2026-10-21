@@ -2,7 +2,7 @@
 // bookmarks, progress persistence and system media controls. Audio output is
 // delegated to an engine (native Media3 on Android, <audio> on the web).
 import * as stats from './stats.js';
-import { createEngine } from './engine.js';
+import { createEngine, lastPosition } from './engine.js';
 import { progress, bookmarks, settings, summarize } from './store.js';
 import { syncProgress, switchTracks } from '../sources/audiobookshelf.js';
 import { fetchStatus } from '../sources/debrid.js';
@@ -239,7 +239,7 @@ async function loadTrack(i, startAt = 0, autoplay = true) {
       autoplay,
       rate: state.rate,
       headers: t.headers,
-      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '' },
+      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '', key: b.uid, track: i },
     });
     if (!autoplay) set({ loading: false, phase: '' });
     queueBase = i;
@@ -567,3 +567,14 @@ function fadeOutAndPause() {
 }
 
 document.addEventListener('visibilitychange', () => saveProgress(true));
+
+// Android can close the app while the book plays on in the background (screen off,
+// swiped away): the phone's player kept the spot, so take it when it's newer than ours.
+lastPosition().then((r) => {
+  if (!r?.key || state.book) return;
+  const p = progress.get()[r.key];
+  if (!p || p.finished || p.kind !== 'audio' || !(r.at > (p.updatedAt || 0) + 2000)) return;
+  if (r.track === p.track && Math.abs(r.position - p.time) < 2) return;
+  const global = r.track === p.track ? (p.global || 0) - (p.time || 0) + r.position : p.global;
+  progress.set((all) => ({ ...all, [r.key]: { ...p, track: r.track, time: r.position, global, updatedAt: r.at } }));
+});
