@@ -131,7 +131,7 @@ export async function search(q) {
 /** Playable details: the files, in order, played straight from the phone. */
 export async function details(book) {
   const b = localCfg.get().books.find((x) => x.uid === book.uid) || book;
-  if (!b.files?.length) throw new Error('This book is no longer in your folder — rescan in Settings → Books on this phone');
+  if (!b.files?.length) throw new Error('This book is no longer in your folder — rescan in Library → On this phone → Folders');
   return {
     ...book,
     ...b,

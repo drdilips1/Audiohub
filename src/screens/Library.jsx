@@ -135,6 +135,7 @@ export function Library() {
           </button>
         ))}
       </div>
+      {tab === 'phone' && items.length > 0 && localSrc.available && <PhoneManage />}
       {tab !== 'podcasts' && items.length > 1 && (
         <div class="lib-tools">
           <div class="lib-sort">
@@ -246,18 +247,80 @@ function ListView({ items, prog }) {
   );
 }
 
+/** Run a phone-books action with a busy flag and a short result toast. */
+function usePhoneRun() {
+  const [busy, setBusy] = useState('');
+  const run = (label, fn) => async () => {
+    setBusy(label);
+    try {
+      const r = await fn();
+      if (Array.isArray(r)) toast(`${r.length} audiobook${r.length === 1 ? '' : 's'} found`);
+    } catch (e) {
+      if (!/no folder chosen|cancelled/i.test(e.message)) toast(e.message);
+    } finally {
+      setBusy('');
+    }
+  };
+  return [busy, run];
+}
+
+/** Choose folder / Rescan. */
+function PhoneButtons({ busy, run }) {
+  const cfg = useStore(localSrc.localCfg);
+  return (
+    <div class="phone-actions">
+      <button class="btn primary" disabled={!!busy} onClick={run('add', localSrc.addFolder)}>
+        {busy === 'add' ? <span class="spinner" /> : <Icon name="plus" size={16} />} {cfg.folders.length ? 'Add folder' : 'Choose folder'}
+      </button>
+      {cfg.folders.length > 0 && (
+        <button class="btn secondary" disabled={!!busy} onClick={run('scan', localSrc.rescan)}>
+          {busy === 'scan' ? <span class="spinner" /> : <Icon name="shuffle" size={16} />} Rescan
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** "On this phone" with books: the folders it reads (with counts), add / remove / rescan. */
+function PhoneManage() {
+  const cfg = useStore(localSrc.localCfg);
+  const [open, setOpen] = useState(false);
+  const [busy, run] = usePhoneRun();
+  return (
+    <div class="phone-manage">
+      <button class="btn ghost-wide lib-manage" onClick={() => setOpen(!open)}>
+        <Icon name="library" size={16} /> Folders
+        <small>
+          {cfg.folders.length} folder{cfg.folders.length === 1 ? '' : 's'}
+        </small>
+        <Icon name="down" size={16} />
+      </button>
+      {open && (
+        <div class="phone-panel">
+          {cfg.folders.map((f) => {
+            const n = cfg.books.filter((b) => b.folder === f.uri).length;
+            return (
+              <div class="set-row">
+                <div>
+                  <b>{decodeURIComponent(f.name)}</b>
+                  <small>{n ? `${n} audiobook${n > 1 ? 's' : ''}` : 'No books yet'}</small>
+                </div>
+                <button class="pill small" onClick={() => confirm(`Stop reading “${decodeURIComponent(f.name)}”? The files stay on the phone.`) && localSrc.removeFolder(f.uri)}>
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+          <PhoneButtons busy={busy} run={run} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** "On this phone" before a folder is chosen (or when it has no books). */
 function PhoneEmpty() {
-  const [busy, setBusy] = useState(false);
-  const run = (fn) => async () => {
-    setBusy(true);
-    try {
-      await fn();
-    } catch (e) {
-      toast(e.message);
-    }
-    setBusy(false);
-  };
+  const [busy, run] = usePhoneRun();
   if (!localSrc.available)
     return (
       <Empty icon="library" title="Books on your phone">
@@ -267,16 +330,7 @@ function PhoneEmpty() {
   return (
     <Empty icon="library" title={localSrc.connected() ? 'No books found' : 'Books on your phone'}>
       {localSrc.connected() ? 'Nothing playable in your chosen folders yet.' : 'Choose the folder where your audiobooks are (e.g. Audiobooks). They play straight from the phone, no internet needed.'}
-      <div class="phone-actions">
-        <button class="btn primary" disabled={busy} onClick={run(localSrc.addFolder)}>
-          {busy ? <span class="spinner" /> : 'Choose folder'}
-        </button>
-        {localSrc.connected() && (
-          <button class="btn" disabled={busy} onClick={run(localSrc.rescan)}>
-            Rescan
-          </button>
-        )}
-      </div>
+      <PhoneButtons busy={busy} run={run} />
     </Empty>
   );
 }
