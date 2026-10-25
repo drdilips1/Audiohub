@@ -187,6 +187,8 @@ async function searchOnce(addon, vars, key, { title = '', author = '', query = '
       const r = {
         key: `${addon.manifest.id}:${i}:${get(row, 'infoHash') || get(row, 'title')}`,
         addon: addon.manifest.name,
+        // An ebook source's results are ebooks, whatever their names say (Read, not Play).
+        contentType: addon.manifest.contentType || '',
         title: String(get(row, 'title') || 'Untitled'),
         author: get(row, 'author') || '',
         narrator: get(row, 'narrator') || '',

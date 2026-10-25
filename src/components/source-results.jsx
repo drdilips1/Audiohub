@@ -151,7 +151,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
     providers.find((p) => r.cache?.[p] || (p === 'realdebrid' && r.cache?.any && !r.cache?.torbox) || account.get(r.hash)?.ready);
   const instant = shownGroups
     .map((g) => g.items[0])
-    .filter((r) => (r.magnet || r.hash) && readyVia(r))
+    .filter((r) => (r.magnet || r.hash) && readyVia(r) && r.contentType !== 'ebook')
     .map((r) => ({ r, via: readyVia(r) }));
   const readable = linkGroups
     .flatMap((g) => g.items)
@@ -160,7 +160,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   const fetchable = provider
     ? shownGroups
         .map((g) => g.items[0])
-        .filter((r) => (r.magnet || r.hash) && !readyVia(r) && r.seeders > 0 && !qb.isEbookName(`${r.title} ${r.format || ''}`))
+        .filter((r) => (r.magnet || r.hash) && !readyVia(r) && r.seeders > 0 && r.contentType !== 'ebook' && !qb.isEbookName(`${r.title} ${r.format || ''}`))
         .map((r) => ({ r, via: provider }))
     : [];
   const quickKey = `${instant.map((x) => x.r.key + x.via).join()}|${readable.map((r) => r.key).join()}|${fetchable.map((x) => x.r.key).join()}`;
@@ -480,7 +480,7 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
   }, [!!downloading]);
 
   const hasMagnet = !!(r.magnet || r.hash);
-  const ebookTorrent = hasMagnet && qb.isEbookName(`${r.title} ${r.format || ''}`);
+  const ebookTorrent = hasMagnet && (r.contentType === 'ebook' || qb.isEbookName(`${r.title} ${r.format || ''}`));
   // Direct ebook links (no torrent): EPUB opens in the reader; any ebook can be saved to another app.
   const ebook = hasMagnet ? null : directEbookFile(r);
   const readable = ebook?.format === 'EPUB' || ebook?.format === 'PDF'; // opens in the app's reader
