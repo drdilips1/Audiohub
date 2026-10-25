@@ -554,11 +554,16 @@ export async function prepareMagnet(provider, { magnet, hash, title }, onStatus,
     const ready = (x) => x?.download_finished || x?.download_present;
     // An ebook torrent has no audio: its EPUB / PDF is what we wait for.
     const usable = (x) => tbAudioCount(x) || (ebook && (x.files || []).some((f) => EBOOK.test(f.name || f.short_name || '')));
+    let misses = 0;
     for (let i = 0; i < 16 && !(ready(it) && usable(it)); i++) {
       if (!ready(it) && i >= 8) break; // really downloading: hand over to "play when ready"
+      // Ready and its files are listed, but none fit (an ebook, a .zip, .aax…): say so now, not after half a minute.
+      if (ready(it) && (it.files || []).length) break;
       onStatus?.(ready(it) ? 'Getting the file list…' : 'TorBox is fetching it…', ready(it) ? 1 : Number(it?.progress) || 0);
       await sleep(i < 6 ? 1000 : 2500);
-      it = (await tbOne(it.id)) || it;
+      const fresh = await tbOne(it.id);
+      if (fresh) (it = fresh), (misses = 0);
+      else if (++misses >= 3) throw new Error("TorBox isn't answering right now — try again in a minute (status.torbox.app)");
     }
     if (!ready(it)) {
       forget();
@@ -566,7 +571,13 @@ export async function prepareMagnet(provider, { magnet, hash, title }, onStatus,
       e.pending = { provider, hash: String(it?.hash || h).toLowerCase(), progress: Number(it?.progress) || 0 };
       throw e;
     }
-    if (!usable(it)) throw new Error(ebook ? 'That torrent has no ebook files' : 'That torrent has no playable audio files');
+    if (!usable(it)) {
+      const names = (it.files || []).map((f) => f.name || f.short_name || '');
+      if (!names.length) throw new Error("TorBox hasn't listed this torrent's files yet — try again in a minute");
+      if (!ebook && names.some((n) => EBOOK.test(n))) throw new Error('This one is an ebook, not an audiobook — use Read instead');
+      const kinds = [...new Set(names.map((n) => (/\.([a-z0-9]{2,5})$/i.exec(n)?.[1] || '').toUpperCase()).filter(Boolean))].slice(0, 4).join(', ');
+      throw new Error(`${ebook ? 'That torrent has no ebook files' : 'That torrent has no playable audio files'}${kinds ? ` (it has ${kinds})` : ''}`);
+    }
     forget();
     tbSeen.set(`t:${it.id}`, it);
     return toBook('tb', 'tb', `t:${it.id}`, it.name || title, it.files || []);
