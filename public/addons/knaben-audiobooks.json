@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "knaben-audiobooks",
+  "name": "Knaben AudioBooks",
+  "version": "1.0.0",
+  "description": "Knaben audiobook search",
+  "icon": "https://knaben.org/favicon.ico",
+  "provides": [
+    "source"
+  ],
+  "contentType": "audiobook",
+  "matching": {
+    "algorithm": "fuzzy",
+    "threshold": 0.6
+  },
+  "adapters": {
+    "source": {
+      "request": {
+        "method": "POST",
+        "url": "https://api.knaben.org/v1",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "query": "{TITLE}",
+          "search_field": "title",
+          "size": 50,
+          "categories": [
+            1003000
+          ]
+        }
+      },
+      "response": {
+        "type": "json",
+        "resultsPath": "hits",
+        "mapping": {
+          "title": "title",
+          "magnetUrl": "magnetUrl",
+          "sizeBytes": "bytes",
+          "seeders": "seeders",
+          "infoHash": "hash"
+        }
+      }
+    }
+  }
+}

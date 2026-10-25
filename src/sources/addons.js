@@ -3,6 +3,9 @@
 import { getJson, cleanUrl } from '../lib/http.js';
 import { addons } from '../lib/store.js';
 import { isSourceManifest } from './sourceaddons.js';
+import abb from '../../public/addons/audiobookbay.json';
+import knabenAudio from '../../public/addons/knaben-audiobooks.json';
+import knabenEbooks from '../../public/addons/knaben-ebooks.json';
 
 // Addons that no longer work (their server blocks every search) are removed on update.
 const RETIRED = /anna'?s?[\s_-]*archive|^annas?$/i;
@@ -47,7 +50,10 @@ export async function install(rawUrl) {
     try {
       data = await getJson(u, { fresh: true });
     } catch (e) {
-      lastErr = e;
+      // The browser's bare "Failed to fetch" / "Load failed" says nothing useful.
+      lastErr = /failed to fetch|load failed|network ?error/i.test(e.message || '')
+        ? new Error(`Couldn't reach ${new URL(u).hostname} from this network — try Wi-Fi or mobile data instead, or use the one-tap addons above`)
+        : e;
       continue;
     }
     if (isManifest(data)) return save(u, data);
@@ -78,6 +84,21 @@ export async function install(rawUrl) {
     break;
   }
   throw lastErr || new Error('Could not load that addon');
+}
+
+// Ready-made addons, kept in this repo (public/addons, also served on Pages) and
+// inside the app, so a one-tap install needs no download: some networks can't
+// reach jsonkeeper.com.
+const HOSTED = 'https://drdilips1.github.io/Audiohub/addons/';
+export const BUILTIN = [
+  { file: 'knaben-audiobooks.json', manifest: knabenAudio },
+  { file: 'knaben-ebooks.json', manifest: knabenEbooks },
+  // Its search server only answers the Android app, not browsers.
+  { file: 'audiobookbay.json', manifest: abb, androidOnly: true },
+];
+export function installBuiltin(b) {
+  addons.set((list) => [...list.filter((a) => a.manifest.id !== b.manifest.id), { kind: 'source', url: HOSTED + b.file, manifest: b.manifest }]);
+  return b.manifest;
 }
 
 export const count = () => addons.get().length;

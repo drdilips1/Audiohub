@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "audiobookbay",
+  "name": "AudiobookBay",
+  "version": "1.0.0",
+  "description": "Audiobook torrents via AudiobookBay proxy. Requires a debrid service to download.",
+  "icon": "https://audiobookbay.lu/apple-touch-icon.png",
+  "provides": [
+    "source"
+  ],
+  "contentType": "audiobook",
+  "rateLimit": {
+    "requestsPerMinute": 10,
+    "retryAfterMs": 6000
+  },
+  "matching": {
+    "algorithm": "fuzzy",
+    "threshold": 0.4
+  },
+  "adapters": {
+    "source": {
+      "cacheNotifyUrl": "https://inkshelf-debrid-proxy.tbm-a.workers.dev/abb/api/debrid-notify",
+      "request": {
+        "method": "POST",
+        "url": "https://inkshelf-debrid-proxy.tbm-a.workers.dev/abb/api/search",
+        "timeout": 30000,
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "title": "{TITLE}",
+          "author": "{AUTHOR}",
+          "limit": 20
+        }
+      },
+      "response": {
+        "type": "json",
+        "resultsPath": "results",
+        "mapping": {
+          "title": "title",
+          "author": "author",
+          "narrator": "narrator",
+          "magnetUrl": "magnetUrl",
+          "infoHash": "infoHash",
+          "sizeBytes": "sizeBytes",
+          "seeders": "seeders",
+          "format": "format",
+          "language": "language",
+          "date": "posted",
+          "debridCache": "debridCache"
+        }
+      }
+    }
+  }
+}
