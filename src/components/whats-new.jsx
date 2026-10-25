@@ -36,6 +36,12 @@ const STEPS = [
     tip: 'AI uses your own free key: Groq, Gemini or OpenRouter (or Claude, or your own AI) in Settings → AI.',
   },
   {
+    icon: 'book',
+    title: 'A much better ebook reader',
+    text: 'Select any text → Explain, Meaning, Ask, Translate or Highlight. Add notes to highlights; they all collect in Notes. PDFs open in the reader too, and there are new fonts (Lora, Atkinson Hyperlegible, OpenDyslexic), line spacing, margins and justified text.',
+    tip: 'Read aloud: double-tap any paragraph to read from there; earphone buttons pause and resume it.',
+  },
+  {
     icon: 'bookmark',
     title: 'Bookmarks that say something',
     text: 'Bookmarks are named after what was being said, and you can add your own note (✎). Find them on the book page and in Notes, and export highlights, bookmarks and ideas as one file.',
@@ -48,10 +54,16 @@ const STEPS = [
     tip: 'Podcasts: rate episodes, get recommended ones, and let new episodes download by themselves on Wi-Fi.',
   },
   {
+    icon: 'download',
+    title: 'Backup, folders and your place',
+    text: 'Back up everything to a real file (logins and API keys optional) and restore by picking it. Downloads go into Author / Series folders — one tap sorts the older ones too. Your listening spot is kept even when Android closes the app.',
+    tip: 'Backup: Settings → Data. Sync with your own Supabase now needs just one Continue, no confirmation email.',
+  },
+  {
     icon: 'palette',
     title: 'More colours, and a few handy extras',
     text: 'Settings → Appearance has light and dark colour themes side by side; each mode keeps its own. Paste any MP3 / M4B or EPUB link in Discover to play or read it. Single-file M4B books now show their chapters.',
-    tip: 'Your backup and sync work as before.',
+    tip: 'See this tour again any time: Settings → What’s new in this version.',
   },
 ];
 
