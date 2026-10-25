@@ -9,6 +9,17 @@ import { cleanTitle, splitAuthor, audioFormat } from './debrid.js';
 export const Native = registerPlugin('InkwellLocal');
 export const available = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('InkwellLocal');
 
+/**
+ * Save text as a file where you choose (Android's "Save to" screen). The text goes over
+ * first in pieces, so a big backup never rides along with the screen change (see
+ * stageText in InkwellLocalPlugin).
+ */
+export async function saveTextFile({ name, text, mime }) {
+  const PIECE = 256 * 1024;
+  for (let i = 0; i === 0 || i < text.length; i += PIECE) await Native.stageText({ text: text.slice(i, i + PIECE), reset: i === 0 });
+  return Native.saveFile({ name, mime });
+}
+
 export const localCfg = persisted('localBooks', { folders: [], books: [], scannedAt: 0 });
 export const connected = () => available && localCfg.get().folders.length > 0;
 

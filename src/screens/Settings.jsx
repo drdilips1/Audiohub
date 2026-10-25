@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Native as Files, available as files } from '../sources/local.js';
+import { Native as Files, available as files, saveTextFile } from '../sources/local.js';
 import { ssBadges } from '../sources/storyshots.js';
 import { Icon } from '../components/icons.jsx';
 import { toast, AskButton } from '../components/common.jsx';
@@ -1516,7 +1516,7 @@ function BackupRow() {
     const text = exportBackup({ keys });
     if (files) {
       try {
-        const r = await Files.saveFile({ name: fileName, text, mime: 'application/json' });
+        const r = await saveTextFile({ name: fileName, text, mime: 'application/json' });
         return toast(`Backup saved${r?.name ? ` as ${r.name}` : ''}`);
       } catch (e) {
         if (e?.message === 'cancelled') return;

@@ -4,7 +4,7 @@ import { Icon } from '../components/icons.jsx';
 import { useStore } from '../lib/store.js';
 import { nav } from '../lib/nav.js';
 import { highlights, allHighlights, removeHighlight, toMarkdown } from '../lib/highlights.js';
-import { Native as Files, available as files } from '../sources/local.js';
+import { Native as Files, available as files, saveTextFile } from '../sources/local.js';
 import { AllBookmarks } from '../components/bookmarks.jsx';
 
 /** Every highlight and note from your ebooks: search, open at its place, export. */
@@ -34,7 +34,7 @@ export function Notes() {
     const name = `audiohub-notes-${new Date().toISOString().slice(0, 10)}.md`;
     if (files) {
       try {
-        const r = await Files.saveFile({ name, text, mime: 'text/markdown' });
+        const r = await saveTextFile({ name, text, mime: 'text/markdown' });
         return toast(`Saved${r?.name ? ` as ${r.name}` : ''}`);
       } catch (e) {
         if (e?.message === 'cancelled') return;

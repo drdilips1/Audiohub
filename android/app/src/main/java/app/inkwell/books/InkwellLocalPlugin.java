@@ -131,6 +131,19 @@ public class InkwellLocalPlugin extends Plugin {
         call.resolve();
     }
 
+    // Text waiting to be saved. It's sent ahead with stageText, not inside saveFile's call:
+    // Capacitor keeps a call that opens another screen in Android's saved state, which is
+    // capped at about 1 MB, so a big backup in the call crashed the app (leaving an empty file).
+    private static StringBuilder staged = null;
+
+    /** Hand over the text to save, in pieces (reset: true starts a new one). */
+    @PluginMethod
+    public void stageText(PluginCall call) {
+        if (staged == null || call.getBoolean("reset", false)) staged = new StringBuilder();
+        staged.append(call.getString("text", ""));
+        call.resolve();
+    }
+
     /** Save text as a file where the user chooses (Android's "Save to" screen, Downloads by default). */
     @PluginMethod
     public void saveFile(PluginCall call) {
@@ -146,12 +159,15 @@ public class InkwellLocalPlugin extends Plugin {
         if (call == null) return;
         Uri uri = result.getData() != null ? result.getData().getData() : null;
         if (uri == null) {
+            staged = null;
             call.reject("cancelled");
             return;
         }
         try (java.io.OutputStream out = getContext().getContentResolver().openOutputStream(uri, "wt")) {
             if (out == null) throw new Exception("Couldn't open the file");
-            out.write(call.getString("text", "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            String text = staged != null ? staged.toString() : call.getString("text", "");
+            staged = null;
+            out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             JSObject o = new JSObject();
             o.put("name", nameOf(uri));
             call.resolve(o);
