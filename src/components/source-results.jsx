@@ -142,7 +142,14 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   const isLink = (g) => g.items.every(ebookLink);
   const allGroups = groupResults(visible);
   const linkGroups = allGroups.filter(isLink);
-  const shownGroups = allGroups.filter((g) => !isLink(g));
+  // Audiobooks first, then ebook torrents; within each, ready to play first, then the best-seeded.
+  const isEbookGroup = (g) => g.items.every((r) => r.contentType === 'ebook' || qb.isEbookName(`${r.title} ${r.format || ''}`));
+  const readyFor = (g) =>
+    g.items.some((r) => (r.magnet || r.hash) && providers.some((p) => r.cache?.[p] || (p === 'realdebrid' && r.cache?.any && !r.cache?.torbox) || account.get(r.hash)?.ready));
+  const seedsOf = (g) => Math.max(...g.items.map((r) => r.seeders || 0));
+  const shownGroups = allGroups
+    .filter((g) => !isLink(g))
+    .sort((a, b) => Number(isEbookGroup(a)) - Number(isEbookGroup(b)) || Number(readyFor(b)) - Number(readyFor(a)) || seedsOf(b) - seedsOf(a));
   // The heading counts what's listed under it (audiobook results), not the folded-away links.
   const audioCount = shownGroups.length;
 
