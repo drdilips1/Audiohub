@@ -1003,36 +1003,11 @@ function AddonsCard() {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [raw, setRaw] = useState(null);
-  const missing = addonSrc.BUILTIN.filter((b) => !list.some((a) => a.manifest.id === b.manifest.id));
-  const add = (bs) => {
-    bs.forEach(addonSrc.installBuiltin);
-    toast(bs.length > 1 ? `Installed ${bs.length} addons` : `Installed ${bs[0].manifest.name}`);
-  };
   return (
     <>
       <p class="muted pad-s">
         Paste an addon link: InkShelf-style source addons (JSON on jsonkeeper etc.), Stremio-style manifests, or addon collections. Only install addons you trust.
       </p>
-      {missing.length > 0 && (
-        <>
-          <p class="muted pad-s">
-            <b>Add with one tap</b> — book torrent search; plays through your TorBox or Real-Debrid.
-          </p>
-          <div class="chips pad-s">
-            {missing.map((b) => (
-              <button class="chip" onClick={() => add([b])}>
-                <Icon name="plus" size={14} /> {b.manifest.name}
-                {b.androidOnly && isWeb ? ' (Android app only)' : ''}
-              </button>
-            ))}
-            {missing.length > 1 && (
-              <button class="chip" onClick={() => add(missing)}>
-                <Icon name="plus" size={14} /> Add all
-              </button>
-            )}
-          </div>
-        </>
-      )}
       {list.map((a) => (
         <div class="set-row addon-row">
           <AddonLogo m={a.manifest} />
