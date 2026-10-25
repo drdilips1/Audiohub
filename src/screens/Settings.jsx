@@ -984,6 +984,20 @@ function GoodreadsCard() {
   );
 }
 
+// An addon's own icon, or the puzzle piece when it has none or it won't load
+// (some sites, e.g. bookracy.com, block their favicon behind a bot check).
+function AddonLogo({ m }) {
+  const [bad, setBad] = useState(false);
+  const src = m.logo || m.icon;
+  return src && !bad ? (
+    <img src={src} alt="" class="addon-logo" onError={() => setBad(true)} />
+  ) : (
+    <span class="addon-logo">
+      <Icon name="puzzle" size={18} />
+    </span>
+  );
+}
+
 function AddonsCard() {
   const list = useStore(addons);
   const [url, setUrl] = useState('');
@@ -1021,7 +1035,7 @@ function AddonsCard() {
       )}
       {list.map((a) => (
         <div class="set-row addon-row">
-          {a.manifest.logo || a.manifest.icon ? <img src={a.manifest.logo || a.manifest.icon} alt="" class="addon-logo" /> : <span class="addon-logo"><Icon name="puzzle" size={18} /></span>}
+          <AddonLogo m={a.manifest} />
           <div>
             <b>{a.manifest.name}</b>
             <small>
