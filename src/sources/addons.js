@@ -6,6 +6,7 @@ import { isSourceManifest } from './sourceaddons.js';
 import abb from '../../public/addons/audiobookbay.json';
 import knabenAudio from '../../public/addons/knaben-audiobooks.json';
 import knabenEbooks from '../../public/addons/knaben-ebooks.json';
+import bookracy from '../../public/addons/bookracy.json';
 
 // Addons that no longer work (their server blocks every search) are removed on update.
 const RETIRED = /anna'?s?[\s_-]*archive|^annas?$/i;
@@ -93,6 +94,7 @@ const HOSTED = 'https://drdilips1.github.io/Audiohub/addons/';
 export const BUILTIN = [
   { file: 'knaben-audiobooks.json', manifest: knabenAudio },
   { file: 'knaben-ebooks.json', manifest: knabenEbooks },
+  { file: 'bookracy.json', manifest: bookracy },
   // Its search server only answers the Android app, not browsers.
   { file: 'audiobookbay.json', manifest: abb, androidOnly: true },
 ];
