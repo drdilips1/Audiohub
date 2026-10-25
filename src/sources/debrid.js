@@ -1,6 +1,7 @@
 // Debrid cloud libraries — stream the audiobooks already sitting in your
 // TorBox or Real-Debrid account, and add new magnets / links to it.
 import { getJson, sendForm, qs } from '../lib/http.js';
+import { logError } from '../lib/report.js';
 import { debrid } from '../lib/store.js';
 import { matches } from '../lib/match.js';
 
@@ -479,7 +480,10 @@ const tbAudioCount = (it) => (it.files || []).filter((f) => AUDIO.test(f.name ||
 
 // One torrent by id: much faster than listing the whole account.
 async function tbOne(id) {
-  const data = await getJson(`${TB}/torrents/mylist?` + qs({ id, bypass_cache: 'true' }), { headers: tbHeaders(), fresh: true }).catch(() => null);
+  const data = await getJson(`${TB}/torrents/mylist?` + qs({ id, bypass_cache: 'true' }), { headers: tbHeaders(), fresh: true }).catch((e) => {
+    logError('TorBox (file list)', e); // shows in Settings → Report a problem
+    return null;
+  });
   return (Array.isArray(data?.data) ? data.data[0] : data?.data) || null;
 }
 
@@ -573,6 +577,7 @@ export async function prepareMagnet(provider, { magnet, hash, title }, onStatus,
     }
     if (!usable(it)) {
       const names = (it.files || []).map((f) => f.name || f.short_name || '');
+      logError('TorBox', `${ebook ? 'ebook' : 'audio'} not found in "${it.name || title || ''}" — files: ${names.slice(0, 6).join(', ') || 'none listed'}`);
       if (!names.length) throw new Error("TorBox hasn't listed this torrent's files yet — try again in a minute");
       if (!ebook && names.some((n) => EBOOK.test(n))) throw new Error('This one is an ebook, not an audiobook — use Read instead');
       const kinds = [...new Set(names.map((n) => (/\.([a-z0-9]{2,5})$/i.exec(n)?.[1] || '').toUpperCase()).filter(Boolean))].slice(0, 4).join(', ');
