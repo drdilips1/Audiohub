@@ -11,6 +11,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -51,6 +52,11 @@ public class InkwellWebActivity extends AppCompatActivity {
     /** A strip under the top bar saying what happened to the last download (a toast is easy to miss). */
     private TextView note;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+    /** Mobile view (page fits the phone) unless the user picks desktop view; remembered. */
+    private boolean desktopView = false;
+    /** The download being fetched through the page itself (fallback), and its one-time key. */
+    private volatile String pendingNonce = null;
+    private volatile String pendingName = "";
     private final Runnable hideNote = () -> {
         if (note != null) note.setVisibility(View.GONE);
     };
@@ -105,6 +111,22 @@ public class InkwellWebActivity extends AppCompatActivity {
             android.widget.Toast.makeText(this, "Page address copied", android.widget.Toast.LENGTH_SHORT).show();
         });
         top.addView(copy, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
+        // Mobile / desktop view of the page (remembered).
+        desktopView = getSharedPreferences("inkwell_web", MODE_PRIVATE).getBoolean("desktop", false);
+        TextView view = new TextView(this);
+        view.setText(desktopView ? "Mobile view" : "Desktop view");
+        view.setTextColor(Color.WHITE);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        view.setGravity(android.view.Gravity.CENTER);
+        view.setPadding(dp(8), 0, dp(8), 0);
+        view.setOnClickListener(v -> {
+            desktopView = !desktopView;
+            getSharedPreferences("inkwell_web", MODE_PRIVATE).edit().putBoolean("desktop", desktopView).apply();
+            view.setText(desktopView ? "Mobile view" : "Desktop view");
+            applyViewMode();
+            if (web != null) web.reload();
+        });
+        top.addView(view, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
         root.addView(top);
 
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -127,8 +149,7 @@ public class InkwellWebActivity extends AppCompatActivity {
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setLoadWithOverviewMode(true);
-        s.setUseWideViewPort(true);
+        applyViewMode();
         // Pinch to zoom (small print on tracker pages), without the old +/- buttons.
         s.setSupportZoom(true);
         s.setBuiltInZoomControls(true);
@@ -190,51 +211,147 @@ public class InkwellWebActivity extends AppCompatActivity {
             String ua = s.getUserAgentString();
             web.setDownloadListener((dlUrl, userAgent, disposition, mime, length) -> {
                 String name = URLUtil.guessFileName(dlUrl, disposition, mime);
-                boolean torrent = (mime != null && mime.contains("bittorrent")) || name.toLowerCase().endsWith(".torrent") || dlUrl.toLowerCase().contains(".torrent");
+                // Trackers often send .torrent files as a plain "download" (octet-stream, download.php…);
+                // the file itself is checked once it arrives.
+                String lower = dlUrl.toLowerCase();
+                boolean torrent = (mime != null && (mime.contains("bittorrent") || mime.contains("octet-stream")))
+                    || name.toLowerCase().endsWith(".torrent") || lower.contains(".torrent") || lower.contains("download");
                 if (!torrent) {
                     Toast.makeText(this, "Only .torrent files can be sent to your home server", Toast.LENGTH_SHORT).show();
                     return;
                 }
                 showNote("Getting the .torrent…", 0);
-                String cookie = CookieManager.getInstance().getCookie(dlUrl);
                 String referer = web.getUrl();
+                String agent = userAgent != null ? userAgent : ua;
                 new Thread(() -> {
                     try {
-                        HttpURLConnection c = (HttpURLConnection) new URL(dlUrl).openConnection();
-                        c.setInstanceFollowRedirects(true);
-                        c.setConnectTimeout(20000);
-                        c.setReadTimeout(30000);
-                        if (cookie != null) c.setRequestProperty("Cookie", cookie);
-                        c.setRequestProperty("User-Agent", userAgent != null ? userAgent : ua);
-                        if (referer != null) c.setRequestProperty("Referer", referer);
-                        int code = c.getResponseCode();
-                        if (code >= 400) throw new Exception("HTTP " + code);
-                        InputStream in = c.getInputStream();
-                        ByteArrayOutputStream out = new ByteArrayOutputStream();
-                        byte[] buf = new byte[16384];
-                        int n;
-                        while ((n = in.read(buf)) > 0 && out.size() < 20_000_000) out.write(buf, 0, n);
-                        in.close();
-                        byte[] bytes = out.toByteArray();
-                        if (bytes.length == 0 || bytes[0] != 'd') throw new Exception("the site sent a web page, not a .torrent — are you signed in?");
-                        showNote("Sending to your home server…", 0);
-                        String result = sendToQbit(bytes, null, name, torrentIsEbook(bytes));
-                        JSObject d = new JSObject();
-                        d.put("type", "torrent");
-                        d.put("name", name);
-                        d.put("data", Base64.encodeToString(bytes, Base64.NO_WRAP));
-                        d.put("sent", result.startsWith("OK"));
-                        d.put("message", result.startsWith("OK") ? result.substring(3) : result);
-                        InkwellWebPlugin.captured(d);
-                        report(result);
+                        deliver(fetchTorrent(dlUrl, agent, referer), name);
                     } catch (Exception e) {
-                        report("Couldn't get the .torrent: " + e.getMessage());
+                        // Last resort: fetch it from inside the page, exactly as your tap would.
+                        fetchInPage(dlUrl, name);
                     }
                 }).start();
             });
+            web.addJavascriptInterface(new CaptureBridge(), "AudiohubCapture");
         }
         if (state != null) web.restoreState(state);
         else if (url != null) web.loadUrl(url);
+    }
+
+    private void applyViewMode() {
+        if (web == null) return;
+        WebSettings ws = web.getSettings();
+        ws.setUseWideViewPort(desktopView);
+        ws.setLoadWithOverviewMode(desktopView);
+    }
+
+    /**
+     * Download the .torrent with the page's sign-in cookies: follows redirects (also
+     * http↔https, which Android doesn't do by itself) and tries up to 3 times, since
+     * a tracker sometimes answers the first request with a page instead of the file.
+     */
+    private byte[] fetchTorrent(String dlUrl, String ua, String referer) throws Exception {
+        Exception last = new Exception("couldn't download it");
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                String u = dlUrl;
+                for (int hop = 0; hop < 6; hop++) {
+                    HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+                    c.setInstanceFollowRedirects(false);
+                    c.setConnectTimeout(15000);
+                    c.setReadTimeout(30000);
+                    String cookie = CookieManager.getInstance().getCookie(u);
+                    if (cookie != null) c.setRequestProperty("Cookie", cookie);
+                    c.setRequestProperty("User-Agent", ua);
+                    c.setRequestProperty("Accept", "application/x-bittorrent,application/octet-stream,*/*");
+                    if (referer != null) c.setRequestProperty("Referer", referer);
+                    int code = c.getResponseCode();
+                    for (Map.Entry<String, List<String>> h : c.getHeaderFields().entrySet()) {
+                        if (h.getKey() == null || !h.getKey().equalsIgnoreCase("Set-Cookie")) continue;
+                        for (String sc : h.getValue()) CookieManager.getInstance().setCookie(u, sc);
+                    }
+                    if (code >= 300 && code < 400) {
+                        String loc = c.getHeaderField("Location");
+                        c.disconnect();
+                        if (loc == null) throw new Exception("HTTP " + code);
+                        u = new URL(new URL(u), loc).toString();
+                        continue;
+                    }
+                    if (code >= 400) throw new Exception("HTTP " + code);
+                    InputStream in = c.getInputStream();
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    byte[] buf = new byte[16384];
+                    int n;
+                    while ((n = in.read(buf)) > 0 && out.size() < 20_000_000) out.write(buf, 0, n);
+                    in.close();
+                    byte[] bytes = out.toByteArray();
+                    if (bytes.length == 0 || bytes[0] != 'd') throw new Exception("the site sent a web page, not a .torrent — are you signed in?");
+                    return bytes;
+                }
+                throw new Exception("too many redirects");
+            } catch (Exception e) {
+                last = e;
+                if (attempt < 2) {
+                    showNote("Getting the .torrent… (trying again)", 0);
+                    try {
+                        Thread.sleep(1200L * (attempt + 1));
+                    } catch (InterruptedException ignored) {
+                    }
+                }
+            }
+        }
+        throw last;
+    }
+
+    /** Fetch the .torrent from inside the page (its own cookies and checks), then hand it over. */
+    private void fetchInPage(String dlUrl, String name) {
+        String nonce = java.util.UUID.randomUUID().toString();
+        pendingNonce = nonce;
+        pendingName = name;
+        String js = "(function(){var N=" + JSONObject.quote(nonce) + ";fetch(" + JSONObject.quote(dlUrl) + ",{credentials:'include'})"
+            + ".then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.arrayBuffer();})"
+            + ".then(function(b){var u=new Uint8Array(b);if(!u.length||u[0]!==100)throw new Error('the site sent a web page, not a .torrent — are you signed in?');"
+            + "var s='';for(var i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));AudiohubCapture.got(N,btoa(s));})"
+            + ".catch(function(e){AudiohubCapture.failed(N,String(e&&e.message||e));});})()";
+        runOnUiThread(() -> web.evaluateJavascript(js, null));
+    }
+
+    /** Receives the page-fetched .torrent; only for the request we just made (one-time key). */
+    private class CaptureBridge {
+        @JavascriptInterface
+        public void got(String nonce, String b64) {
+            if (nonce == null || !nonce.equals(pendingNonce)) return;
+            pendingNonce = null;
+            String name = pendingName;
+            new Thread(() -> {
+                try {
+                    deliver(Base64.decode(b64, Base64.DEFAULT), name);
+                } catch (Exception e) {
+                    report("Couldn't get the .torrent: " + e.getMessage());
+                }
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void failed(String nonce, String message) {
+            if (nonce == null || !nonce.equals(pendingNonce)) return;
+            pendingNonce = null;
+            report("Couldn't get the .torrent: " + message + " — tap Download again");
+        }
+    }
+
+    /** Send the .torrent to qBittorrent and tell the app. */
+    private void deliver(byte[] bytes, String name) {
+        showNote("Sending to your home server…", 0);
+        String result = sendToQbit(bytes, null, name, torrentIsEbook(bytes));
+        JSObject d = new JSObject();
+        d.put("type", "torrent");
+        d.put("name", name);
+        d.put("data", Base64.encodeToString(bytes, Base64.NO_WRAP));
+        d.put("sent", result.startsWith("OK"));
+        d.put("message", result.startsWith("OK") ? result.substring(3) : result);
+        InkwellWebPlugin.captured(d);
+        report(result);
     }
 
     private void toast(String text) {

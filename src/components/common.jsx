@@ -5,23 +5,34 @@ import { hashHue, fmtDuration } from '../lib/format.js';
 import { SOURCES, sourceOf } from '../sources/index.js';
 import { Icon } from './icons.jsx';
 import { nav } from '../lib/nav.js';
-import { progress as progressStore, useStoreKey, persisted } from '../lib/store.js';
-import { useImage } from '../lib/image.js';
+import { progress as progressStore, useStoreKey, persisted, useStore, settings } from '../lib/store.js';
+import { useImage, coverFrame, frameStyle } from '../lib/image.js';
+import { activePalette } from '../lib/theme.js';
 import { useMeta } from '../lib/meta.js';
 import { useTileRating } from '../lib/ratings.js';
 import { openExternal } from '../sources/summaries.js';
+import { useStoryShots, chooseStoryShots } from '../sources/storyshots.js';
 import { useLocalCover } from '../sources/local.js';
 import { audioFormat } from '../sources/debrid.js';
+import { markNotInterested, notInterested, isNotInterested } from '../lib/taste.js';
 
 export function Cover({ book, class: cls = '', eager }) {
   const { src, failed: proxyFailed } = useImage(book?.cover || '');
   const [failed, setFailed] = useState(!book?.cover);
   useEffect(() => setFailed(!book?.cover || proxyFailed), [book?.cover, proxyFailed]);
   const hue = hashHue(book?.title || '');
+  const [frame, setFrame] = useState(null);
+  useEffect(() => {
+    setFrame(null);
+    if (!src) return;
+    let alive = true;
+    coverFrame(src).then((f) => alive && setFrame(f));
+    return () => (alive = false);
+  }, [src]);
   return (
     <div class={'cover ' + cls} style={{ '--h': hue }}>
       <div class="cover-fallback">
-        <span class="cover-title">{book?.title}</span>
+        <span class="cover-title">{String(book?.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</span>
         <span class="cover-author">{book?.author}</span>
       </div>
       {!failed && src && (
@@ -30,6 +41,7 @@ export function Cover({ book, class: cls = '', eager }) {
           alt=""
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
+          style={frameStyle(frame)}
           onError={() => setFailed(true)}
           onLoad={(e) => {
             // Open Library returns a 1x1 gif for missing covers.
@@ -42,8 +54,20 @@ export function Cover({ book, class: cls = '', eager }) {
   );
 }
 
+/** A book's cover with whatever was found for it (its phone file's cover, a looked-up one). */
+export function BookCover({ book, class: cls = '' }) {
+  const localCover = useLocalCover(book);
+  const b = localCover ? { ...book, cover: localCover } : book;
+  return <Cover book={withMeta(b, useMeta(b))} class={cls} />;
+}
+
+// Paper & Ink: where a book lives, in plain words, instead of each provider's name and colour.
+const PLAIN = { abs: 'Server', tb: 'Cloud', rd: 'Cloud', loc: 'Local' };
+
 export function SourceBadge({ uid, book }) {
   const key = sourceOf(uid || '');
+  const plain = activePalette(useStore(settings)) === 'paperink' && PLAIN[key];
+  if (plain) return <span class="badge">{plain}</span>;
   // Books from places without a source entry (e.g. direct ebook links) get a plain badge.
   const s = SOURCES[key] || { short: book?.addon || (book?.kind === 'text' ? 'Ebook' : 'Book'), hue: 210 };
   const label = key === 'addon' ? book?.addonName || s.short : book?.via === 'lv' ? 'LibriVox' : s.short;
@@ -57,6 +81,7 @@ export function SourceBadge({ uid, book }) {
 // Debrid/addon items borrow cover + tidy title/author from metadata providers.
 export function withMeta(book, meta) {
   if (!meta) return book;
+  if (meta.fixed) return { ...book, cover: meta.cover || book.cover || '', title: meta.title || book.title, author: meta.author || book.author || '' };
   const cloudItem = book.source === 'tb' || book.source === 'rd' || book.source === 'loc';
   return {
     ...book,
@@ -95,7 +120,7 @@ const isReaderEbook = (b) => b?.kind === 'text' && /#ebook$/.test(b?.uid || '');
 const str = (v) => (v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? v.filter((x) => typeof x === 'string').join(', ') : typeof v === 'object' ? String(v.name || v.title || '') : String(v));
 
 /** A book card that can't break its grid: bad data shows a plain placeholder. */
-function SafeCard({ book, wide }) {
+function SafeCard({ book, wide, rec }) {
   return (
     <Guard
       fallback={() => (
@@ -107,7 +132,7 @@ function SafeCard({ book, wide }) {
         </div>
       )}
     >
-      <BookCard book={book} wide={wide} />
+      <BookCard book={book} wide={wide} rec={rec} />
     </Guard>
   );
 }
@@ -116,7 +141,7 @@ function SafeCard({ book, wide }) {
 function CardFacts({ book, meta }) {
   const secs = Number(book.duration) || Number(meta?.runtime) || 0;
   const narrator = str(book.narrator || meta?.narrator).split(',')[0].trim();
-  const format = str(book.format).toUpperCase() || (Array.isArray(book.files) ? audioFormat(book.files) : '');
+  const format = str(book.format).toUpperCase() || (Array.isArray(book.files) ? audioFormat(book.files) : ''); // phone books scanned before formats were noted
   const line = [format, secs ? fmtDuration(secs) : ''].filter(Boolean).join(' · ');
   if (!line && !narrator) return null;
   return (
@@ -133,7 +158,7 @@ function CardFacts({ book, meta }) {
 
 // Memoized, and it listens to its own book's progress only: saving the position of
 // the book that's playing (every few seconds) no longer re-renders every card.
-export const BookCard = memo(function BookCard({ book: raw, wide }) {
+export const BookCard = memo(function BookCard({ book: raw, wide, rec = false }) {
   const localCover = useLocalCover(raw);
   const meta = useMeta(localCover ? { ...raw, cover: localCover } : raw);
   const merged = withMeta(localCover ? { ...raw, cover: localCover } : raw, meta);
@@ -142,15 +167,20 @@ export const BookCard = memo(function BookCard({ book: raw, wide }) {
   const prog = useStoreKey(progressStore, book.uid);
   // Same careful lookup everywhere (your Audible store, else Goodreads), not whatever rating a listing carried.
   const rt = useTileRating(book);
+  const ss = useStoryShots(book);
   const pct = prog ? Math.round((prog.percent || 0) * 100) : 0;
   return (
     <button class={'book-card' + (wide ? ' wide' : '')} onClick={() => (isReaderEbook(book) ? nav.push('reader', { book }) : nav.push('book', { book }))}>
       <div class="book-card-cover">
         <Cover book={book} />
-        <span class="kind-dot" title={book.kind}>
-          <Icon name={book.kind === 'text' ? 'book' : book.kind === 'discover' ? 'sparkle' : 'headphones'} size={13} />
-        </span>
+        {/* Recommendations: the ✕ (Not interested) takes the corner, off the match %. */}
+        {!rec && (
+          <span class="kind-dot" title={book.kind}>
+            <Icon name={book.kind === 'text' ? 'book' : book.kind === 'discover' ? 'sparkle' : 'headphones'} size={13} />
+          </span>
+        )}
         {book.rank > 0 && <span class="rank-badge">#{book.rank}</span>}
+        {book.copies > 1 && <span class="copies-badge">{book.copies} copies</span>}
         {!(book.rank > 0) && book.match > 0 && <span class={'match-badge' + (book.match >= 80 ? ' hi' : '')}>{book.match}% match</span>}
         {rt && (
           <span
@@ -166,6 +196,34 @@ export const BookCard = memo(function BookCard({ book: raw, wide }) {
             {rt.count > 0 && <small> ({fmtCount(rt.count)})</small>}
           </span>
         )}
+        {ss && (
+          <span
+            class={'ss-badge' + (ss.ep ? '' : ' outline')}
+            role="link"
+            title={ss.ep ? 'StoryShots audio summary — plays here' : 'Summary in StoryShots — tap for options'}
+            onClick={(e) => {
+              e.stopPropagation();
+              chooseStoryShots(book, ss);
+            }}
+          >
+            S
+          </span>
+        )}
+        {rec && (
+          <span
+            class="not-btn"
+            role="button"
+            aria-label="Not interested"
+            title="Not interested — show less like this"
+            onClick={(e) => {
+              e.stopPropagation();
+              markNotInterested(book);
+              toast('Hidden — you’ll see less like this (undo in Settings → AI)');
+            }}
+          >
+            ✕
+          </span>
+        )}
         {book.fetching != null && <span class="fetch-badge">{Math.round((book.fetching || 0) * 100)}%</span>}
         {pct > 0 && (
           <div class="progress-mini">
@@ -173,9 +231,8 @@ export const BookCard = memo(function BookCard({ book: raw, wide }) {
           </div>
         )}
       </div>
-      <div class="book-card-title">{book.title}</div>
+      <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
       <div class="book-card-author">{book.author || ' '}</div>
-      {typeof book.why === 'string' && book.why && <div class="book-card-why">{book.why}</div>}
       <CardFacts book={book} meta={meta} />
     </button>
   );
@@ -183,10 +240,14 @@ export const BookCard = memo(function BookCard({ book: raw, wide }) {
 
 // Last contents of slow rows (your cloud, your server), shown at once on the next open.
 const rowCache = persisted('rowCache', {}, { delay: 1500 });
-const ROW_KEEP = ['uid', 'source', 'kind', 'title', 'author', 'narrator', 'cover', 'year', 'duration', 'addedAt', 'hash', 'format', 'fetching', 'genres'];
+/** The last list a cached row showed (e.g. Home's recommendations), or []. */
+export const cachedRow = (key) => rowCache.get()[key] || [];
+const ROW_KEEP = ['uid', 'source', 'kind', 'title', 'author', 'narrator', 'cover', 'year', 'duration', 'addedAt', 'hash', 'format', 'fetching', 'genres', 'why', 'match'];
 const slim = (b) => Object.fromEntries(ROW_KEEP.filter((k) => b?.[k] !== undefined).map((k) => [k, b[k]]));
 
-export function Row({ title, subtitle, load, items: given, icon, onMore, deps = [], showErrors = false, emptyText = '', cacheKey = '' }) {
+export function Row({ title, subtitle, load, items: given, icon, onMore, deps = [], showErrors = false, emptyText = '', cacheKey = '', shuffle = false, rec = false }) {
+  const hidden = useStore(notInterested);
+  const scroller = useRef(null);
   const [items, setItems] = useState(() => given || (cacheKey && rowCache.get()[cacheKey]) || null);
   const [error, setError] = useState(null);
   useEffect(() => {
@@ -230,14 +291,32 @@ export function Row({ title, subtitle, load, items: given, icon, onMore, deps = 
           </h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
+        {shuffle && items?.length > 2 && (
+          <button
+            class="icon-btn row-shuffle"
+            aria-label={`Shuffle ${title}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              const next = [...items];
+              for (let i = next.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [next[i], next[j]] = [next[j], next[i]];
+              }
+              setItems(next);
+              if (scroller.current) scroller.current.scrollLeft = 0;
+            }}
+          >
+            <Icon name="shuffle" size={18} />
+          </button>
+        )}
         {onMore && (
           <span class="link-btn see-all">
             See all{items ? ` ${items.length}` : ''} ›
           </span>
         )}
       </header>
-      <div class="row-scroll">
-        {items ? items.map((b) => <SafeCard key={b.uid} book={b} />) : Array.from({ length: 6 }, (_, i) => <Skeleton key={i} />)}
+      <div class="row-scroll" ref={scroller}>
+        {items ? items.filter((b) => !rec || !isNotInterested(b, hidden)).map((b) => <SafeCard key={b.uid} book={b} rec={rec} />) : Array.from({ length: 6 }, (_, i) => <Skeleton key={i} />)}
       </div>
     </section>
   );
@@ -276,7 +355,7 @@ export function Skeleton() {
   );
 }
 
-/** ✨ Ask AI: about this book, or about all your books. */
+/** ✨ Ask AI, in the top corner of every screen: about this book, or about all your books. */
 export function AskButton({ book = null, cls = 'icon-btn ask-btn glass' }) {
   return (
     <button
@@ -284,12 +363,12 @@ export function AskButton({ book = null, cls = 'icon-btn ask-btn glass' }) {
       aria-label={book ? 'Ask AI about this book' : 'Ask AI about your books'}
       onClick={() => nav.push('ask', book ? { book, description: book.description || '' } : {})}
     >
-      <Icon name="sparkle" size={20} />
+      <Icon name="sparkle" size={cls.includes('hdr-btn') ? 18 : 20} />
     </button>
   );
 }
 
-export function TopBar({ title, back = true, right, transparent }) {
+export function TopBar({ title, back = true, right, transparent, ask = true }) {
   return (
     <header class={'topbar' + (transparent ? ' transparent' : '')}>
       {back ? (
@@ -300,7 +379,10 @@ export function TopBar({ title, back = true, right, transparent }) {
         <span />
       )}
       <h1>{title}</h1>
-      <div class="topbar-right">{right}</div>
+      <div class="topbar-right">
+        {right}
+        {ask && <AskButton />}
+      </div>
     </header>
   );
 }

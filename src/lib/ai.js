@@ -1,4 +1,4 @@
-// AI helpers using free services with your own key (Groq or OpenRouter):
+// AI helpers using services with your own key (Groq, Gemini, OpenRouter — free — or Claude):
 // a spoiler-safe recap of the story so far / the previous chapter, a
 // character glossary that only knows what has happened up to where you are,
 // and the bookseller. If one service is busy the next one (or model) is tried.
@@ -6,9 +6,12 @@ import { persisted } from './store.js';
 import * as player from './player.js';
 import { heardText } from './transcript.js';
 
-export const ai = persisted('ai', { groqKey: '', openrouterKey: '', last: '' });
+export const ai = persisted('ai', { groqKey: '', openrouterKey: '', geminiKey: '', claudeKey: '', customUrl: '', customModel: '', customKey: '', prefer: '', last: '' });
 
-/** Free services, in the order they are tried. All speak the OpenAI chat format. */
+/**
+ * Services, in the order they are tried (the one picked in Settings → AI goes first).
+ * Groq, Gemini and OpenRouter speak the OpenAI chat format; Claude uses Anthropic's own SDK.
+ */
 export const PROVIDERS = [
   {
     id: 'groq',
@@ -20,6 +23,18 @@ export const PROVIDERS = [
     json: true,
   },
   {
+    id: 'gemini',
+    name: 'Gemini',
+    keyField: 'geminiKey',
+    site: 'aistudio.google.com/apikey',
+    url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    // Google renames its models every few months: the live list is fetched (see geminiModels); these are only a fallback.
+    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+    discover: () => geminiModels(),
+    cached: () => geminiList.get().ids,
+    json: true,
+  },
+  {
     id: 'openrouter',
     name: 'OpenRouter',
     keyField: 'openrouterKey',
@@ -28,10 +43,54 @@ export const PROVIDERS = [
     // OpenRouter's free line-up changes often: the live list is fetched (see freeRouterModels); these are only a fallback.
     models: ['meta-llama/llama-3.3-70b-instruct:free', 'deepseek/deepseek-chat-v3-0324:free', 'qwen/qwen-2.5-72b-instruct:free', 'mistralai/mistral-small-3.2-24b-instruct:free'],
     discover: () => freeRouterModels(),
+    cached: () => routerList.get().ids,
     json: false,
     headers: { 'HTTP-Referer': 'https://drdilips1.github.io/audiohub/', 'X-Title': 'Audiohub' },
   },
+  {
+    id: 'claude',
+    name: 'Claude',
+    keyField: 'claudeKey',
+    site: 'platform.claude.com (paid, per use)',
+    anthropic: true,
+    models: ['claude-opus-5-5'],
+  },
+  {
+    // Your own: any service that speaks the OpenAI chat format (Ollama or LM Studio on your
+    // computer, a company endpoint, Together, Mistral…). Address and model from Settings → AI.
+    id: 'custom',
+    name: 'Your own AI',
+    keyField: 'customUrl',
+    custom: true,
+    json: false,
+  },
 ];
+
+/** Where your own AI answers: the address as given, with /chat/completions added if missing. */
+const customEndpoint = () => {
+  const u = (ai.get().customUrl || '').trim().replace(/\/+$/, '');
+  return /\/chat\/completions$/.test(u) ? u : `${u}/chat/completions`;
+};
+
+// Gemini models that answer text, newest "flash" first (fast and in the free tier); cached for a day.
+const geminiList = persisted('aiGeminiModels', { t: 0, ids: [] });
+async function geminiModels() {
+  const hit = geminiList.get();
+  if (hit.ids.length && Date.now() - hit.t < 24 * 3600e3) return hit.ids;
+  const key = (ai.get().geminiKey || '').trim();
+  if (!key) return [];
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/models', { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error('list');
+  const { data = [] } = await res.json();
+  const ver = (id) => parseFloat((/gemini-(\d+(?:\.\d+)?)/.exec(id) || [])[1] || 0);
+  const ids = data
+    .map((m) => String(m.id || '').replace(/^models\//, ''))
+    .filter((id) => /^gemini-[\d.]+-flash(-lite)?$/.test(id))
+    .sort((a, b) => ver(b) - ver(a) || Number(/lite/.test(a)) - Number(/lite/.test(b)))
+    .slice(0, 4);
+  if (ids.length) geminiList.set({ t: Date.now(), ids });
+  return ids;
+}
 
 // Families that give good book answers, best first; anything else free comes after.
 const PREFER = [/^openrouter\/free$/, /deepseek-chat|deepseek-v3/, /llama-3\.3-70b|llama-4-maverick/, /qwen.*(235b|72b|32b)/, /gpt-oss/, /gemma-3-27b|gemma-3n?/, /mistral-small|mistral-nemo/, /llama/];
@@ -65,26 +124,58 @@ async function freeRouterModels() {
 // Never waits for the list: the saved one (or the built-in fallback) is used at once
 // and refreshed in the background when it's old.
 async function modelsFor(p) {
+  if (p.custom) return [ai.get().customModel.trim()];
   if (!p.discover) return p.models;
   p.discover().catch(() => {});
-  return routerList.get().ids.length ? routerList.get().ids : p.models;
+  const ids = p.cached();
+  return ids.length ? ids : p.models;
 }
 
 // OpenRouter refuses free models until the account allows them in its privacy settings.
 const POLICY = /data policy|privacy|free model (publication|training)|No endpoints found matching/i;
 const policyHelp = (name) => `${name} is blocking its free models: open openrouter.ai/settings/privacy and turn on the options for free models (training / publication), then try again`;
 
-const keyOf = (p) => (ai.get()[p.keyField] || '').trim();
+// Your own AI may need no key (Ollama): it's ready once it has an address and a model.
+const keyOf = (p) => (p.custom ? (ai.get().customUrl?.trim() && ai.get().customModel?.trim() ? ai.get().customKey?.trim() || 'none' : '') : (ai.get()[p.keyField] || '').trim());
 export const aiReady = () => PROVIDERS.some(keyOf);
 
 const cache = persisted('aiCache', {}); // prompt key -> { t, v }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Claude: Anthropic's SDK straight from the app with your own key. If a request is declined
+// by Claude's safety checks, the server re-runs it on a fallback model ("default" fallbacks).
+async function callClaude(p, model, prompt) {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: keyOf(p), dangerouslyAllowBrowser: true, maxRetries: 0, timeout: 60000 });
+  try {
+    const res = await client.beta.messages.create({
+      model,
+      max_tokens: 16000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'low' }, // short book answers: quick and inexpensive
+      messages: [{ role: 'user', content: prompt }],
+    });
+    if (res.stop_reason === 'refusal') throw Object.assign(new Error('Claude declined to answer this one'), { status: 400 });
+    const text = res.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+      .trim();
+    if (!text) throw Object.assign(new Error('Claude returned nothing'), { status: 502 });
+    return text;
+  } catch (e) {
+    if (e instanceof Anthropic.APIError) throw Object.assign(new Error(e.message), { status: e.status ?? 0 });
+    throw e;
+  }
+}
+
 async function call(p, model, prompt, json) {
+  if (p.anthropic) return callClaude(p, model, prompt);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
-    const res = await fetch(p.url, {
+    const res = await fetch(p.custom ? customEndpoint() : p.url, {
       method: 'POST',
       signal: ctrl.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keyOf(p)}`, ...(p.headers || {}) },
@@ -132,8 +223,9 @@ export function parseJson(text) {
  * to the next model and the next service.
  */
 export async function askAi(prompt, { json = false, skip = [] } = {}) {
-  const ready = PROVIDERS.filter(keyOf);
-  if (!ready.length) throw new Error('Add a free AI key (Groq or OpenRouter) in Settings → AI first');
+  const prefer = ai.get().prefer;
+  const ready = PROVIDERS.filter(keyOf).sort((a, b) => Number(b.id === prefer) - Number(a.id === prefer));
+  if (!ready.length) throw new Error('Add an AI key (Groq, Gemini, OpenRouter or Claude) in Settings → AI first');
   // Services in their fixed order (Groq, the fastest, first); within a service the model that last worked leads.
   const last = ai.get().last;
   const lists = await Promise.all(

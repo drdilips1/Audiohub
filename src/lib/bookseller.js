@@ -143,7 +143,7 @@ async function ask(request, { count = 8, cacheFor = 0 } = {}) {
     data = parseJson(await askAi(PROMPT(request, taste, count), { json: true }));
   } catch (e) {
     const books = await catalogueAnswer(request);
-    const intro = aiReady() ? `${e.message.replace(/ — try again.*$/, '')}, so here are close matches from the Audible catalogue.` : 'Close matches from the Audible catalogue. Add a free AI key in Settings → AI for smarter, more personal picks.';
+    const intro = aiReady() ? `${e.message.replace(/ — try again.*$/, '')}, so here are close matches from the Audible catalogue.` : 'Close matches from the Audible catalogue. Add an AI key in Settings → AI for smarter, more personal picks.';
     return { intro, books, fallback: true }; // not cached, so the AI is asked again next time
   }
   const owned = new Set(taste.map((t) => t.split(' — ')[0].toLowerCase()));

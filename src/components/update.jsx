@@ -14,8 +14,9 @@ const num = (v) => {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(v || '');
   return m ? +m[1] * 1e8 + +m[2] * 1e4 + +m[3] : 0;
 };
-// The web app is always the latest build; only the Android APK needs updating.
-const isApk = Capacitor.isNativePlatform();
+// The web app is always the latest build; only the Android APK needs updating
+// (the iPhone app is reinstalled from the Mac with AltStore).
+const isApk = Capacitor.getPlatform() === 'android';
 export const updateAvailable = () => isApk && APP_VERSION !== 'dev' && num(update.get().latest) > num(APP_VERSION);
 
 // Updates are served from GitHub Pages (a fast CDN) with the GitHub release as a fallback.

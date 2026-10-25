@@ -12,7 +12,7 @@ const TTL = 10 * 60 * 1000;
 // inkwell/relay/). The Android app talks to everything directly.
 const WEB = !Capacitor.isNativePlatform();
 const RELAY_HOSTS = /^(api\.hardcover\.app|api\.audible\.[a-z.]+|www\.goodreads\.com|(www\.)?getstoryshots\.com|itunes\.apple\.com)$/i;
-const DEFAULT_RELAY = import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/relay` : '';
+const DEFAULT_RELAY = import.meta.env.VITE_RELAY_URL || (import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/relay` : '');
 
 export function relayUrl() {
   try {
@@ -132,9 +132,21 @@ async function request(url, { timeout = 15000, headers, method = 'GET', body, fe
       try {
         res = await go(url, headers);
       } catch (e) {
-        // In a browser a CORS block looks like a network error: try the relay once.
-        if (!WEB || e.timeout || !relayUrl() || !(relayable(url) || (feed && /^https:/i.test(url)))) throw e;
+        // In a browser a CORS block looks like a network error; on a phone, a site the
+        // network blocks (e.g. StoryShots' on some Indian networks) fails the same way:
+        // try the relay once.
+        if (e.timeout || !relayUrl() || !(relayable(url) || (WEB && feed && /^https:/i.test(url)))) throw e;
         res = await relayed();
+      }
+    }
+    // Android: a site behind Cloudflare that refuses the phone (403 / 429 / 503 / 52x error
+    // pages — e.g. Knaben) often answers the relay fine, as it does for the web app. Try it once.
+    if (!WEB && !res.ok && (res.status === 403 || res.status === 429 || res.status === 503 || res.status >= 520) && relayUrl() && relayable(url)) {
+      try {
+        const r = await relayed();
+        if (r.ok) res = r;
+      } catch (e) {
+        if (e.timeout) throw e;
       }
     }
     if (!res.ok) {
@@ -145,7 +157,9 @@ async function request(url, { timeout = 15000, headers, method = 'GET', body, fe
           const j = JSON.parse(text);
           detail = j.message || j.detail || j.error_description || (typeof j.error === 'string' ? j.error : '') || (typeof j.result === 'string' ? j.result : '') || '';
         } catch {}
-        if (!detail) detail = text.slice(0, 160).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        // A web page instead of an API answer (e.g. Cloudflare's error page): use its title, not a scrap of HTML.
+        if (!detail && /<(!doctype|html|head|script)/i.test(text)) detail = (/<title[^>]*>([^<]*)/i.exec(text)?.[1] || 'the site sent an error page').replace(/\s+/g, ' ').trim().slice(0, 90);
+        if (!detail) detail = text.slice(0, 160).replace(/<[^>]*>?/g, ' ').replace(/\s+/g, ' ').trim();
       } catch {}
       const relayMissing = WEB && res.status === 404 && /\/functions\/v1\/relay/.test(res.url || '') && /function/i.test(detail);
       const err = new Error(relayMissing ? 'This service needs the web relay — see Settings → Web app' : `HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
@@ -231,9 +245,10 @@ export function sendForm(url, method, params, headers = {}, { timeout } = {}) {
   }).then((r) => (r.status === 204 ? null : r.json().catch(() => null)));
 }
 
-export function sendJson(url, method, data, headers = {}) {
+export function sendJson(url, method, data, headers = {}, { timeout } = {}) {
   return request(url, {
     method,
+    ...(timeout ? { timeout } : {}),
     headers: { 'Content-Type': 'application/json', ...headers },
     body: data === undefined ? undefined : JSON.stringify(data),
   }).then((r) => (r.status === 204 ? null : r.json().catch(() => null)));

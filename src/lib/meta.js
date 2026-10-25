@@ -18,6 +18,17 @@ export const PROVIDERS = {
 };
 
 const cache = persisted('metaCache', {}, { delay: 3000 });
+// Details you picked yourself ("Find cover & details" on a book page): uid -> meta.
+export const metaFixes = persisted('metaFixes', {});
+export const fixFor = (uid) => (uid && metaFixes.get()[uid]) || null;
+export function setFix(uid, meta) {
+  metaFixes.set((all) => {
+    const next = { ...all };
+    if (meta) next[uid] = { ...meta, fixed: true };
+    else delete next[uid];
+    return next;
+  });
+}
 const MISS_TTL = 3 * 24 * 3600e3;
 
 /** Turn a release name into a search string: drop brackets, formats, uploader noise. */
@@ -127,8 +138,8 @@ export function enabledProviders() {
 }
 
 // Small queue so a page of 30 covers doesn't fire 120 requests at once.
-// Covers come first; extra details for books that already have a cover wait until
-// no cover is waiting, one at a time.
+// Covers come first; extra details for books that already have a cover (e.g. the author
+// of a phone book) wait until no cover is waiting, one at a time.
 let active = 0;
 const queue = [];
 const later = [];
@@ -186,14 +197,17 @@ export function lookup(book, { fresh = false } = {}) {
 
 // Sources whose items benefit from lookups.
 const ENRICH = new Set(['loc', 'tb', 'rd', 'addon', 'gr']);
-export const wantsMeta = (book) => !!book && ENRICH.has(book.source) && (!book.cover || book.source === 'tb' || book.source === 'rd');
+// Any book of yours without a cover gets one looked up too (not podcasts).
+export const wantsMeta = (book) => !!book && ((ENRICH.has(book.source) && (!book.cover || book.source === 'tb' || book.source === 'rd')) || (!book.cover && book.source !== 'pod' && !!book.title));
 /** Metadata already found for a book (no lookup), e.g. to sort phone books by author. */
-export const metaNow = (book) => (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v || null : null);
+export const metaNow = (book) => fixFor(book?.uid) || (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v || null : null);
 
 /** Hook: enriched fields for cards (cover / tidy title / author). */
 export function useMeta(book) {
-  const [meta, setMeta] = useState(() => (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v || null : null));
+  const [meta, setMeta] = useState(() => fixFor(book?.uid) || (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v || null : null));
   useEffect(() => {
+    const fix = fixFor(book?.uid);
+    if (fix) return setMeta(fix);
     if (!wantsMeta(book)) return setMeta(null);
     let alive = true;
     lookup(book).then((m) => alive && setMeta(m));
@@ -204,4 +218,39 @@ export function useMeta(book) {
 
 export function clearMetaCache() {
   cache.set({});
+}
+
+// ---- Finding missing covers for a whole list at once (Library) -------------------
+const bare = (t) => String(t || '').replace(/^[\s\-–—_.,:;]+/, '').replace(/\.(epub|pdf|m4b|mp3|mobi|azw3?)$/i, '');
+/** The cover a book shows now (its own, one found for it, or one you picked), or ''. */
+export const coverNow = (book) => (book && (fixFor(book.uid)?.cover || book.cover || (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v?.cover : ''))) || '';
+
+/**
+ * Look up covers for every book here that has none — the release name first, then the bare
+ * title with the author, then the title alone. Found covers are kept for good (like picking
+ * one by hand). onProgress(done, total, found). Resolves { found, total }.
+ */
+export async function findMissingCovers(books, onProgress = () => {}) {
+  const todo = books.filter((b) => b && b.source !== 'pod' && !coverNow(b));
+  let done = 0;
+  let found = 0;
+  const one = async (b) => {
+    const tries = [b, { title: bare(b.title), author: b.author || '' }, { title: bare(b.title) }];
+    for (const t of tries) {
+      if (!t.title && !t.rawName) continue;
+      const m = await lookup(t, { fresh: t === b }).catch(() => null);
+      if (m?.cover) {
+        setFix(b.uid, { ...(fixFor(b.uid) || {}), cover: m.cover });
+        found++;
+        break;
+      }
+    }
+    onProgress(++done, todo.length, found);
+  };
+  // A few at a time (the lookups queue themselves too).
+  const queue = [...todo];
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (queue.length) await one(queue.shift());
+  }));
+  return { found, total: todo.length };
 }

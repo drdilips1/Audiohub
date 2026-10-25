@@ -1,6 +1,10 @@
 // Accent pairs for gradients. The pastel set follows Material You's tonal
 // palettes; `l`/`lb` are the deeper tones used on light backgrounds.
 export const ACCENTS = {
+  // Brass to copper on warm ink / ivory — the default look.
+  brass: { name: 'Brass', a: '#dcb675', b: '#c98a62', l: '#8a6322', lb: '#9b4f2b' },
+  // Warm orange on clean black / white.
+  studio: { name: 'Studio orange', a: '#f7991c', b: '#ff7a00', l: '#c45f00', lb: '#b84d00' },
   audiohub: { name: 'Audiohub', a: '#8fe9ff', b: '#f7a6d8', l: '#0e7490', lb: '#be185d' },
   orchid: { name: 'Orchid', a: '#dcb0ff', b: '#ff9fd2', l: '#7e22ce', lb: '#be185d' },
   sunset: { name: 'Sunset', a: '#ffb57a', b: '#ff86a8', l: '#c2410c', lb: '#be123c' },
@@ -25,13 +29,32 @@ export const ACCENTS = {
 // Earlier, brighter accent names map onto the refined set.
 const LEGACY = { aurora: 'dusk', sunset: 'terracotta', ocean: 'slate', forest: 'sage', rose: 'rosewood', ember: 'terracotta', gold: 'champagne', ice: 'slate' };
 
+// Paper & Ink's own accent: forest green on paper, a lighter sage at night.
+const FOREST = { a: '#a3b89f', b: '#a3b89f', l: '#557663', lb: '#557663' };
+
+/** Light / dark / black, with "system" following the phone's setting. */
+const darkQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
+export const resolvedMode = (st) => (st.mode === 'system' ? (darkQuery?.matches ? 'dark' : 'light') : st.mode);
+let lastSt = null;
+darkQuery?.addEventListener?.('change', () => lastSt?.mode === 'system' && applyTheme(lastSt));
+
+let onApplied = null;
+/** Called after each theme change with whether it is light (status bar icons). */
+export const onThemeApplied = (f) => (onApplied = f);
+
+/** The colour theme in use: each mode keeps its own (light colours by day, dark at night). */
+export const activePalette = (st, mode = resolvedMode(st)) => (mode === 'light' ? st.paletteLight : st.paletteDark) || st.palette || 'default';
+
 export function applyTheme(st) {
-  const a = ACCENTS[st.accent] || ACCENTS[LEGACY[st.accent]] || ACCENTS.audiohub;
+  lastSt = st;
+  const mode = resolvedMode(st);
+  const pid = activePalette(st, mode);
+  const a = pid === 'paperink' ? FOREST : ACCENTS[st.accent] || ACCENTS[LEGACY[st.accent]] || ACCENTS.brass;
   const root = document.documentElement;
-  const light = st.mode === 'light';
-  root.dataset.mode = st.mode;
+  const light = mode === 'light';
+  root.dataset.mode = mode;
   // Palette: the colour of the whole app (backgrounds and text), per mode.
-  const pal = PALETTES.find((p) => p.id === st.palette && p.light === light);
+  const pal = PALETTES.find((p) => p.id === pid && p.light === light);
   root.dataset.palette = pal ? pal.id : 'default';
   root.style.setProperty('--accent', light && a.l ? a.l : a.a);
   root.style.setProperty('--accent-2', light && a.lb ? a.lb : a.b);
@@ -39,11 +62,18 @@ export function applyTheme(st) {
   root.style.setProperty('--tint', a.a);
   root.style.setProperty('--tint-2', a.b);
   const meta = document.querySelector('meta[name=theme-color]');
-  if (meta) meta.content = st.mode === 'amoled' ? '#000000' : pal?.bg || (light ? '#fdf7ff' : '#131218');
+  if (meta) meta.content = mode === 'amoled' ? '#000000' : pal?.bg || (light ? '#fdf7ff' : '#131218');
+  onApplied?.(light);
 }
 
 /** Whole-app colour themes. Dark ones apply in Dark mode, light ones in Light mode. */
 export const PALETTES = [
+  { id: 'paperink', name: 'Paper & Ink', light: false, bg: '#191b18', swatch: ['#191b18', '#a3b89f'] },
+  { id: 'paperink', name: 'Paper & Ink', light: true, bg: '#f6f2e9', swatch: ['#f6f2e9', '#557663'] },
+  { id: 'atelier', name: 'Atelier', light: false, bg: '#0f0e0d', swatch: ['#0f0e0d', '#dcb675'] },
+  { id: 'atelier', name: 'Atelier', light: true, bg: '#f7f3ec', swatch: ['#f7f3ec', '#8a6322'] },
+  { id: 'studio', name: 'Studio', light: false, bg: '#121212', swatch: ['#121212', '#f7991c'] },
+  { id: 'studio', name: 'Studio', light: true, bg: '#ffffff', swatch: ['#ffffff', '#f7991c'] },
   { id: 'default', name: 'Classic', light: false, bg: '#131218', swatch: ['#131218', '#262330'] },
   { id: 'midnight', name: 'Midnight', light: false, bg: '#0b1020', swatch: ['#0b1020', '#1b2745'] },
   { id: 'aurora', name: 'Aurora', light: false, bg: '#0d0b1f', swatch: ['#0d0b1f', '#2a1c52'] },

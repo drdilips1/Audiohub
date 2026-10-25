@@ -14,7 +14,7 @@ import * as ttsb from './ttsbooks.js';
 import { audible, googleBooks } from './catalogs.js';
 import { settings } from '../lib/store.js';
 import { matches, mainTitle } from '../lib/match.js';
-import { lookup, wantsMeta, metaNow } from '../lib/meta.js';
+import { lookup, wantsMeta, fixFor, metaNow } from '../lib/meta.js';
 import { applyLocal, isDownloaded } from '../lib/downloads.js';
 import { translit, hasDevanagari } from '../lib/translit.js';
 
@@ -71,6 +71,11 @@ export function sourceOf(uid) {
  * online details lookup — use what's already known, so playback starts sooner.
  */
 export async function getDetails(book, { fast = false } = {}) {
+  // A pasted link (direct MP3 / M4B…): the link is in its id, so Continue can reopen it.
+  if ((book.uid || '').startsWith('url:') && book.kind !== 'text') {
+    const url = decodeURIComponent(book.uid.slice(4));
+    return applyLocal({ ...book, tracks: book.tracks?.length ? book.tracks : [{ title: book.title, url, index: 0 }] });
+  }
   const src = SOURCES[sourceOf(book.uid || '')];
   // No source to ask (e.g. a direct ebook link): show what we already know.
   if (!src?.impl?.details) return applyLocal({ ...book });
@@ -84,6 +89,21 @@ export async function getDetails(book, { fast = false } = {}) {
     throw e;
   }
   d = applyLocal(d);
+  // Details you picked yourself win.
+  const fix = fixFor(book.uid);
+  if (fix)
+    return {
+      ...d,
+      title: fix.title || d.title,
+      author: fix.author || d.author,
+      cover: fix.cover || d.cover || '',
+      description: fix.description || d.description,
+      narrator: d.narrator || fix.narrator || '',
+      year: d.year || fix.year || '',
+      genres: d.genres?.length ? d.genres : fix.genres || [],
+      metaSource: fix.source,
+      fixed: true,
+    };
   if (!meta) return d;
   const cloudItem = d.source === 'tb' || d.source === 'rd';
   return {
@@ -160,6 +180,24 @@ export async function findEditions(book) {
       enabled('gb') && 'Project Gutenberg',
     ].filter(Boolean),
   };
+}
+
+/**
+ * Copies of a book you already have elsewhere (your Audiobookshelf, your TorBox /
+ * Real-Debrid files) — for the book page's "Available" row. Only your own services
+ * are searched, so it's quick.
+ */
+export async function findOwned(book) {
+  const t = mainTitle(hasDevanagari(book.title) ? translit(book.title) : book.title);
+  const plain = t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (!plain) return { server: [], cloud: [] };
+  const safe = (p) => p.catch(() => []);
+  const byTitle = (list) => list.filter((b) => matches(t, `${b.title} ${b.rawName || ''}`));
+  const [server, cloudHits] = await Promise.all([
+    enabled('abs') && absSrc.connected() ? safe(absSrc.search(plain)) : [],
+    (enabled('tb') && cloud.tbConnected()) || (enabled('rd') && cloud.rdConnected()) ? safe(cloud.search(plain)) : [],
+  ]);
+  return { server: byTitle(server), cloud: byTitle(cloudHits) };
 }
 
 export { ia, lv, gb, ol, absSrc, addonSrc, cloud, localSrc, hc, gr, enabled };

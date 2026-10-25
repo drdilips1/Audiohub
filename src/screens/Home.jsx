@@ -1,7 +1,9 @@
 import { BgImage } from '../components/bg-image.jsx';
-import { rankForYou } from '../lib/taste.js';
+import { rankForYou, profile } from '../lib/taste.js';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Row, BookCard, withMeta } from '../components/common.jsx';
+import { Row, BookCard, withMeta, AskButton } from '../components/common.jsx';
+import { openDrive } from '../components/drive-mode.jsx';
+import { SceneButton } from '../components/scene-cmd.jsx';
 import { useTileRating } from '../lib/ratings.js';
 import { openExternal } from '../sources/summaries.js';
 import { useMeta } from '../lib/meta.js';
@@ -10,9 +12,11 @@ import { mainTitle } from '../lib/match.js';
 import { Icon } from '../components/icons.jsx';
 import { ia, gb, ol, absSrc, addonSrc, cloud, localSrc, hc, gr, enabled, sourceOrder, sourceRank } from '../sources/index.js';
 import { Fragment } from 'preact';
-import { progress, settings, addons, abs, debrid, hardcover, goodreads, useStore, persisted, library, toggleLibrary } from '../lib/store.js';
-import { greeting, fmtDuration, hiResCover } from '../lib/format.js';
-import { nav } from '../lib/nav.js';
+import { sameWork } from '../lib/works.js';
+import { progress, settings, addons, abs, debrid, hardcover, goodreads, useStore, persisted, library, toggleLibrary, hideFromContinue } from '../lib/store.js';
+import { greeting, firstName, fmtDuration, hiResCover } from '../lib/format.js';
+import { account } from '../lib/sync.js';
+import { nav, useBackClose } from '../lib/nav.js';
 import { GENRES } from './genres.js';
 import { HINDI_ALL } from './hindi.js';
 import { audible } from '../sources/catalogs.js';
@@ -35,13 +39,92 @@ const ownedTitles = () => {
   for (const p of Object.values(progress.get())) if (p?.book?.title) t.add(mainTitle(p.book.title).toLowerCase());
   return t;
 };
-const notOwned = (list) => {
+export const notOwned = (list) => {
   const owned = ownedTitles();
   return (list || []).filter((b) => b?.title && !owned.has(mainTitle(b.title).toLowerCase()));
 };
 async function topRated() {
   const r = await audible.genre('bestsellers');
   return rankForYou(notOwned(r).filter((b) => (b.rating || 0) >= 4.5 && (b.ratings || 0) >= 200)).slice(0, 30);
+}
+
+// Store-style rows, non-fiction in your taste: your top categories (from what you listen to,
+// save and rate), Psychology / Science / History until the app knows you better.
+const FICTION = /fiction|romance|fantasy|thriller|mystery|suspense|horror|teen|young adult|children|erotica|sci-fi|science fiction|litrpg|graphic novel|comics/i;
+const isFiction = (b) => (b.genres || []).some((g) => FICTION.test(g));
+const nonFiction = (list) => (list || []).filter((b) => !isFiction(b));
+const DEFAULT_TOPICS = ['Psychology & Human Behavior', 'Science & Biology', 'History & Civilization'];
+export function tasteTopics() {
+  const p = profile();
+  const scored = GENRES.filter((g) => g.au) // the non-fiction categories
+    .map((g) => {
+      let w = 0;
+      for (const [name, v] of p.genres) if (g.match.test(name)) w += v.w;
+      return [g, w];
+    })
+    .filter(([, w]) => w > 0)
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, 3)
+    .map(([g]) => g);
+  return scored.length ? scored : GENRES.filter((g) => DEFAULT_TOPICS.includes(g.name));
+}
+const topicNames = () =>
+  tasteTopics()
+    .map((g) => g.name.split(/ & |, /)[0])
+    .join(', ');
+// Best sellers in your topics, merged in rank order (1st of each, then 2nd of each…).
+export async function topicPool() {
+  const pools = await Promise.all(tasteTopics().map((g) => audible.pool(g.au || g.name).catch(() => [])));
+  const out = [];
+  const seen = new Set();
+  for (let i = 0; i < 150; i++)
+    for (const p of pools) {
+      const b = p[i];
+      if (b && !seen.has(b.uid)) seen.add(b.uid) && out.push(b);
+    }
+  return nonFiction(out);
+}
+export async function recommendedForYou() {
+  const r = await picksForYou().catch(() => []);
+  const noRank = ({ rank, ...b }) => b;
+  const picks = nonFiction(r.length ? rankForYou(notOwned(r)) : []);
+  if (picks.length >= 6) return picks.slice(0, 24).map(noRank);
+  // Not enough yet: well-rated best sellers in your topics.
+  const extra = rankForYou(notOwned(await topicPool())).filter((b) => !picks.some((x) => x.uid === b.uid));
+  return [...picks, ...extra].slice(0, 24).map(noRank);
+}
+async function newReleases() {
+  const now = Date.now();
+  const all = notOwned(await topicPool()).filter((b) => b.released && b.released <= now);
+  let fresh = all.filter((b) => b.released >= now - 120 * 864e5);
+  if (fresh.length < 8) fresh = all.filter((b) => b.released >= now - 365 * 864e5);
+  return fresh
+    .sort((a, b) => b.released - a.released)
+    .slice(0, 24)
+    .map(({ rank, ...b }) => b);
+}
+async function topThisMonth() {
+  const r = await topicPool();
+  return r.slice(0, 20).map((b, i) => ({ ...b, rank: i + 1 }));
+}
+
+/** Explore categories: colourful tiles, two rows that scroll sideways. */
+function CategoryTiles() {
+  const list = [...(enabled('hi') ? [{ ...HINDI_ALL, name: 'हिंदी', hindi: true }] : []), ...GENRES];
+  return (
+    <section class="cat-section">
+      <div class="row-head">
+        <h2>Explore categories</h2>
+      </div>
+      <div class="cat-grid">
+        {list.map((g) => (
+          <button class="cat-tile" style={{ '--h': g.hue }} lang={g.hindi ? 'hi' : undefined} onClick={() => nav.push('browse', { genre: g.hindi ? HINDI_ALL : g })}>
+            <span>{g.name}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function heroSources() {
@@ -279,13 +362,18 @@ function Hero() {
 /** Date line under the greeting, e.g. "Friday, 26 September". */
 const today = () => new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
+// "Audiobooks in your folders / cloud" rows: audiobooks only (ebooks are in Library → Ebooks).
+const audioOnly = (load) => () => load().then((list) => (list || []).filter((b) => b.kind !== 'text'));
+
 function ContinueRow() {
   const prog = useStore(progress);
   const items = useMemo(
     () =>
       Object.entries(prog)
-        .filter(([uid, p]) => !p.finished && p.book && !/^(lbl?|sum):/.test(uid))
+        .filter(([uid, p]) => !p.finished && !p.hidden && p.book && !/^(lbl?|sum):/.test(uid))
         .sort((a, b) => b[1].updatedAt - a[1].updatedAt)
+        // One card per book: the copy (or format) you used last.
+        .filter(([, p], i, all) => !all.slice(0, i).some(([, q]) => sameWork(q.book, p.book)))
         .slice(0, 12),
     [prog]
   );
@@ -299,40 +387,66 @@ function ContinueRow() {
     return () => clearTimeout(t);
   }, [topUid]);
   if (!items.length) return null;
+  const open = (p) => {
+    if (p.kind === 'text') return nav.push('reader', { book: p.book });
+    nav.openOverlay('player');
+    player.openAndPlay(p.book, getDetails);
+  };
+  const left = (p) => (p.kind === 'text' ? 'Reading' : p.total ? `${fmtDuration(p.total - p.global)} left` : 'Listening');
+  // ✕: off the Continue row (every copy of that book), its place kept for later.
+  const hide = (e, p) => {
+    e.stopPropagation();
+    hideFromContinue(Object.entries(prog).filter(([, q]) => q.book && sameWork(q.book, p.book)).map(([u]) => u));
+    toast('Removed from Continue — your place is kept');
+  };
+  const Hide = ({ p }) => (
+    <span class="continue-hide" role="button" aria-label={`Remove ${p.book.title} from Continue`} onClick={(e) => hide(e, p)}>
+      <Icon name="close" size={14} />
+    </span>
+  );
+  const [[, top], ...rest] = items;
   return (
-    <section class="row">
-      <header class="row-head">
-        <div>
-          <h2>
-            <Icon name="headphones" size={18} /> Continue
-          </h2>
-          <p>Pick up where you left off</p>
+    <section class="continue-section">
+      {/* The book you were last on, big; the others in a row below. */}
+      <button class="continue-big" onClick={() => open(top)}>
+        {top.book.cover && <div class="continue-big-bg" style={{ backgroundImage: `url("${top.book.cover}")` }} />}
+        <Cover book={top.book} eager />
+        <div class="continue-big-text">
+          <em>{top.kind === 'text' ? 'Continue reading' : 'Continue listening'}</em>
+          <b>{top.book.title}</b>
+          {top.book.author && <small>{top.book.author}</small>}
+          <div class="progress-bar">
+            <div style={{ width: Math.round((top.percent || 0) * 100) + '%' }} />
+          </div>
+          <small>
+            {Math.round((top.percent || 0) * 100)}% · {left(top)}
+          </small>
         </div>
-      </header>
-      <div class="row-scroll continue">
-        {items.map(([uid, p]) => (
-          <button
-            class="continue-card"
-            onClick={async () => {
-              if (p.kind === 'text') return nav.push('reader', { book: p.book });
-              nav.openOverlay('player');
-              player.openAndPlay(p.book, getDetails);
-            }}
-          >
-            <Cover book={p.book} />
-            <div class="continue-meta">
-              <b>{p.book.title}</b>
-              <span>{p.kind === 'text' ? 'Reading' : p.total ? `${fmtDuration(p.total - p.global)} left` : 'Listening'}</span>
-              <div class="progress-bar">
-                <div style={{ width: Math.round((p.percent || 0) * 100) + '%' }} />
+        <span class="continue-big-play">
+          <Icon name={top.kind === 'text' ? 'book' : 'play'} size={24} />
+        </span>
+        <Hide p={top} />
+      </button>
+      {rest.length > 0 && (
+        <div class="row-scroll continue">
+          {rest.map(([uid, p]) => (
+            <button class="continue-card" onClick={() => open(p)}>
+              <Cover book={p.book} />
+              <div class="continue-meta">
+                <b>{p.book.title}</b>
+                <span>{left(p)}</span>
+                <div class="progress-bar">
+                  <div style={{ width: Math.round((p.percent || 0) * 100) + '%' }} />
+                </div>
               </div>
-            </div>
-            <span class="continue-play">
-              <Icon name={p.kind === 'text' ? 'book' : 'play'} size={16} />
-            </span>
-          </button>
-        ))}
-      </div>
+              <span class="continue-play">
+                <Icon name={p.kind === 'text' ? 'book' : 'play'} size={16} />
+              </span>
+              <Hide p={p} />
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -398,6 +512,7 @@ export function GenreChips() {
 
 export function Home() {
   const st = useStore(settings);
+  const acct = useStore(account);
   const addonList = useStore(addons);
   const absCfg = useStore(abs);
   const deb = useStore(debrid);
@@ -405,6 +520,7 @@ export function Home() {
   const hcCfg = useStore(hardcover);
   const grData = useStore(goodreads);
   const [addonRows, setAddonRows] = useState([]);
+  const [editing, setEditing] = useState(false);
   useEffect(() => {
     if (!enabled('addon')) return setAddonRows([]);
     addonSrc.catalogRows().then(setAddonRows).catch(() => setAddonRows([]));
@@ -428,9 +544,9 @@ export function Home() {
           <Row title="Recently added" subtitle="Audiobookshelf" icon="server" cacheKey="absRecent" load={absSrc.recent} deps={[absCfg.token, absCfg.libraryId]} onMore={() => nav.push('shelf', { title: 'Audiobookshelf', subtitle: 'Your whole library', load: absSrc.all })} showErrors emptyText={absSrc.emptyHint} />
         </>
       ),
-    loc: localSrc.connected() && enabled('loc') && <Row title="On this phone" subtitle="Audiobooks in your folders" icon="headphones" cacheKey="loc" load={localSrc.library} deps={[localCfg.scannedAt]} onMore={() => nav.push('shelf', { title: 'On this phone', subtitle: 'Audiobooks in your folders', load: localSrc.library })} emptyText="No audiobooks found in your folder." />,
-    tb: cloud.tbConnected() && enabled('tb') && <Row title="Your TorBox" subtitle="Audiobooks in your cloud" icon="download" cacheKey="tb" load={cloud.torboxLibrary} deps={[deb.torbox]} onMore={() => nav.push('shelf', { title: 'Your TorBox', subtitle: 'Audiobooks in your TorBox cloud', load: cloud.torboxLibrary })} showErrors emptyText="No audiobooks in your TorBox yet." />,
-    rd: cloud.rdConnected() && enabled('rd') && <Row title="Your Real-Debrid" subtitle="Audiobooks in your cloud" icon="download" cacheKey="rd" load={cloud.realdebridLibrary} deps={[deb.realdebrid]} onMore={() => nav.push('shelf', { title: 'Your Real-Debrid', subtitle: 'Audiobooks in your Real-Debrid cloud', load: cloud.realdebridLibrary })} showErrors emptyText="No audiobooks in your Real-Debrid yet." />,
+    loc: localSrc.connected() && enabled('loc') && <Row title="On this phone" subtitle="Audiobooks in your folders" icon="headphones" cacheKey="loc" load={audioOnly(localSrc.library)} deps={[localCfg.scannedAt]} onMore={() => nav.push('shelf', { title: 'On this phone', subtitle: 'Audiobooks in your folders', load: audioOnly(localSrc.library) })} emptyText="No audiobooks found in your folder." />,
+    tb: cloud.tbConnected() && enabled('tb') && <Row title="Your TorBox" subtitle="Audiobooks in your cloud" icon="download" cacheKey="tb" load={audioOnly(cloud.torboxLibrary)} deps={[deb.torbox]} onMore={() => nav.push('shelf', { title: 'Your TorBox', subtitle: 'Audiobooks in your TorBox cloud', load: audioOnly(cloud.torboxLibrary) })} showErrors emptyText="No audiobooks in your TorBox yet." />,
+    rd: cloud.rdConnected() && enabled('rd') && <Row title="Your Real-Debrid" subtitle="Audiobooks in your cloud" icon="download" cacheKey="rd" load={audioOnly(cloud.realdebridLibrary)} deps={[deb.realdebrid]} onMore={() => nav.push('shelf', { title: 'Your Real-Debrid', subtitle: 'Audiobooks in your Real-Debrid cloud', load: audioOnly(cloud.realdebridLibrary) })} showErrors emptyText="No audiobooks in your Real-Debrid yet." />,
     hc: hc.connected() && enabled('hc') && (
         <>
           <Row title="Currently reading" subtitle="Hardcover" icon="book" load={() => hc.shelf(hc.STATUS.reading)} deps={[hcCfg.token]} onMore={() => nav.push('shelf', { title: 'Currently reading', subtitle: 'Hardcover', load: () => hc.shelf(hc.STATUS.reading) })} showErrors emptyText="Nothing on your Hardcover Currently Reading shelf." />
@@ -458,6 +574,7 @@ export function Home() {
         </>
       ),
   };
+  const me = firstName(st.myName, acct);
   return (
     <div class="screen home">
       <header class="home-top">
@@ -474,25 +591,135 @@ export function Home() {
             <path d="M170 300 h26 l14 -34 l20 70 l22 -96 l22 112 l18 -52 h30 l14 22 h24" fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           <div class="home-hello">
-            <b>{greeting()}</b>
-            <small>{today()}</small>
+            {me ? (
+              <>
+                <small>{greeting()},</small>
+                <b>{me}</b>
+              </>
+            ) : (
+              <>
+                <b>{greeting()}</b>
+                <small>{today()}</small>
+              </>
+            )}
           </div>
         </div>
-        <button class="icon-btn glass" onClick={() => nav.tab('discover')} aria-label="Search">
-          <Icon name="search" />
-        </button>
+        <div class="home-top-actions">
+          <button class="icon-btn glass drive-btn" onClick={() => openDrive()} aria-label="Driving mode">
+            <Icon name="car" />
+          </button>
+          <SceneButton />
+          <AskButton glass />
+          <button class="icon-btn glass" onClick={() => nav.tab('discover')} aria-label="Search">
+            <Icon name="search" />
+          </button>
+        </div>
       </header>
 
-      <Hero />
-
-      <WaitingRow />
-      <ContinueRow />
-      <GenreChips />
-
-      {sourceOrder().map((k) => (
-        <Fragment key={k}>{blocks[k]}</Fragment>
-      ))}
+      {homeOrder(st).map((id) => {
+        if (homeHidden(st).includes(id)) return null;
+        switch (id) {
+          case 'hero':
+            return <Hero key={id} />;
+          case 'continue':
+            return (
+              <Fragment key={id}>
+                <ContinueRow />
+                <WaitingRow />
+              </Fragment>
+            );
+          case 'rec':
+            return <Row key={id} title="Recommended for you" subtitle="Non-fiction from your listening and ratings" icon="sparkle" cacheKey="homeRec" shuffle rec load={recommendedForYou} deps={[]} />;
+          case 'new':
+            return <Row key={id} title="New releases" subtitle={`New in ${topicNames()}`} icon="flame" cacheKey="homeNew" shuffle rec load={newReleases} deps={[]} />;
+          case 'top':
+            return <Row key={id} title="Top titles this month" subtitle={`Best sellers in ${topicNames()}`} icon="star" cacheKey="homeTop" shuffle load={topThisMonth} deps={[]} />;
+          case 'cats':
+            return <CategoryTiles key={id} />;
+          case 'sources':
+            return (
+              <Fragment key={id}>
+                {sourceOrder().map((k) => (
+                  <Fragment key={k}>{blocks[k]}</Fragment>
+                ))}
+              </Fragment>
+            );
+          default:
+            return null;
+        }
+      })}
+      <button class="btn ghost-wide home-customise" onClick={() => setEditing(true)}>
+        <Icon name="grid" size={16} /> Customise Home
+      </button>
+      {editing && <HomeEditor onClose={() => setEditing(false)} />}
       <div class="footer-space" />
+    </div>
+  );
+}
+
+// ---- Customise Home: order and hide its sections (saved with your settings) ----
+const HOME_SECTIONS = [
+  ['hero', 'Banner', 'Picked for you, top rated, your server & cloud'],
+  ['continue', 'Continue', 'What you’re listening to and reading'],
+  ['rec', 'Recommended for you', 'From your listening and ratings'],
+  ['new', 'New releases', 'In your topics'],
+  ['top', 'Top titles this month', 'Best sellers in your topics'],
+  ['cats', 'Explore categories', 'Genre tiles'],
+  ['sources', 'Your services', 'Audiobookshelf, phone, TorBox, Real-Debrid, Hardcover… (their order: Settings → Sources)'],
+];
+const homeOrder = (st) => {
+  const saved = (st.homeOrder || []).filter((id) => HOME_SECTIONS.some(([k]) => k === id));
+  return [...saved, ...HOME_SECTIONS.map(([k]) => k).filter((k) => !saved.includes(k))];
+};
+const homeHidden = (st) => st.homeHidden || [];
+
+function HomeEditor({ onClose }) {
+  useBackClose(true, onClose);
+  const st = useStore(settings);
+  const order = homeOrder(st);
+  const hidden = homeHidden(st);
+  const move = (i, d) => {
+    const next = [...order];
+    const j = i + d;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    settings.patch({ homeOrder: next });
+  };
+  const toggle = (id) => settings.patch({ homeHidden: hidden.includes(id) ? hidden.filter((x) => x !== id) : [...hidden, id] });
+  return (
+    <div class="sheet-backdrop" onClick={onClose}>
+      <div class="sheet home-edit" onClick={(e) => e.stopPropagation()}>
+        <div class="home-edit-head">
+          <h3>Customise Home</h3>
+          <button class="link-btn" onClick={onClose}>
+            Done
+          </button>
+        </div>
+        {order.map((id, i) => {
+          const [, label, sub] = HOME_SECTIONS.find(([k]) => k === id);
+          const on = !hidden.includes(id);
+          return (
+            <div class={'home-edit-row' + (on ? '' : ' off')}>
+              <div class="home-edit-move">
+                <button class="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${label} up`}>
+                  <Icon name="up" size={16} />
+                </button>
+                <button class="icon-btn" disabled={i === order.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${label} down`}>
+                  <Icon name="down" size={16} />
+                </button>
+              </div>
+              <div class="home-edit-text">
+                <b>{label}</b>
+                <small>{sub}</small>
+              </div>
+              <input type="checkbox" class="switch" checked={on} onChange={() => toggle(id)} aria-label={`Show ${label}`} />
+            </div>
+          );
+        })}
+        <button class="link-btn" onClick={() => settings.patch({ homeOrder: [], homeHidden: [] })}>
+          Reset to the usual layout
+        </button>
+      </div>
     </div>
   );
 }

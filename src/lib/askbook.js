@@ -3,8 +3,9 @@
 // "ask about what I'm hearing" using where you are in the book right now.
 // Answers come from what the AI knows about the book plus its description —
 // it doesn't have the audio or text itself, and is told to say so when unsure.
+import { heardText } from './transcript.js';
 import { askAi, parseJson } from './ai.js';
-import { persisted } from './store.js';
+import { persisted, progress, settings } from './store.js';
 import { mainTitle } from './match.js';
 import { tasteProfile } from './bookseller.js';
 import { fmtTime } from './format.js';
@@ -52,11 +53,11 @@ export const MODES = [
 export const STARTERS = ['What is this book about?', 'What are the 5 most important ideas?', 'Is this book worth my time?', 'Give me a practical summary'];
 // While listening: one tap asks about the part you're hearing (the player's companion row).
 export const COMPANION = [
-  ['explain', '🧠', 'Explain', 'Explain what is being said at this point in simple words, with one real-life example.'],
-  ['challenge', '🔍', 'Challenge', "Challenge what the author argues around this point: the claim, the evidence given, the strongest support, the strongest criticism, and what remains uncertain. Mention related research or books."],
-  ['rabbit', '🐇', 'Rabbit hole', 'Take me down a short rabbit hole (about 2 minutes to listen, under 250 words) on the most interesting idea at this point: what is actually known, myths vs evidence, key thinkers, and 2–3 related books or documentaries.'],
-  ['related', '📚', 'Related', 'Which other books (especially ones in my library) discuss the idea at this point, and how do they agree or disagree?'],
-  ['recall', '🎯', 'Recall', 'Help me remember what I have heard so far. Give 5 short recall questions (mix facts, ideas and one "why" question), each on its own line. Then a line "Answers:" with a one-line answer to each. Then "In short:" with the 3–4 key points to keep. Use only what was actually said so far when a transcript is given; do not reveal anything later.'],
+  ['explain', 'bulb', 'Explain', 'Explain what is being said at this point in simple words, with one real-life example.'],
+  ['challenge', 'scale', 'Challenge', "Challenge what the author argues around this point: the claim, the evidence given, the strongest support, the strongest criticism, and what remains uncertain. Mention related research or books."],
+  ['rabbit', 'compass', 'Rabbit hole', 'Take me down a short rabbit hole (about 2 minutes to listen, under 250 words) on the most interesting idea at this point: what is actually known, myths vs evidence, key thinkers, and 2–3 related books or documentaries.'],
+  ['related', 'library', 'Related', 'Which other books (especially ones in my library) discuss the idea at this point, and how do they agree or disagree?'],
+  ['recall', 'target', 'Recall', 'Help me remember what I have heard so far. Give 5 short recall questions (mix facts, ideas and one "why" question), each on its own line. Then a line "Answers:" with a one-line answer to each. Then "In short:" with the 3–4 key points to keep. Use only what was actually said so far when a transcript is given; do not reveal anything later.'],
 ];
 
 // "Remember this": ideas you save while listening, kept as cards and searchable by Ask my books.
@@ -108,7 +109,9 @@ export function hearing(book) {
   if (!book || !st.book || st.book.uid !== book.uid) return null;
   const g = player.globalTime();
   const ch = player.chapters().find((c) => g >= c.start && g < (c.end || Infinity));
-  return { chapter: ch?.title || '', time: g, label: `${ch?.title ? `${ch.title}, ` : ''}${fmtTime(g)}` };
+  // What was just said (from the live transcript, when it ran): the last few minutes.
+  const heard = heardText(st.book.uid, st.index, st.time + 2, 3500).replace(/^…/, '').trim();
+  return { chapter: ch?.title || '', time: g, label: `${ch?.title ? `${ch.title}, ` : ''}${fmtTime(g)}`, heard };
 }
 
 function savedIdeas() {
@@ -132,13 +135,35 @@ Use what you know about this book and the description below. You don't have the 
 ${desc ? `Description: """${desc}"""\n` : ''}${genres.length ? `Genres: ${genres.slice(0, 6).join(', ')}\n` : ''}`;
 }
 
-const STYLE = 'Reply in the language the reader used (English, Hindi or Hinglish). Answer in clear, warm, plain language. Use short paragraphs, and bullet points ("- ") or numbered lists where they help. Use **bold** for key terms. Keep it under about 250 words unless the question asks for more.';
+/**
+ * No spoilers (Settings → AI, on by default): answers stay within what you've heard
+ * or read so far. Finished books have no limit.
+ */
+export const noSpoilers = () => settings.get().aiNoSpoilers !== false;
+export function spoilerLimit(book) {
+  if (!book || !noSpoilers()) return null;
+  const uid = book.uid || '';
+  const p = progress.get()[uid] || progress.get()[`${uid.replace(/#ebook$/, '')}#ebook`];
+  if (p?.finished) return null;
+  const pct = Math.round((p?.percent || 0) * 100);
+  const where = hearing(book);
+  return { pct, label: where?.chapter ? `${where.chapter} (about ${pct}% through)` : `about ${pct}% through` };
+}
+export function spoilerRule(book) {
+  const lim = spoilerLimit(book);
+  if (!lim) return '';
+  return lim.pct <= 1
+    ? 'NO SPOILERS: the reader has only just started this book. Do not reveal anything beyond its premise (the description): no plot developments, twists, deaths, endings or later revelations. If the question needs them, say it would be a spoiler and offer to tell them if they ask again.'
+    : `NO SPOILERS: the reader has reached ${lim.label}. Do not reveal anything that happens after this point: no later plot developments, twists, deaths, endings or later revelations, and don't hint at them. If the question needs later events, say it would be a spoiler and offer to tell them if they ask again.`;
+}
+
+const STYLE = 'When something you say comes from outside the book itself (general knowledge, other sources, your interpretation), say so briefly, e.g. "Outside the book: …". Reply in the language the reader used (English, Hindi or Hinglish). Answer in clear, warm, plain language. Use short paragraphs, and bullet points ("- ") or numbered lists where they help. Use **bold** for key terms. Keep it under about 250 words unless the question asks for more.';
 
 /**
  * Ask a question. `msgs` is the conversation so far ({ role: 'user'|'ai', text }).
  * Returns the answer text and saves the thread.
  */
-export async function ask(book, question, { msgs = [], description = '', genres = [], mode = '', where = null, drive = false } = {}) {
+export async function ask(book, question, { msgs = [], description = '', genres = [], mode = '', where = null, drive = false, voice = false } = {}) {
   const history = msgs
     .slice(-6)
     .map((m) => `${m.role === 'user' ? 'Reader' : 'You'}: ${m.quiz ? '(a quiz)' : m.text}`)
@@ -148,8 +173,14 @@ export async function ask(book, question, { msgs = [], description = '', genres 
     const taste = tasteProfile(40);
     if (taste.length) extra.push(`Books this reader owns, has read or is reading:\n${taste.map((t) => '- ' + t).join('\n')}\nConnect to these specifically where it makes sense.`);
   }
+  const spoil = spoilerRule(book);
+  if (spoil) extra.push(spoil);
   if (where && drive) extra.push(`The reader is listening right now at ${where.label}. If the question is about what they're hearing, answer about that part of the book as best you know it.`);
   else if (where) extra.push(`The reader is listening right now at ${where.label}. Answer about the part of the book around this point as best you know it; say if you can't be sure exactly what is said there.`);
+  if (where?.heard)
+    extra.push(`What the listener just heard (speech-recognised, a few words may be wrong; the last line is where they are now):\n"""${where.heard}"""\nAnswer from this passage first.`);
+  // Spoken questions are recognised by the phone and can be misheard ("items" for "atoms").
+  if (voice || drive) extra.push('The question was spoken and recognised by the phone, so a word may be misheard: if it makes little sense, answer what they most likely meant (especially a word from the passage above) and say so briefly.');
   // Driving: the answer is only heard, so keep it short and easy to follow by ear.
   if (drive) extra.push('The reader is driving and will only hear your answer read aloud: reply in 2–5 short spoken sentences (under 90 words), no lists, headings or symbols.');
   const prompt = `${context(book, { description, genres })}

@@ -57,11 +57,6 @@ public class InkwellPlayerPlugin extends Plugin {
     private ExoPlayer player;
     private MediaSession session;
     private boolean ticking = false;
-    // The book playing and the part its first item is, so the spot is kept here too:
-    // Android can close the app while the book plays on in the background.
-    private String posKey = "";
-    private int posBase = 0;
-    private long posSavedAt = 0;
 
     private final Runnable tick = new Runnable() {
         @Override
@@ -71,7 +66,6 @@ public class InkwellPlayerPlugin extends Plugin {
                 return;
             }
             emitProgress();
-            savePosition(false);
             if (player.isPlaying()) {
                 main.postDelayed(this, 500);
             } else {
@@ -294,22 +288,6 @@ public class InkwellPlayerPlugin extends Plugin {
 
     private void emitState() {
         notifyListeners("state", snapshot());
-        savePosition(true);
-    }
-
-    private void savePosition(boolean now) {
-        if (player == null || posKey.isEmpty() || player.getMediaItemCount() == 0) return;
-        long t = System.currentTimeMillis();
-        if (!now && t - posSavedAt < 5000) return;
-        posSavedAt = t;
-        getContext()
-            .getSharedPreferences("inkwell_player", Context.MODE_PRIVATE)
-            .edit()
-            .putString("key", posKey)
-            .putInt("track", posBase + player.getCurrentMediaItemIndex())
-            .putLong("ms", Math.max(0, player.getCurrentPosition()))
-            .putLong("at", t)
-            .apply();
     }
 
     private void emitProgress() {
@@ -360,8 +338,6 @@ public class InkwellPlayerPlugin extends Plugin {
 
             MediaItem item = new MediaItem.Builder().setUri(url).setMediaMetadata(meta.build()).build();
             double position = c.getDouble("position", 0.0);
-            posKey = c.getString("key", "");
-            posBase = c.getInt("track", 0);
             player.setMediaItem(item, (long) (position * 1000));
             player.setPlaybackParameters(new PlaybackParameters(c.getFloat("rate", 1f)));
             player.setVolume(1f);
@@ -498,18 +474,6 @@ public class InkwellPlayerPlugin extends Plugin {
             emitState();
             c.resolve();
         });
-    }
-
-    /** Where the last book was when the phone's player last saved it (seconds). */
-    @PluginMethod
-    public void lastPosition(PluginCall call) {
-        android.content.SharedPreferences p = getContext().getSharedPreferences("inkwell_player", Context.MODE_PRIVATE);
-        JSObject o = new JSObject();
-        o.put("key", p.getString("key", ""));
-        o.put("track", p.getInt("track", 0));
-        o.put("position", p.getLong("ms", 0) / 1000.0);
-        o.put("at", p.getLong("at", 0));
-        call.resolve(o);
     }
 
     @PluginMethod

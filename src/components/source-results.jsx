@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
 import { searchSources, sourceAddons, fmtSize } from '../sources/sourceaddons.js';
@@ -27,10 +27,42 @@ const trackerWords = (name, book) => {
   return mainTitle(parts.slice(0, 2).join(' ')).split(/\s+/).slice(0, 8).join(' ');
 };
 import { openExternal } from '../sources/summaries.js';
-import { directEbookFile, directReaderBook } from '../lib/epub.js';
+import { directEbookFile, directReaderBook, loadCloudEbook, savedEbooks, cloudReaderBook } from '../lib/epub.js';
 import { shareEbook } from '../lib/kindle.js';
 
 const LABEL = { torbox: 'TorBox', realdebrid: 'Real-Debrid' };
+
+// ---- what's ready right now, for the book page's "Available" row --------------
+// Results that play at once (cached in your debrid, or ready in your account) and
+// direct ebook links that open in the reader, per book.
+let quickNow = {};
+const quickSubs = new Set();
+function publishQuick(uid, value) {
+  quickNow = { ...quickNow, [uid]: value };
+  quickSubs.forEach((f) => f());
+}
+export function useQuickSources(uid) {
+  const [v, setV] = useState(quickNow[uid] || null);
+  useEffect(() => {
+    const f = () => setV(quickNow[uid] || null);
+    quickSubs.add(f);
+    f();
+    return () => quickSubs.delete(f);
+  }, [uid]);
+  return v;
+}
+
+/** Play a source result straight away (from the Available row). */
+export async function quickPlay(r, via, book, onStatus) {
+  const stub = await cloud.prepareMagnet(via, r, (text) => onStatus?.(text));
+  const details = await getDetails({ ...stub, title: book?.title || stub.title, author: book?.author || r.author || stub.author, cover: book?.cover || stub.cover });
+  nav.openOverlay('player');
+  player.playBook(details);
+}
+export const readerBookFor = (r, book) => {
+  const f = directEbookFile(r);
+  return f ? directReaderBook(r, f, book) : null;
+};
 const SHORT = { torbox: 'TorBox', realdebrid: 'RD' };
 
 /** Results from installed source addons, with Add-to-debrid and Play actions. */
@@ -60,25 +92,35 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   // Every connected service, preferred one first.
   const providers = [provider, cloud.tbConnected() && 'torbox', cloud.rdConnected() && 'realdebrid'].filter((p, i, a) => p && a.indexOf(p) === i);
 
+  const lastQuery = useRef(query);
+  const mounted = useRef(true);
+  useEffect(() => () => (mounted.current = false), []);
+  const search = (only = null) => {
+    setPending(true);
+    const q = lastQuery.current;
+    return searchSources(
+      { title, author, query },
+      (name, results, error, slow) => {
+        if (mounted.current && lastQuery.current === q) setGroups((g) => ({ ...g, [name]: { results, error, slow } }));
+      },
+      only
+    ).then(() => mounted.current && lastQuery.current === q && setPending(false));
+  };
   useEffect(() => {
     if (!count || !(title || query)) return;
-    let alive = true;
-    setGroups({});
+    // A refined title (details loaded) keeps what's already shown until new results arrive;
+    // a new search (typed query) starts clean.
+    if (lastQuery.current !== query) setGroups({});
+    lastQuery.current = query;
     setPending(true);
     // Wait until typing settles so half-typed words don't use up the addon's search allowance.
     const t = setTimeout(() => {
-      searchSources({ title, author, query }, (name, results, error) => {
-        if (alive) setGroups((g) => ({ ...g, [name]: { results, error } }));
-      }).then(() => alive && setPending(false));
+      search();
       refreshAccount();
     }, query && !title ? 900 : 0);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
+    return () => clearTimeout(t);
   }, [title, author, query, count]);
 
-  if (!count) return null;
   // Your tracker (Settings → Tracker): open a search for this book there.
   const trackerSite = qb.available && qb.tracker.get().url ? qb.trackerName() : '';
   const trackerFilter = trackerSite ? qb.trackerFilterLabel() : '';
@@ -95,10 +137,38 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   const visible = showDead ? all : all.filter(alive);
   const hiddenDead = all.length - all.filter(alive).length;
   // Torrents (audiobooks) first; plain download links (mostly ebooks) fold away under a button.
-  const isLink = (g) => !g.items.some((r) => r.magnet || r.hash);
+  // Only real ebooks fold away; an audiobook page link (no magnet) stays in the main list with an Open button.
+  const ebookLink = (r) => !(r.magnet || r.hash) && !!(directEbookFile(r) || qb.isEbookName(`${r.title} ${r.format || ''} ${r.link || ''}`));
+  const isLink = (g) => g.items.every(ebookLink);
   const allGroups = groupResults(visible);
   const linkGroups = allGroups.filter(isLink);
   const shownGroups = allGroups.filter((g) => !isLink(g));
+  // The heading counts what's listed under it (audiobook results), not the folded-away links.
+  const audioCount = shownGroups.length;
+
+  // Tell the Available row what plays at once and which ebook links open in the reader.
+  const readyVia = (r) =>
+    providers.find((p) => r.cache?.[p] || (p === 'realdebrid' && r.cache?.any && !r.cache?.torbox) || account.get(r.hash)?.ready);
+  const instant = shownGroups
+    .map((g) => g.items[0])
+    .filter((r) => (r.magnet || r.hash) && readyVia(r))
+    .map((r) => ({ r, via: readyVia(r) }));
+  const readable = linkGroups
+    .flatMap((g) => g.items)
+    .filter((r) => /^(EPUB|PDF)$/.test(directEbookFile(r)?.format || ''));
+  // Audiobooks with seeders that aren't ready yet: your debrid service fetches them first.
+  const fetchable = provider
+    ? shownGroups
+        .map((g) => g.items[0])
+        .filter((r) => (r.magnet || r.hash) && !readyVia(r) && r.seeders > 0 && !qb.isEbookName(`${r.title} ${r.format || ''}`))
+        .map((r) => ({ r, via: provider }))
+    : [];
+  const quickKey = `${instant.map((x) => x.r.key + x.via).join()}|${readable.map((r) => r.key).join()}|${fetchable.map((x) => x.r.key).join()}`;
+  useEffect(() => {
+    if (book?.uid) publishQuick(book.uid, { instant: instant.slice(0, 3), readable: readable.slice(0, 2), fetch: instant.length ? [] : fetchable.slice(0, 2), pending });
+  }, [quickKey, pending, book?.uid]);
+
+  if (!count) return null;
 
   return (
     <section class="source-results">
@@ -106,7 +176,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
         <div class="src-head">
           {heading ? (
             <h3 class="section-label">
-              <Icon name="puzzle" size={16} /> Sources {total > 0 && <small>{total}</small>}
+              <Icon name="puzzle" size={16} /> Sources {audioCount > 0 && <small>{audioCount}</small>}
             </h3>
           ) : (
             <span />
@@ -133,14 +203,35 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
           <span class="spinner small" /> Searching {sourceAddons().map((a) => a.manifest.name).join(', ')}…
         </p>
       )}
+      {entries.some(([, g]) => g.slow) && (
+        <p class="src-errors">
+          <span class="spinner small" />{' '}
+          {entries
+            .filter(([, g]) => g.slow)
+            .map(([name]) => name)
+            .join(', ')}{' '}
+          slow to answer — still trying…
+        </p>
+      )}
       {entries.some(([, g]) => g.error) && (
         <p class="src-errors">
           {entries
             .filter(([, g]) => g.error)
             .map(([name, g]) => `${name} ${friendlyError(g.error)}`)
-            .join(' · ')}
+            .join(' · ')}{' '}
+          <button
+            class="link-btn src-retry"
+            onClick={() => {
+              const failed = entries.filter(([, g]) => g.error).map(([name]) => name);
+              setGroups((g) => Object.fromEntries(Object.entries(g).map(([k, v]) => [k, failed.includes(k) ? { results: [], error: null } : v])));
+              search(failed);
+            }}
+          >
+            Try again
+          </button>
         </p>
       )}
+      {!pending && total > 0 && !shownGroups.length && linkGroups.length > 0 && <p class="muted pad-s">No audiobook results — only ebooks (below).</p>}
       {!pending && !total && entries.length > 0 && <p class="muted pad-s">{looseCount ? 'No results that are clearly this book.' : 'No source results.'}</p>}
       <div class="src-list">
         {shownGroups.map((g) =>
@@ -156,7 +247,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
           <button class={'links-toggle' + (showLinks ? ' open' : '')} onClick={() => setShowLinks(!showLinks)}>
             <Icon name="book" size={16} />
             <span>
-              Ebooks & download links <small>{linkGroups.length}</small>
+              Ebooks <small>{linkGroups.length}</small>
             </span>
             <Icon name="down" size={16} />
           </button>
@@ -234,6 +325,35 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
     } finally {
       setBusy(null);
       setStatus(null);
+    }
+  };
+
+  // An ebook torrent: fetch it through TorBox / Real-Debrid and open it in the reader
+  // (or keep it on the phone with Save).
+  const readTorrent = async (via, keep = false) => {
+    if (!need()) return;
+    setBusy(keep ? 'save' : via === playVia ? 'play' : 'play:' + via);
+    setStatus({ text: readyOn(via) ? `Getting it from your ${LABEL[via]}…` : 'Contacting ' + LABEL[via] + '…', pct: null });
+    try {
+      const stub = await cloud.prepareMagnet(via, r, (text, pct) => setStatus({ text, pct }), { ebook: true });
+      autoSend();
+      const details = await getDetails({ ...stub, title: book?.title || stub.title, author: book?.author || r.author || stub.author, cover: book?.cover || stub.cover });
+      const files = details.ebooks || [];
+      const file = files.find((f) => f.format === 'EPUB') || files.find((f) => f.format === 'PDF');
+      if (!file) throw new Error(files.length ? `Only ${[...new Set(files.map((f) => f.format))].join(' / ')} in this one — the reader opens EPUB and PDF` : 'No ebook files in this one');
+      const rb = cloudReaderBook(details, file);
+      if (keep) {
+        setStatus({ text: 'Saving to this phone…', pct: null });
+        await loadCloudEbook(rb);
+        toast('Saved — Library → Ebooks');
+      } else nav.push('reader', { book: rb });
+      setStatus(null);
+    } catch (e) {
+      setStatus(null);
+      toast(e.pending ? `${e.message} — tap Read again once it's ready` : e.message);
+      onChanged();
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -360,13 +480,32 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
   }, [!!downloading]);
 
   const hasMagnet = !!(r.magnet || r.hash);
+  const ebookTorrent = hasMagnet && qb.isEbookName(`${r.title} ${r.format || ''}`);
   // Direct ebook links (no torrent): EPUB opens in the reader; any ebook can be saved to another app.
   const ebook = hasMagnet ? null : directEbookFile(r);
+  const readable = ebook?.format === 'EPUB' || ebook?.format === 'PDF'; // opens in the app's reader
   const shareDirect = async () => {
     setBusy('share');
     setStatus({ text: 'Downloading the ebook…', pct: null });
     try {
       await shareEbook(ebook, { title: book?.title || r.title });
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setStatus(null);
+      setBusy(null);
+    }
+  };
+  // Save an EPUB / PDF on the phone (read offline any time: Library → Ebooks → Downloaded).
+  const rb = readable ? directReaderBook(r, ebook, book) : null;
+  const kept = useStore(savedEbooks);
+  const saved = !!(rb && kept[rb.uid]);
+  const saveEbook = async () => {
+    setBusy('save-ebook');
+    setStatus({ text: 'Downloading the ebook…', pct: null });
+    try {
+      await loadCloudEbook(rb);
+      toast('Saved on this phone — Library → Ebooks → Downloaded');
     } catch (e) {
       toast(e.message);
     } finally {
@@ -423,14 +562,14 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
         <div class="src-services">
           {providers.map((p) => {
             const a = acc(p);
-            const label = a ? (a.ready ? 'in your account · ready' : `in your account · ${Math.round((a.progress || 0) * 100)}%`) : cachedOn(p) ? 'cached · instant' : 'not cached';
+            const label = a ? (a.ready ? 'in account · ready' : `in account · ${Math.round((a.progress || 0) * 100)}%`) : cachedOn(p) ? 'instant' : 'not cached';
             return (
               <div class={'svc' + (readyOn(p) ? ' ok' : '')}>
-                <b>{LABEL[p]}</b>
+                <b>{SHORT[p]}</b>
                 <span>{label}</span>
                 {!a && (
                   <button class="pill small" disabled={!!busy} onClick={() => add(p)} aria-label={`Add to ${LABEL[p]}`}>
-                    {busy === 'add:' + p ? <span class="spinner small" /> : <Icon name="plus" size={14} />} {SHORT[p]}
+                    {busy === 'add:' + p ? <span class="spinner small" /> : <Icon name="plus" size={14} />}
                   </button>
                 )}
               </div>
@@ -438,10 +577,10 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
           })}
           {home && (
             <div class={'svc' + (sentHome ? ' ok' : '')}>
-              <b>Home server</b>
-              <span>{sentHome ? 'sent to qBittorrent' : 'qBittorrent'}</span>
+              <b>Home</b>
+              <span>{sentHome ? 'sent' : 'qBittorrent'}</span>
               <button class="pill small" disabled={!!busy} onClick={sendHome} aria-label="Send to your home server">
-                {busy === 'home' ? <span class="spinner small" /> : <Icon name={sentHome ? 'check' : 'plus'} size={14} />} Home
+                {busy === 'home' ? <span class="spinner small" /> : <Icon name={sentHome ? 'check' : 'plus'} size={14} />}
               </button>
             </div>
           )}
@@ -461,19 +600,24 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
       <div class="src-actions ready">
         {!hasMagnet && ebook ? (
           <>
-            {ebook.format === 'EPUB' && (
+            {readable && (
               <button class="btn primary" onClick={() => nav.push('reader', { book: directReaderBook(r, ebook, book) })}>
                 <Icon name="book" size={16} /> Read
               </button>
             )}
+            {readable && (
+              <button class="btn secondary play-alt" disabled={!!busy || saved} onClick={saveEbook} aria-label="Save to this phone">
+                {busy === 'save-ebook' ? <span class="spinner" /> : <Icon name={saved ? 'check' : 'download'} size={14} />} {saved ? 'Saved' : 'Save'}
+              </button>
+            )}
             <button
-              class={ebook.format === 'EPUB' ? 'btn secondary play-alt' : 'btn primary'}
+              class={readable ? 'btn secondary play-alt' : 'btn primary'}
               disabled={!!busy}
               onClick={shareDirect}
               aria-label="Download and open in a reader app or Kindle"
             >
-              {busy === 'share' ? <span class="spinner" /> : <Icon name="upload" size={ebook.format === 'EPUB' ? 14 : 16} />}{' '}
-              {ebook.format === 'EPUB' ? 'Kindle' : 'Kindle / open in app'}
+              {busy === 'share' ? <span class="spinner" /> : <Icon name="upload" size={readable ? 14 : 16} />}{' '}
+              {readable ? 'Kindle' : 'Kindle / open in app'}
             </button>
             <a class="btn secondary play-alt src-web" href={r.link} target="_blank" rel="noopener" aria-label="Open in browser">
               <Icon name="external" size={14} />
@@ -485,24 +629,25 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
           </a>
         ) : (
           <>
-            <button class="btn primary" disabled={!!busy} onClick={() => play(playVia)}>
-              {busy === 'play' ? <span class="spinner" /> : <Icon name="play" size={16} />} Play{providers.length > 1 && playVia ? ` · ${LABEL[playVia]}` : ''}
+            <button class="btn primary" disabled={!!busy} onClick={() => (ebookTorrent ? readTorrent(playVia) : play(playVia))}>
+              {busy === 'play' ? <span class="spinner" /> : <Icon name={ebookTorrent ? 'book' : 'play'} size={16} />} {ebookTorrent ? 'Read' : 'Play'}
+              {providers.length > 1 && playVia ? ` · ${LABEL[playVia]}` : ''}
             </button>
             {providers
               .filter((p) => p !== playVia)
               .map((p) => (
-                <button class="btn secondary play-alt" disabled={!!busy} onClick={() => play(p)} aria-label={`Play through ${LABEL[p]}`}>
-                  {busy === 'play:' + p ? <span class="spinner" /> : <Icon name="play" size={14} />} {SHORT[p]}
+                <button class="btn secondary play-alt" disabled={!!busy} onClick={() => (ebookTorrent ? readTorrent(p) : play(p))} aria-label={`${ebookTorrent ? 'Read' : 'Play'} through ${LABEL[p]}`}>
+                  {busy === 'play:' + p ? <span class="spinner" /> : <Icon name={ebookTorrent ? 'book' : 'play'} size={14} />} {SHORT[p]}
                 </button>
               ))}
-            {canDownload && (
-              <button class="btn secondary play-alt" disabled={!!busy} onClick={save} aria-label="Save to this phone">
+            {(canDownload || ebookTorrent) && (
+              <button class="btn secondary play-alt" disabled={!!busy} onClick={() => (ebookTorrent ? readTorrent(playVia, true) : save())} aria-label="Save to this phone">
                 {busy === 'save' ? <span class="spinner" /> : <Icon name="download" size={14} />} Save
               </button>
             )}
             {provider && (
               <button class="btn secondary play-alt" disabled={!!busy} onClick={() => (links ? setLinks(null) : getLinks(playVia))} aria-label="Download links">
-                {busy === 'links' ? <span class="spinner" /> : <Icon name="link" size={14} />} Links
+                {busy === 'links' ? <span class="spinner" /> : <Icon name="link" size={14} />}
               </button>
             )}
           </>
@@ -693,13 +838,20 @@ function SourceFolder({ g, provider, providers, book, account, onChanged }) {
   );
 }
 
+const ago = (t) => {
+  const h = Math.round((Date.now() - t) / 3600e3);
+  return h < 1 ? 'earlier' : h < 48 ? `${h} hour${h === 1 ? '' : 's'} ago` : `${Math.round(h / 24)} days ago`;
+};
 /** A short, plain reason a source gave nothing. */
 function friendlyError(e) {
+  if (e?.older) return `didn't answer — showing what it found ${ago(e.older)}`;
   const m = String(e?.message || e || '');
   if (/resolve host|no address associated|ENOTFOUND|getaddrinfo/i.test(m)) return "couldn't be reached — check the internet connection (a VPN's DNS can cause this)";
   if (/timed? ?out/i.test(m)) return "didn't answer in time";
   if (/failed to fetch|load failed|network/i.test(m)) return "couldn't be reached";
-  if (/too many searches/i.test(m)) return 'is busy — try again in a minute';
+  if (/too many searches/i.test(m) || e?.status === 429) return 'is busy (too many searches) — try again in a minute';
+  if (e?.status === 403 || /cloudflare|attention required|just a moment/i.test(m)) return "blocked the search (its Cloudflare protection) — try again later";
+  if (e?.status >= 500) return `is down right now (server error ${e.status}) — try again later`;
   return m.replace(/^[^:]+:\s*/, '').slice(0, 90);
 }
 

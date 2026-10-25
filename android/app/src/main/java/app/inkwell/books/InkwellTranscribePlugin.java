@@ -49,7 +49,12 @@ public class InkwellTranscribePlugin extends Plugin {
     private static final int SR = 16000;
     private static final String VAD_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx";
 
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    // One thread per job: a job stuck opening a slow stream must not hold up the next one.
+    private final ExecutorService worker = Executors.newCachedThreadPool();
+    private final java.util.concurrent.ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
+    private volatile String runningJob = null;
+    /** Seconds to get from "start" to the first decoded audio before giving up with a clear message. */
+    private static final int START_LIMIT = 45;
     private volatile String currentJob = null;
     private volatile double playPos = 0;
     private OfflineRecognizer recognizer;
@@ -103,10 +108,12 @@ public class InkwellTranscribePlugin extends Plugin {
     public void release(PluginCall call) {
         currentJob = null;
         worker.execute(() -> {
-            if (recognizer != null) {
-                recognizer.release();
-                recognizer = null;
-                loadedModel = null;
+            synchronized (InkwellTranscribePlugin.this) {
+                if (recognizer != null) {
+                    recognizer.release();
+                    recognizer = null;
+                    loadedModel = null;
+                }
             }
             call.resolve();
         });
@@ -137,12 +144,23 @@ public class InkwellTranscribePlugin extends Plugin {
         MediaExtractor ex = new MediaExtractor();
         MediaCodec codec = null;
         Vad vad = null;
+        final String[] phase = {"model"};
+        java.util.concurrent.ScheduledFuture<?> guard = watchdog.schedule(() -> {
+            if (alive(job) && !job.equals(runningJob)) {
+                currentJob = null; // let this attempt go; a retry starts fresh on its own thread
+                status(job, "error", "model".equals(phase[0])
+                    ? "The speech model took too long to load. Close and reopen the app, then try again."
+                    : "Couldn't open this book's audio for the transcript (no answer in " + START_LIMIT + " s). Check the connection, or try another book.");
+            }
+        }, START_LIMIT, java.util.concurrent.TimeUnit.SECONDS);
         try {
-            status(job, "loading", null);
+            status(job, "loading", "model");
             OfflineRecognizer rec = recognizer(model, type, language);
             vad = new Vad(null, vadConfig());
             if (!alive(job)) return;
 
+            phase[0] = "audio";
+            status(job, "loading", "audio");
             if (url.startsWith("http")) ex.setDataSource(url, headers);
             else ex.setDataSource(getContext(), Uri.parse(url), null);
             int track = -1;
@@ -163,6 +181,9 @@ public class InkwellTranscribePlugin extends Plugin {
             codec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME));
             codec.configure(fmt, null, null, 0);
             codec.start();
+            if (!alive(job)) return;
+            runningJob = job;
+            guard.cancel(false);
             status(job, "running", null);
 
             int inRate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE);
@@ -239,6 +260,7 @@ public class InkwellTranscribePlugin extends Plugin {
         } catch (Exception e) {
             if (alive(job)) status(job, "error", e.getMessage() != null ? e.getMessage() : e.toString());
         } finally {
+            guard.cancel(false);
             try {
                 if (codec != null) {
                     codec.stop();
@@ -340,7 +362,7 @@ public class InkwellTranscribePlugin extends Plugin {
 
     // ----------------------------------------------------------------- models
 
-    private VadModelConfig vadConfig() throws Exception {
+    private synchronized VadModelConfig vadConfig() throws Exception {
         File f = new File(modelsDir(), "silero_vad.onnx");
         if (!f.exists() || f.length() < 100000) fetch(VAD_URL, f);
         SileroVadModelConfig s = new SileroVadModelConfig();
@@ -357,7 +379,7 @@ public class InkwellTranscribePlugin extends Plugin {
         return c;
     }
 
-    private OfflineRecognizer recognizer(String model, String type, String language) throws Exception {
+    private synchronized OfflineRecognizer recognizer(String model, String type, String language) throws Exception {
         String key = model + "|" + type + "|" + language;
         if (recognizer != null && key.equals(loadedModel)) return recognizer;
         if (recognizer != null) {

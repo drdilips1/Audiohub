@@ -104,9 +104,9 @@ export function useStoreKey(store, key) {
 }
 
 export const settings = persisted('settings', {
-  mode: 'dark', // dark | light | amoled
-  accent: 'audiohub',
-  palette: 'default', // colour theme (see PALETTES in theme.js)
+  mode: 'system', // system | light | dark | amoled
+  accent: 'brass',
+  palette: 'paperink', // colour theme (see PALETTES in theme.js)
   playerBg: 'cover', // cover | living | plain | photo | wall:<name>
   playerDim: 0.45, // how much the player background is darkened (0–0.8)
   dynamicColor: true,
@@ -118,6 +118,9 @@ export const settings = persisted('settings', {
   readerSize: 19,
   readerTheme: 'night', // night | sepia | paper | amoled
   readerFont: 'serif',
+  readerJustify: true,
+  readerLine: 1.72,
+  readerMargin: 24,
   skipFrontMatter: true,
   kindleEmail: '', // Send to Kindle by e-mail // Listen / Read aloud skip contents, index, copyright pages
   language: 'en',
@@ -185,6 +188,20 @@ export function cleanProgress(all) {
 }
 
 /** Remove a book from the library and its history (Library → Edit). */
+/** Take books off Home's Continue row (the place is kept; listening or reading again brings them back). */
+export function hideFromContinue(uids) {
+  progress.set((all) => {
+    const next = { ...all };
+    for (const u of uids) if (next[u]) next[u] = { ...next[u], hidden: true };
+    return next;
+  });
+}
+
+/** Clear podcast listening history: where you were in episodes you haven't finished. */
+export function clearPodcastHistory() {
+  progress.set((all) => Object.fromEntries(Object.entries(all).filter(([, p]) => !(p?.book?.source === 'pod' && !p.finished))));
+}
+
 export function forgetBook(uid) {
   markRemoved(uid, { lib: true, prog: true });
   library.set((lib) => {

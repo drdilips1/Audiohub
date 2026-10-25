@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { Icon } from '../components/icons.jsx';
+import { nav } from '../lib/nav.js';
 import { toast } from '../components/common.jsx';
 import { useStore } from '../lib/store.js';
 import * as sync from '../lib/sync.js';
+import { PLACES, findOrder, setFindOrder, DEFAULT_ORDER } from '../lib/findorder.js';
 import { ttsCfg, engines as listEngines, voices as listVoices, speak, stopSpeaking, clearAudioCache, qualityLabel, RECOMMENDED, nativeReader, Reader, EDGE_VOICES, voiceSpec } from '../lib/tts.js';
 import { CATALOG, builtinAvailable, installedIds, download as downloadVoice, remove as removeVoice, activeDownload, follow as followDownload } from '../lib/voices.js';
 import { downloads, canDownload, removeDownload, publicAvailable, fmtBytes, unsorted, sortDownloads } from '../lib/downloads.js';
@@ -21,6 +23,21 @@ async function copy(text) {
   } catch {
     toast('Long-press the text to copy it');
   }
+}
+
+/** Your name, for Home's "Good evening, …". */
+export function NameRow() {
+  const st = useStore(settings);
+  const a = useStore(sync.account);
+  return (
+    <label class="set-row">
+      <div>
+        <b>Your name</b>
+        <small>{st.myName ? 'Shown on Home: “Good evening, ' + st.myName.trim().slice(0, 24) + '”' : a.name || a.email ? 'Leave empty to use the name from your account' : 'Shown on Home after the greeting'}</small>
+      </div>
+      <input class="set-name" value={st.myName || ''} placeholder="First name" maxLength={24} onInput={(e) => settings.patch({ myName: e.currentTarget.value })} />
+    </label>
+  );
 }
 
 export function AccountCard() {
@@ -486,6 +503,9 @@ export function DownloadsCard() {
   const target = pub ? st.downloadTarget || 'public' : 'app';
   return (
     <>
+      <button class="btn ghost-wide" onClick={() => nav.push('downloads')}>
+        <Icon name="download" size={16} /> Manage downloads — queue, pause, retry, sizes
+      </button>
       <div class="set-row column">
         <b>Save downloads to</b>
         <div class="dl-targets">
@@ -561,5 +581,56 @@ function SortDownloads({ all }) {
         {busy ? <span class="spinner small" /> : 'Sort'}
       </button>
     </div>
+  );
+}
+
+/** Where to look for your copy of a book, in your order (audiobooks and ebooks). */
+export function FindOrderCard() {
+  const st = useStore(settings);
+  const List = ({ kind, title, note }) => {
+    const list = findOrder(kind);
+    const move = (i, d) => {
+      const next = [...list];
+      [next[i], next[i + d]] = [next[i + d], next[i]];
+      setFindOrder(kind, next);
+    };
+    return (
+      <div class="find-order">
+        <b>{title}</b>
+        <small class="muted">{note}</small>
+        <ol>
+          {list.map((k, i) => (
+            <li>
+              <span class="find-n">{i + 1}</span>
+              <span class="find-name">{PLACES[k]}</span>
+              <button class="icon-btn" disabled={i === 0} aria-label={`Move ${PLACES[k]} up`} onClick={() => move(i, -1)}>
+                <Icon name="up" size={18} />
+              </button>
+              <button class="icon-btn" disabled={i === list.length - 1} aria-label={`Move ${PLACES[k]} down`} onClick={() => move(i, 1)}>
+                <Icon name="down" size={18} />
+              </button>
+            </li>
+          ))}
+        </ol>
+        {list.join() !== DEFAULT_ORDER[kind].join() && (
+          <button class="link-btn" onClick={() => setFindOrder(kind, DEFAULT_ORDER[kind])}>
+            Back to the usual order
+          </button>
+        )}
+      </div>
+    );
+  };
+  return (
+    <>
+      <List kind="audio" title="Audiobooks (voice: play a book)" note="Where your copy is looked for. Within TorBox / Real-Debrid, your default one first." />
+      <List kind="ebook" title="Ebooks (for the transcript)" note="Where the audiobook's ebook is looked for." />
+      <label class="set-row">
+        <div>
+          <b>Attach the ebook by itself</b>
+          <small>When an audiobook plays, its ebook is found in this order, kept on the phone and used for the transcript's words. Only books already there — nothing new is added to TorBox / Real-Debrid.</small>
+        </div>
+        <input type="checkbox" class="switch" checked={st.autoEbook !== false} onChange={(e) => settings.patch({ autoEbook: e.currentTarget.checked })} />
+      </label>
+    </>
   );
 }

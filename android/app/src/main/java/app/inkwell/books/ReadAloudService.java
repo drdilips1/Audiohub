@@ -84,6 +84,13 @@ public class ReadAloudService extends Service {
         return new Notification.Action.Builder(icon, title, pi).build();
     }
 
+    private Notification.MediaStyle mediaStyle() {
+        Notification.MediaStyle st = new Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2);
+        android.media.session.MediaSession.Token t = ReadAloudEngine.sessionToken();
+        if (t != null) st.setMediaSession(t); // lock screen and earphone buttons
+        return st;
+    }
+
     private Notification build() {
         Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
         PendingIntent open = launch == null ? null : PendingIntent.getActivity(this, 0, launch.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE);
@@ -101,7 +108,7 @@ public class ReadAloudService extends Service {
             .addAction(playing ? action(android.R.drawable.ic_media_pause, "Pause", TOGGLE) : action(android.R.drawable.ic_media_play, "Play", TOGGLE))
             .addAction(action(android.R.drawable.ic_media_next, "Next", NEXT))
             .addAction(action(android.R.drawable.ic_menu_close_clear_cancel, "Close", CLOSE))
-            .setStyle(new Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2));
+            .setStyle(mediaStyle());
         if (open != null) b.setContentIntent(open);
         return b.build();
     }

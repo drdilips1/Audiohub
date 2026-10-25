@@ -3,11 +3,11 @@ import { TopBar, Cover, toast } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
 import { nav } from '../lib/nav.js';
 import { aiReady } from '../lib/ai.js';
-import { MODES, STARTERS, LIBRARY_ASKS, ask, quiz, threadFor, clearThread, hearing, ideas, forgetIdea } from '../lib/askbook.js';
+import { MODES, STARTERS, LIBRARY_ASKS, ask, quiz, threadFor, clearThread, hearing, ideas, forgetIdea, spoilerLimit } from '../lib/askbook.js';
 import { keyIdeas, summaryBook } from '../sources/summaries.js';
 import { mainTitle } from '../lib/match.js';
 import { usePlayer } from '../components/player-ui.jsx';
-import { useStore } from '../lib/store.js';
+import { useStore, settings } from '../lib/store.js';
 import * as player from '../lib/player.js';
 import { canListen, listen, speakAnswer, stopAnswer, voiceLang, LANGS, askVoice, canPickVoice, ASK_VOICES, autoRead } from '../lib/voiceask.js';
 
@@ -15,7 +15,11 @@ import { canListen, listen, speakAnswer, stopAnswer, voiceLang, LANGS, askVoice,
  * Ask AI about one book (params.book) or about your whole library (no book).
  * params: { book, description, genres, mode, question }
  */
-export function Ask({ book = null, description = '', genres = [], mode: startMode = '', question = '', here = false }) {
+// Questions an Ask screen was opened with that have already been asked: coming back to the
+// screen (from the player, another tab) must not ask them again.
+const asked = new Set();
+
+export function Ask({ book = null, description = '', genres = [], mode: startMode = '', question = '', here = false, askId = '', voice: spoken = false }) {
   const [msgs, setMsgs] = useState(() => threadFor(book));
   const [mode, setMode] = useState(startMode);
   const [text, setText] = useState('');
@@ -40,7 +44,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
   const run = async (q, extra = {}) => {
     if (!q.trim() || busy) return;
     if (!aiReady()) {
-      toast('Add a free AI key in Settings → AI first');
+      toast('Add an AI key in Settings → AI first');
       return nav.tab('settings');
     }
     const shown = extra.where ? `🎧 ${q} (at ${extra.where.label})` : extra.voice ? `🎙 ${q}` : q;
@@ -107,8 +111,12 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
   };
 
   useEffect(() => {
-    if (question) run(question, here && where ? { where } : {});
-    else if (msgs.length) scrollEnd();
+    const id = askId || question;
+    if (question && !asked.has(id)) {
+      asked.add(id);
+      // Asked with the voice button: shown as spoken, and the answer is read out.
+      run(question, { ...(here && where ? { where } : {}), ...(spoken ? { voice: true } : {}) });
+    } else if (msgs.length) scrollEnd();
   }, []);
 
   const current = MODES.find((m) => m.id === mode);
@@ -164,6 +172,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
                 askVoice.set(e.currentTarget.value);
               }}
             >
+              <option value="phone">Phone voice — instant</option>
               <option value="">Same as Settings → Voices</option>
               {ASK_VOICES.map(([id, name, desc]) => (
                 <option value={id}>
@@ -177,6 +186,11 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
           🔊 Read answers aloud
           <input type="checkbox" class="switch" checked={readAloud} onChange={(e) => (autoRead.set(e.currentTarget.checked), e.currentTarget.checked || (stopAnswer(), setSpeaking(-1)))} />
         </label>
+        {book && spoilerLimit(book) && (
+          <button class="ask-spoiler" onClick={() => (settings.patch({ aiNoSpoilers: false }), toast('Spoilers allowed — switch back in Settings → AI'))}>
+            🙈 No spoilers past {spoilerLimit(book).pct}% · tap to allow
+          </button>
+        )}
         <p class="muted small ask-note">
           Answers use what the AI knows about {book ? 'the book' : 'your books'} and {book ? 'its description' : 'your listening history'} — it doesn't have the audio or text itself, and will say when it isn't sure.
         </p>
@@ -264,7 +278,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
 }
 
 /** Light formatting for answers: paragraphs, bullet/numbered lists, **bold**, ### headings. */
-function Answer({ text }) {
+export function Answer({ text }) {
   const inline = (s) =>
     String(s)
       .split(/(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g)

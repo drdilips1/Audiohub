@@ -17,6 +17,7 @@ const MIME = { mp3: 'audio/mpeg', m4b: 'audio/mp4', m4a: 'audio/mp4', aac: 'audi
 const patch = (uid, part) => downloads.set((all) => ({ ...all, [uid]: { ...(all[uid] || {}), ...part } }));
 
 export const isDownloaded = (uid) => downloads.get()[uid]?.status === 'done';
+export const isRunning = (uid) => running.has(uid);
 
 /** Swap streaming URLs for the local files of a downloaded book. */
 export function applyLocal(details) {
@@ -51,63 +52,121 @@ export function folderFor(details) {
   return `Audiohub/${author}/${title}`;
 }
 
-export async function downloadBook(details) {
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Download every part of `details` (from sources.getDetails). Parts already saved
+ * (a paused or interrupted download) are kept; each part is tried up to three times,
+ * with a fresh link when one has expired.
+ */
+export async function downloadBook(details, { resume = false } = {}) {
   if (!canDownload) throw new Error('Downloads work in the Android app');
   const uid = details.uid;
   if (running.has(uid)) return;
   running.add(uid);
   const job = `${uid}:${Date.now()}`;
   const target = settings.get().downloadTarget || 'public';
-  const folder = folderFor(details);
-  patch(uid, { book: summarize(details), series: details.series || '', folder, status: 'downloading', done: 0, total: 0, bytes: 0, error: '', job, tracks: [] });
+  const before = downloads.get()[uid];
+  const keepParts = resume && before?.tracks?.length ? before.tracks : [];
+  const folder = keepParts.length && before.folder ? before.folder : folderFor(details);
+  patch(uid, { book: summarize(details), series: details.series || '', folder, status: 'downloading', done: keepParts.length, error: '', job, tracks: keepParts, tries: 0 });
   const sub = Native.addListener('progress', (e) => {
     if (e.job === job) patch(uid, { current: e.received, currentTotal: e.total });
   });
+  const stopped = () => ['cancelled', 'paused'].includes(downloads.get()[uid]?.status);
   try {
     let tracks = details.tracks;
     if (!tracks?.length && details.resolveTracks) tracks = (await details.resolveTracks()).tracks;
     if (!tracks?.length) throw new Error('Nothing to download for this title');
     patch(uid, { total: tracks.length });
-    const saved = [];
-    let bytes = 0;
-    for (let i = 0; i < tracks.length; i++) {
-      if (downloads.get()[uid]?.status === 'cancelled') throw new Error('cancelled');
-      const t = tracks[i];
-      const url = t.url || (t.resolve ? await t.resolve() : null);
-      if (!url) throw new Error(`No link for part ${i + 1}`);
-      if (/^file:|^content:/.test(url)) {
-        saved.push({ title: t.title, uri: url, duration: t.duration, offset: t.offset });
-        continue;
+    const saved = keepParts.slice(0, tracks.length);
+    let bytes = saved.reduce((n, t) => n + (t.size || 0), 0);
+    for (let i = saved.length; i < tracks.length; i++) {
+      if (stopped()) throw new Error('stopped');
+      let t = tracks[i];
+      let r = null;
+      for (let attempt = 0; attempt < 3 && !r; attempt++) {
+        if (stopped()) throw new Error('stopped');
+        try {
+          const url = t.url || (t.resolve ? await t.resolve() : null);
+          if (!url) throw new Error(`No link for part ${i + 1}`);
+          if (/^file:|^content:/.test(url)) {
+            r = { uri: url, size: t.size || 0, local: true };
+            break;
+          }
+          const ext = ((EXT.exec(url) || [])[1] || (EXT.exec(t.title || '') || [])[1] || 'mp3').toLowerCase();
+          const name = `${String(i + 1).padStart(3, '0')} - ${safe(t.title).slice(0, 60)}.${ext}`;
+          r = await Native.download({ url, headers: t.headers || {}, name, folder, target, job, mime: MIME[ext] || 'audio/mpeg' });
+        } catch (e) {
+          if (stopped() || e.message === 'cancelled') throw new Error('stopped');
+          if (attempt === 2) throw e;
+          patch(uid, { tries: attempt + 1, error: `Part ${i + 1}: ${e.message} — trying again` });
+          await wait(attempt === 0 ? 3000 : 10000);
+          // Links from the cloud expire: ask for fresh ones before the next try.
+          if (details.resolveTracks) {
+            try {
+              const fresh = (await details.resolveTracks()).tracks;
+              if (fresh?.[i]) t = fresh[i];
+            } catch {}
+          }
+        }
       }
-      const ext = ((EXT.exec(url) || [])[1] || (EXT.exec(t.title || '') || [])[1] || 'mp3').toLowerCase();
-      const name = `${String(i + 1).padStart(3, '0')} - ${safe(t.title).slice(0, 60)}.${ext}`;
-      const r = await Native.download({ url, headers: t.headers || {}, name, folder, target, job, mime: MIME[ext] || 'audio/mpeg' });
       bytes += r.size || 0;
       saved.push({ title: t.title, uri: r.uri, duration: t.duration, offset: t.offset, size: r.size });
-      patch(uid, { done: i + 1, bytes, location: r.location, tracks: saved.slice(), current: 0, currentTotal: 0 });
+      patch(uid, { done: i + 1, bytes, location: r.location || downloads.get()[uid]?.location, tracks: saved.slice(), current: 0, currentTotal: 0, error: '', tries: 0 });
     }
-    patch(uid, { status: 'done', tracks: saved, bytes, finishedAt: Date.now() });
+    patch(uid, { status: 'done', tracks: saved, bytes, finishedAt: Date.now(), error: '' });
   } catch (e) {
-    const cancelled = e.message === 'cancelled' || downloads.get()[uid]?.status === 'cancelled';
-    const keep = downloads.get()[uid]?.tracks || [];
-    if (cancelled) {
+    const st = downloads.get()[uid]?.status;
+    if (st === 'cancelled') {
+      const keep = downloads.get()[uid]?.tracks || [];
       await Promise.all(keep.map((t) => Native.remove({ uri: t.uri }).catch(() => {})));
       downloads.set((all) => {
         const n = { ...all };
         delete n[uid];
         return n;
       });
-    } else patch(uid, { status: 'error', error: e.message });
-    if (!cancelled) throw e;
+    } else if (st === 'paused') {
+      patch(uid, { current: 0, currentTotal: 0 }); // the parts saved so far stay
+    } else {
+      patch(uid, { status: 'error', error: e.message, current: 0, currentTotal: 0 });
+      throw e;
+    }
   } finally {
     running.delete(uid);
     sub.then((h) => h.remove());
   }
 }
 
+/** Pause: the part being saved stops; finished parts stay for Resume. */
+export async function pauseDownload(uid) {
+  const d = downloads.get()[uid];
+  if (!d || d.status !== 'downloading') return;
+  patch(uid, { status: 'paused' });
+  await Native.cancel({ job: d.job }).catch(() => {});
+}
+
+/** Resume a paused, failed or interrupted download (fresh links from your service). */
+export async function resumeDownload(uid) {
+  const d = downloads.get()[uid];
+  if (!d?.book) return;
+  const { getDetails } = await import('../sources/index.js');
+  const details = await getDetails({ ...d.book, series: d.series });
+  return downloadBook({ ...details, uid }, { resume: true });
+}
+
+// The app was closed (or crashed) mid-download: those continue on their own.
+if (canDownload)
+  setTimeout(async () => {
+    const stuck = Object.entries(downloads.get()).filter(([uid, d]) => d?.status === 'downloading' && !running.has(uid));
+    for (const [uid] of stuck) patch(uid, { status: 'paused', error: 'Interrupted — resuming' });
+    for (const [uid] of stuck) await resumeDownload(uid).catch((e) => patch(uid, { status: 'error', error: e.message }));
+  }, 6000);
+
 export async function cancelDownload(uid) {
   const d = downloads.get()[uid];
   if (!d) return;
+  if (!running.has(uid)) return removeDownload(uid); // paused / failed: just delete what's saved
   patch(uid, { status: 'cancelled' });
   await Native.cancel({ job: d.job }).catch(() => {});
 }
@@ -115,7 +174,7 @@ export async function cancelDownload(uid) {
 export async function removeDownload(uid) {
   const d = downloads.get()[uid];
   if (!d) return;
-  if (d.status === 'downloading') return cancelDownload(uid);
+  if (d.status === 'downloading' && running.has(uid)) return cancelDownload(uid);
   await Promise.all((d.tracks || []).map((t) => Native.remove({ uri: t.uri }).catch(() => {})));
   downloads.set((all) => {
     const n = { ...all };

@@ -212,10 +212,36 @@ const SPOKEN = [
   [/ﬁ/g, 'fi'],
   [/ﬂ/g, 'fl'],
 ];
+// Roman numerals as numbers ("Part IV" → "Part 4"), so voices don't say "Part i" or "Part ivy".
+const ROMAN = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+const fromRoman = (r) => {
+  let n = 0;
+  for (let i = 0; i < r.length; i++) {
+    const v = ROMAN[r[i]];
+    n += v < (ROMAN[r[i + 1]] || 0) ? -v : v;
+  }
+  return n;
+};
+const VALID_ROMAN = /^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/;
+const numerals = (s) =>
+  s
+    // After Part / Chapter / Book / Volume / Section / Act / Appendix (any case).
+    .replace(/\b(part|chapter|book|volume|vol\.|section|act|appendix|canto|letter)\s+([IVXLCDM]+|[ivxlcdm]+)\b(?!['’])/gi, (m, w, r, at, all) => {
+      if (!VALID_ROMAN.test(r.toUpperCase())) return m;
+      // A lone "I" may be the word I ("the part I liked"): only in headings or before punctuation.
+      if (/^i$/i.test(r) && all.length > 60 && !/^\s*([.:,;)\-–—]|$)/.test(all.slice(at + m.length))) return m;
+      return `${w} ${fromRoman(r.toUpperCase())}`;
+    })
+    // A heading that is only a numeral ("XII", "IV.").
+    .replace(/^([IVXLCDM]{2,})\.?$/, (m, r) => (VALID_ROMAN.test(r) ? String(fromRoman(r)) : m));
+
 export const speakable = (t) => {
   let s = String(t || '').replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '');
   for (const [re, to] of SPOKEN) s = s.replace(re, to);
-  return s.replace(/\s+([,.;:])/g, '$1').replace(/\s+/g, ' ').trim();
+  s = numerals(s.replace(/\s+/g, ' ').trim());
+  // A colon between words is a pause, not the word "colon" (times like 10:30 stay).
+  s = s.replace(/(\D|^):\s*|:\s+|:$/g, (m, a) => (a !== undefined ? a + ', ' : ', '));
+  return s.replace(/\s+([,.;:])/g, '$1').replace(/,(\s*,)+/g, ',').replace(/,\s*$/, '').replace(/\s+/g, ' ').trim();
 };
 
 /** What to read for a block: its text without footnote reference numbers (<sup>). */

@@ -2,6 +2,13 @@
 @import '@fontsource-variable/fraunces';
 @import '@fontsource-variable/outfit';
 @import '@fontsource-variable/literata';
+@import '@fontsource/lora/latin-400.css';
+@import '@fontsource/lora/latin-400-italic.css';
+@import '@fontsource/lora/latin-700.css';
+@import '@fontsource/atkinson-hyperlegible/latin-400.css';
+@import '@fontsource/atkinson-hyperlegible/latin-700.css';
+@import '@fontsource/opendyslexic/latin-400.css';
+@import '@fontsource/opendyslexic/latin-700.css';
 
 /* ---------- Tokens ---------- */
 :root {
@@ -1695,6 +1702,23 @@ select {
   --r-fg: #1f1d24;
   --r-muted: #77737f;
 }
+/* Light pages: the app's own colours (buttons, links, voice list) re-tuned to read on them. */
+.reader.theme-sepia,
+.reader.theme-paper {
+  --text: var(--r-fg);
+  --muted: var(--r-muted);
+  --faint: var(--r-muted);
+  --surface: rgba(60, 40, 10, 0.07);
+  --surface-2: rgba(60, 40, 10, 0.1);
+  --border: rgba(60, 40, 10, 0.16);
+  --accent-2: #8a3f0e;
+}
+.reader.theme-paper {
+  --surface: rgba(20, 10, 60, 0.05);
+  --surface-2: rgba(20, 10, 60, 0.08);
+  --border: rgba(20, 10, 60, 0.14);
+  --accent-2: #5b2fb0;
+}
 .reader-bar,
 .reader-foot {
   position: absolute;
@@ -1764,9 +1788,9 @@ select {
 .reader-text {
   max-width: 680px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 var(--rm, 24px);
   font-size: var(--rs);
-  line-height: 1.72;
+  line-height: var(--rl, 1.72);
   font-family: 'Literata Variable', Georgia, serif;
   hyphens: auto;
   overflow-wrap: break-word;
@@ -2876,13 +2900,14 @@ pre.sql {
 
 /* Live transcript in the full player */
 .transcript {
+  position: relative; /* lines measure their place from here (keeps the current one in view) */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   margin: 8px 0;
   padding: 30% 4px 0;
-  -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
-  mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 85%, transparent);
+  mask-image: linear-gradient(transparent, #000 10%, #000 85%, transparent);
   overscroll-behavior: contain;
 }
 .transcript .tl {
@@ -2899,6 +2924,13 @@ pre.sql {
 }
 .transcript .tl.on {
   color: #fff;
+  font-weight: 600;
+  margin-left: -10px;
+  margin-right: -6px;
+  padding: 6px 6px 6px 10px;
+  border-left: 4px solid var(--accent);
+  border-radius: 6px 12px 12px 6px;
+  background: rgba(255, 255, 255, 0.12);
 }
 .transcript-pad {
   height: 45%;
@@ -5140,6 +5172,8 @@ textarea {
   font-size: 16px;
   color: #f4f1fb;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .home-hello small {
   font-size: 11.5px;
@@ -5379,318 +5413,191 @@ button.rt {
   color: var(--faint);
   text-align: center;
 }
-
-
-/* ---- From the main app: phone books, Library sort/list, card facts, listening stats ---- */
-/* Library: sort + grid/list, list rows, phone folder actions */
-.lib-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 20px 10px;
+.description.open {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
 }
-.lib-sort {
-  display: flex;
-  gap: 6px;
-  flex: 1;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.lib-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 20px;
-}
-.lib-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px;
-  border-radius: var(--radius-sm);
+/* Goodreads card on the book page */
+.gr-card {
+  margin: 18px 16px 4px;
+  padding: 14px 14px 12px;
+  border-radius: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
-  text-align: left;
 }
-.lib-row .cover {
-  width: 56px;
-  flex: none;
-}
-.lib-row > div {
-  flex: 1;
-  min-width: 0;
+.gr-head {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.lib-row b {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.gr-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 800 13px/1 Georgia, serif;
+  color: #382110;
+  background: #f4f1ea;
 }
-.lib-row small {
+.gr-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-weight: 800;
+  color: #fbbf24;
+}
+.gr-score small {
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 600;
 }
-.phone-actions {
+.gr-genres {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 16px;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 12px;
+  font-size: 13.5px;
 }
-.phone-manage .lib-manage {
+.gr-genre {
+  padding: 2px 0;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 2px solid #409d69;
+  background: none;
+}
+.gr-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+/* Find cover & details */
+.fix-row {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 10px;
+}
+.fix-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  opacity: 0.85;
+}
+.fix-panel {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.fix-list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 6px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.fix-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(127, 127, 127, 0.08);
+  color: var(--text);
+  text-align: left;
+}
+.fix-item img,
+.fix-nocover {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex: none;
+  background: rgba(127, 127, 127, 0.2);
+}
+.fix-item span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.fix-item b {
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fix-item small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+/* Book page: smaller cover, quiet "find details" link, light section headings */
+.book .book-cover {
+  width: min(47vw, 188px);
+  margin-bottom: 18px;
+}
+.fix-link,
+.fix-row .link-btn {
+  color: var(--faint);
+  font-weight: 600;
+  font-size: 12px;
+}
+.fix-bottom {
+  margin-top: 8px;
+}
+/* Section headings: a thin divider above and a short accent bar before the title */
+.book .section-label,
+.book .src-head,
+.book .row .row-head {
+  margin: 26px 16px 12px;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--border);
+}
+.book .section-label {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 16px 8px;
-  width: calc(100% - 32px);
-}
-.phone-manage .lib-manage small {
-  margin-left: auto;
-  opacity: 0.7;
-  font-size: 12px;
-}
-.phone-panel {
-  margin: 0 16px 12px;
-  padding: 4px 12px 12px;
-  border-radius: 14px;
-  background: var(--surface);
-}
-.phone-panel .phone-actions {
-  margin-top: 10px;
-}
-
-/* Cards: cover at the top, text packed tight under it (no gaps for short titles) */
-.book-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-}
-.book-card-title {
-  margin-top: 8px;
-  max-height: calc(2 * 1.25em);
-}
-.book-card-author {
-  margin-top: 2px;
-}
-.book-card-facts {
-  margin-top: 2px;
-  font-size: 11.5px;
-  color: var(--faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.row {
-  margin-top: 20px;
-}
-.row-scroll {
-  gap: 12px;
-  padding-bottom: 8px;
-}
-
-/* Library: the stats strip opens Listening stats */
-button.stats {
-  width: calc(100% - 40px);
-  color: inherit;
-  text-align: inherit;
-}
-
-/* Listening stats */
-.st-tiles {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 14px 20px 0;
-}
-.st-tile,
-.st-card {
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-.st-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 16px;
-}
-.st-tile b {
-  font-family: var(--display);
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-}
-.st-tile span {
-  font-size: 12.5px;
-  color: var(--muted);
-}
-.st-card {
-  margin: 14px 20px 0;
-  padding: 16px;
-}
-.st-card h3 {
-  margin: 0;
-  font-family: var(--display);
-  font-size: 18px;
-  font-weight: 600;
-}
-.st-note {
-  margin: 2px 0 0;
-  font-size: 13px;
-  color: var(--muted);
-}
-.st-streak {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  text-align: center;
-}
-.st-streak div {
-  display: flex;
-  flex-direction: column;
-}
-.st-streak div + div {
-  border-left: 1px solid var(--border);
-}
-.st-streak b {
-  font-family: var(--display);
-  font-size: 30px;
-  font-weight: 600;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-.st-streak span {
-  font-size: 12px;
-  color: var(--muted);
-}
-.st-bars {
-  margin-top: 6px;
-}
-.st-tip {
-  min-height: 18px;
-  font-size: 12.5px;
-  font-weight: 700;
   color: var(--text);
-  text-align: right;
 }
-.st-bars svg {
-  display: block;
-  width: 100%;
-  height: 110px;
-  overflow: visible;
-}
-.st-base {
-  stroke: var(--border);
-  stroke-width: 0.5;
-  vector-effect: non-scaling-stroke;
-}
-.st-bar {
-  fill: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-.st-bar.hi {
-  fill: var(--accent);
-}
-.st-bar.sel {
-  fill: var(--text);
-}
-.st-labels {
-  display: grid;
-  margin-top: 4px;
-  font-size: 10.5px;
-  color: var(--faint);
-}
-.st-labels span {
-  white-space: nowrap;
-  overflow: visible;
-}
-.st-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin-top: 12px;
-  text-align: left;
-  color: inherit;
-}
-.st-row .cover {
-  width: 48px;
+.book .section-label::before,
+.book .row .row-head h2::before {
+  content: '';
   flex: none;
-}
-.st-row > div {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.st-row b,
-.st-row small {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.st-row small {
-  color: var(--muted);
-}
-.st-row em,
-.st-author em {
-  font-style: normal;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  flex: none;
-}
-.st-meter {
-  height: 4px;
-  margin-top: 4px;
+  width: 3px;
+  height: 15px;
   border-radius: 2px;
-  background: var(--surface-2);
-  overflow: hidden;
+  background: var(--dyn, var(--accent));
 }
-.st-meter div {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--grad);
+.book .pad .section-label,
+.book .source-results .section-label,
+.book .src-head {
+  margin-left: 0;
+  margin-right: 0;
 }
-.st-author {
-  display: grid;
-  grid-template-columns: 9em 1fr auto;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-  font-size: 14px;
-}
-.st-author span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.st-author .st-meter {
+.book .src-head .section-label {
   margin: 0;
+  padding: 0;
+  border: 0;
 }
-.st-foot {
+.book .row .row-head h2 {
   display: flex;
-  gap: 6px;
-  margin: 16px 24px 0;
-  font-size: 12px;
-  color: var(--faint);
-}
-.st-foot .icon {
-  flex: none;
-  margin-top: 1px;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
 }
 
-.book-card-facts .icon {
-  vertical-align: -1px;
-  opacity: 0.8;
+/* ---------- Ask AI ---------- */
+.library-head-actions {
+  display: flex;
+  gap: 8px;
 }
-
-/* Ask AI */
 .ask-card {
   padding: 14px;
   border-radius: 18px;
@@ -6036,6 +5943,11 @@ button.stats {
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 24%, var(--surface));
 }
+.src-retry {
+  color: var(--dyn, var(--accent));
+  font-weight: 700;
+  font-size: 12px;
+}
 .ask-voice {
   display: flex;
   align-items: center;
@@ -6055,8 +5967,327 @@ button.stats {
   color: var(--text);
   font-size: 13px;
 }
+/* ✨ Ask AI in every screen's top corner */
+.screen-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 14px;
+}
+.screen-head .screen-title {
+  flex: 1;
+  min-width: 0;
+}
+.topbar-right,
+.home-top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
 .ask-btn {
   color: var(--dyn, var(--accent));
+}
+
+/* ---------- Driving mode: huge targets, one-tap voice ---------- */
+.drive {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: calc(var(--safe-top) + 12px) 16px calc(var(--safe-bottom, 0px) + 16px);
+  background: #07060d;
+  color: #fff;
+}
+.drive-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.drive-exit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 700;
+}
+.drive-now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.drive-now > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.drive-now b {
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drive-now small {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drive-cover {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  flex: none;
+}
+.drive-controls {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 12px;
+}
+.drive-controls button {
+  display: grid;
+  place-items: center;
+  min-height: 110px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.drive-controls .drive-play {
+  background: var(--accent);
+  color: #0b0a12;
+}
+.drive-ask {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 28px;
+  background: linear-gradient(160deg, rgba(124, 240, 255, 0.16), rgba(167, 139, 250, 0.2));
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  text-align: center;
+  overflow: hidden;
+}
+.drive-ask b {
+  font-size: 22px;
+  line-height: 1.25;
+}
+.drive-mic {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 46px;
+}
+.drive-ask.listening {
+  border-color: #ff6b8b;
+}
+.drive-ask.listening .drive-mic {
+  background: #ff6b8b;
+  animation: drive-pulse 1.2s ease-in-out infinite;
+}
+.drive-ask.speaking {
+  border-color: var(--accent);
+}
+@keyframes drive-pulse {
+  50% {
+    transform: scale(1.1);
+  }
+}
+.drive-said {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.drive-answer {
+  font-size: 17px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+  max-height: 34vh;
+  overflow: hidden;
+}
+.drive-opts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.drive-opts label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drive-lang {
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 700;
+}
+.report textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+.report-text {
+  margin-top: 8px;
+  padding: 10px;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* =====================================================================
+   Design v2 — "calm & premium" (Apple Books / Audible feel).
+   One rhythm: 8-pt spacing, one card style, quiet sentence-case headings,
+   one accent (the cover colour, --dyn) on the book page.
+   ===================================================================== */
+:root {
+  --card-r: 20px;
+  --gap: 16px;
+  --section-gap: 32px;
+}
+
+/* --- Book page: hero --- */
+.book .book-hero {
+  padding: calc(var(--safe-top) + 64px) 24px 8px;
+}
+.book .book-hero-bg::after {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--dyn) 22%, transparent) 0%, transparent 40%, var(--bg) 96%);
+}
+.book .book-cover {
+  width: min(52vw, 210px);
+  margin: 0 auto 24px;
+  border-radius: 14px;
+  box-shadow: 0 24px 48px -20px color-mix(in srgb, var(--dyn) 60%, #000), 0 8px 24px -12px rgba(0, 0, 0, 0.55);
+}
+.book .book-hero h1 {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  max-width: 22ch;
+  margin: 0 auto;
+}
+.book .book-author {
+  margin: 8px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.book-narrator {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.book .book-meta {
+  margin-top: 12px;
+  gap: 6px 10px;
+  font-size: 12.5px;
+}
+.book .book-meta span:not(.badge)::before {
+  margin-right: 10px;
+}
+.book .ratings-row {
+  margin-top: 14px;
+  justify-content: center;
+}
+.book .ratings-row .rt {
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  border-color: transparent;
+}
+
+/* --- Book page: one clear main action --- */
+.book .book-actions {
+  padding: 20px 20px 0;
+  gap: 10px;
+}
+.book .book-actions .btn.big {
+  min-height: 52px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.book .book-actions .btn.primary {
+  flex: 1;
+  background: var(--dyn, var(--accent));
+  color: #fff;
+  box-shadow: 0 12px 28px -14px var(--dyn, var(--accent));
+}
+:root[data-mode='light'] .book .book-actions .btn.primary {
+  color: #fff;
+}
+.book .book-actions .btn.secondary {
+  background: var(--surface-2);
+  border: 0;
+}
+
+/* --- Book page: calm sections and one card style --- */
+.book .description {
+  margin: 28px 0 4px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text);
+  opacity: 0.85;
+}
+.book .section-label,
+.book .src-head,
+.book .row .row-head {
+  margin: var(--section-gap) 20px 12px;
+  padding: 0;
+  border: 0;
+}
+.book .pad .section-label,
+.book .source-results .section-label,
+.book .src-head {
+  margin-left: 0;
+  margin-right: 0;
+}
+.book .src-head .section-label {
+  margin: 0;
+}
+.book .section-label {
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.book .section-label::before,
+.book .row .row-head h2::before {
+  display: none;
+}
+.book .section-label .icon {
+  display: none;
+}
+.book .row .row-head h2 {
+  font-size: 18px;
+  letter-spacing: -0.01em;
 }
 .book .gr-card,
 .book .myrate,
@@ -6068,9 +6299,17 @@ button.stats {
   background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
+.book .gr-card {
+  margin-top: 24px;
+}
+.book .myrate {
+  margin-top: var(--section-gap);
+}
 .book .ask-card-wrap .ask-card {
   margin: 0;
 }
+
+/* Ask AI card: compact — two quiet questions and one button */
 .book .ask-q {
   background: transparent;
   border: 0;
@@ -6097,36 +6336,460 @@ button.stats {
   color: var(--text);
   box-shadow: none;
 }
+
+/* ⋯ menu */
+.book-menu h3 {
+  margin: 4px 0 14px;
+  font-size: 17px;
+}
+.menu-block {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.menu-block > b {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.menu-block .fix-link {
+  font-size: 14px;
+  color: var(--accent);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+.menu-item.quiet {
+  justify-content: center;
+  color: var(--muted);
+}
+.menu-block .fix-row {
+  justify-content: flex-start;
+}
+.book #where-to-get {
+  scroll-margin-top: calc(var(--safe-top) + 12px);
+}
+
+/* --- Design v2, pass 1b: a visible change --- */
+/* Serif titles (Apple Books feel) */
+.book .book-hero h1 {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Noto Serif', Georgia, serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.book .book-hero {
+  padding-bottom: 56px;
+}
+.book .book-cover {
+  width: min(58vw, 230px);
+  border-radius: 12px;
+}
+/* The content sits on a rounded panel that slides over the cover backdrop */
+.book-body {
+  position: relative;
+  margin-top: -32px;
+  padding-top: 8px;
+  border-radius: 28px 28px 0 0;
+  background: var(--bg);
+  box-shadow: 0 -12px 32px -16px rgba(0, 0, 0, 0.45);
+}
+.book-body::before {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 4px auto 0;
+  border-radius: 2px;
+  background: var(--border);
+}
+/* Stats strip: rating · length · year */
+.stats-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  margin: 16px 16px 0;
+}
+.stats-strip .stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  color: var(--text);
+  text-align: center;
+}
+.stats-strip .stat + .stat {
+  border-left: 1px solid var(--border);
+}
+.stats-strip .stat b {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.stats-strip .stat b .icon {
+  color: #f5b301;
+}
+.stats-strip .stat small {
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.book .book-actions {
+  padding-top: 18px;
+}
+/* Let the cover colour run to the panel edge, so the panel visibly slides over it */
+.book .book-hero-bg::after {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--dyn) 25%, transparent) 0%, transparent 55%, rgba(0, 0, 0, 0.18) 100%);
+}
+:root[data-mode='light'] .book .book-hero-bg::after {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--dyn) 20%, transparent) 0%, rgba(255, 255, 255, 0.35) 100%);
+}
+.book-body {
+  margin-top: -36px;
+  box-shadow: 0 -10px 30px -10px rgba(0, 0, 0, 0.5);
+}
+
+
+/* =====================================================================
+   Studio look (default): clean neutral black / white, warm orange accent,
+   one crisp sans-serif everywhere, flatter cards and squarer corners.
+   ===================================================================== */
+:root:is([data-palette='studio'], [data-palette='atelier']) {
+  --display: var(--font);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --card-r: 12px;
+  --grad: linear-gradient(90deg, #f7991c, #ff7a00);
+  --on-grad: #111;
+}
+:root[data-mode='dark'][data-palette='studio'] {
+  --bg: #121212;
+  --bg-2: #1b1b1b;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-2: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f2f2f2;
+  --muted: #a6a6a6;
+  --faint: #707070;
+}
+:root[data-mode='amoled'][data-palette='studio'] {
+  --text: #f2f2f2;
+  --muted: #a6a6a6;
+  --faint: #707070;
+  --border: rgba(255, 255, 255, 0.1);
+}
+:root[data-mode='light'][data-palette='studio'] {
+  --bg: #ffffff;
+  --bg-2: #f7f7f7;
+  --surface: rgba(0, 0, 0, 0.04);
+  --surface-2: rgba(0, 0, 0, 0.07);
+  --border: rgba(0, 0, 0, 0.1);
+  --text: #121212;
+  --muted: #5c5c5c;
+  --faint: #8a8a8a;
+}
+/* No colour washes behind screens: calm, neutral backgrounds */
+:root:is([data-palette='studio'], [data-palette='atelier']) .ambient {
+  display: none;
+}
+/* Headings: bold sans, no serif */
+:root:is([data-palette='studio'], [data-palette='atelier']) .screen-title,
+:root:is([data-palette='studio'], [data-palette='atelier']) .book .book-hero h1 {
+  font-family: var(--font);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+/* Buttons: solid orange with dark text, like a store's "Buy" button */
+:root:is([data-palette='studio'], [data-palette='atelier']) .btn.primary,
+:root:is([data-palette='studio'], [data-palette='atelier']) .book .book-actions .btn.primary {
+  background: var(--grad);
+  color: #111;
+  border-radius: 10px;
+  box-shadow: none;
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .btn.secondary,
+:root:is([data-palette='studio'], [data-palette='atelier']) .btn.ghost-wide {
+  border-radius: 10px;
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .pill.active,
+:root:is([data-palette='studio'], [data-palette='atelier']) .segmented button.on {
+  background: var(--accent);
+  color: #111;
+}
+/* Tab bar: plain, active tab in orange */
+:root:is([data-palette='studio'], [data-palette='atelier']) .tabbar {
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  border-top: 1px solid var(--border);
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .tabbar button.on {
+  color: var(--accent);
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .tabbar button.on .icon {
+  background: none;
+}
+/* Book page under Studio: the cover colour stays in the backdrop only */
 :root:is([data-palette='studio'], [data-palette='atelier']) .book .ask-open {
   background: var(--surface-2);
 }
-.saved-ideas .idea-card {
-  margin-top: 8px;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+:root:is([data-palette='studio'], [data-palette='atelier']) .stats-strip .stat b .icon {
+  color: var(--accent);
 }
-.idea-card p {
-  margin: 0 0 6px;
-  font-size: 14px;
-  line-height: 1.5;
+/* Studio, light: header buttons as clean light circles, not frosted grey */
+:root[data-mode='light'][data-palette='studio'] .icon-btn.glass,
+:root[data-mode='light'][data-palette='studio'] .home-top .home-logo {
+  background: #f2f2f2;
+  color: #121212;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
-.idea-card small {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
+:root[data-mode='light'][data-palette='studio'] .home-hello b,
+:root[data-mode='light'][data-palette='studio'] .home-hello small {
+  color: #121212;
 }
-.idea-card .link-btn {
-  margin-top: 4px;
-  font-size: 12px;
+:root[data-mode='light'][data-palette='studio'] .home-hello small {
+  opacity: 0.6;
 }
-.ask-autoread {
-  justify-content: space-between;
-}
-.ask-autoread input {
-  flex: none;
+:root[data-mode='light'] .book .book-hero-bg::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.78) 55%, rgba(255, 255, 255, 0.9) 100%);
 }
 
+/* =====================================================================
+   Design v2, pass 2: Settings as grouped lists, Library and Discover
+   in the same calm style, sentence-case headings everywhere.
+   ===================================================================== */
+/* Settings: group headings and joined rows (like phone settings) */
+.set-group {
+  margin: 26px 20px 8px 24px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.settings .set-section {
+  margin-bottom: 0;
+}
+.settings .set-section .set-head {
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 15px 16px;
+}
+/* first row after a heading: rounded top; last row before a heading (or the end): rounded bottom */
+.settings .set-group + .set-section .set-head,
+.settings .update-card + .set-section .set-head {
+  border-top-left-radius: var(--radius);
+  border-top-right-radius: var(--radius);
+}
+.settings .set-section:has(+ .set-group) .set-head,
+.settings .set-section:has(+ .about) .set-head,
+.settings .set-section:last-of-type .set-head {
+  border-bottom: 0;
+  border-bottom-left-radius: var(--radius);
+  border-bottom-right-radius: var(--radius);
+}
+.settings .set-section.open .set-head {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.settings .set-section.open .set-card {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  margin: 0;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+.settings .set-head .icon:first-child {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+/* Library: stats as one quiet strip (like the book page) */
+.library .stats {
+  gap: 0;
+  margin: 4px 16px 8px;
+  padding: 12px 0;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.library .stats div {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.library .stats div + div {
+  border-left: 1px solid var(--border);
+}
+.library .stats b {
+  font-family: var(--font);
+  font-size: 22px;
+  font-weight: 800;
+  background: none;
+  color: var(--text);
+}
+
+/* Headings everywhere: sentence case, bold, quiet (no shouting capitals) */
+:root:is([data-palette='studio'], [data-palette='atelier']) .section-label {
+  text-transform: none;
+  letter-spacing: -0.01em;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .row-head h2 {
+  font-family: var(--font);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+/* Genre chips: plain, with the coloured dot as the only colour */
+:root:is([data-palette='studio'], [data-palette='atelier']) .discover .chip,
+:root:is([data-palette='studio'], [data-palette='atelier']) .genre-chip {
+  background: var(--surface);
+}
+
+/* Studio: player — orange play button and progress, tidy chips */
+:root:is([data-palette='studio'], [data-palette='atelier']) .play-btn {
+  background: var(--grad);
+  color: #111;
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .play-btn.big {
+  box-shadow: 0 16px 36px -14px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .chip-btn {
+  border-radius: 10px;
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .chip-btn.active {
+  background: var(--accent);
+  color: #111;
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) input[type='range'] {
+  accent-color: var(--accent);
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .mini-player {
+  border-radius: 12px;
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .fp-scrub input[type='range']::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--accent) var(--pct), rgba(255, 255, 255, 0.2) var(--pct));
+}
+:root:is([data-palette='studio'], [data-palette='atelier']) .fp-scrub input[type='range']::-moz-range-track {
+  background: linear-gradient(90deg, var(--accent) var(--pct), rgba(255, 255, 255, 0.2) var(--pct));
+}
+
+/* Goodreads as a small tile */
+.book .gr-tile {
+  padding: 12px 14px;
+}
+.gr-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  color: var(--text);
+  text-align: left;
+}
+.gr-main > .icon {
+  color: var(--faint);
+}
+.gr-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.gr-text b {
+  font-size: 15px;
+}
+.gr-text small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.gr-text small .icon {
+  color: #f5b301;
+}
+.gr-tile .gr-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0 44px;
+}
+.gr-tile .gr-genre {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 0;
+}
+
+/* Home: Explore categories — two rows of colourful tiles that scroll sideways */
+.cat-section {
+  margin-top: 8px;
+}
+.cat-grid {
+  display: grid;
+  grid-template-rows: repeat(2, 64px);
+  grid-auto-flow: column;
+  grid-auto-columns: 150px;
+  gap: 10px;
+  padding: 0 20px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cat-grid::-webkit-scrollbar {
+  display: none;
+}
+.cat-tile {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, hsl(var(--h) 55% 42%), hsl(calc(var(--h) + 30) 60% 24%));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: left;
+  overflow: hidden;
+}
+.cat-tile::after {
+  content: '';
+  position: absolute;
+  right: -18px;
+  top: -18px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+}
+.cat-tile span {
+  position: relative;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 /* Player: the AI companion row (Ask / Explain / Challenge / Rabbit hole / Related / Remember) */
 .fp-companion {
@@ -6159,4 +6822,2497 @@ button.stats {
 }
 .comp-btn:disabled {
   opacity: 0.6;
+}
+.saved-ideas .idea-card {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.idea-card p {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.idea-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.idea-card .link-btn {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.row-head .row-shuffle {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  color: var(--muted);
+}
+.row-head .row-shuffle + .see-all {
+  margin-left: 6px;
+}
+.ask-autoread {
+  justify-content: space-between;
+}
+.ask-autoread input {
+  flex: none;
+}
+
+/* StoryShots has a summary: a small "S" on the cover's bottom-right corner. */
+.ss-badge {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  background: #2f6fed;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.ss-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 20px 12px;
+  padding: 7px 14px 7px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  background: var(--card, rgba(255, 255, 255, 0.05));
+  color: var(--text, inherit);
+  font-weight: 700;
+  font-size: 14px;
+}
+.ss-link .ss-badge {
+  position: static;
+}
+
+.ss-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ss-sheet h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ss-sheet .ss-badge {
+  position: static;
+  flex: none;
+}
+.ss-sheet small {
+  margin: -2px 4px 8px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.ss-sheet .btn {
+  min-height: 50px;
+  flex: none;
+  width: 100%;
+  justify-content: center;
+}
+/* Outline S: the summary is in StoryShots (their app / written summary), not free audio. */
+.ss-badge.outline {
+  background: rgba(0, 0, 0, 0.6);
+  color: #9db9ff;
+  border-color: #5b8cff;
+}
+.tl-ebook {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tl-ebook .link-btn {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0;
+}
+.tl-ebook-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+.tl-ebook-add .pill {
+  flex-shrink: 0;
+}
+.tl-source {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.show-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.show-settings b {
+  margin-top: 8px;
+  font-size: 14px;
+}
+.ep-filters {
+  margin: 4px 0 10px;
+}
+
+/* Discover: pick of the week, mood tiles, genre tiles, bookseller bar */
+.pick-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  width: calc(100% - 40px);
+  min-height: 190px;
+  margin: 18px 20px 0;
+  padding: 18px;
+  border-radius: 22px;
+  overflow: hidden;
+  text-align: left;
+  color: #fff;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 45%, #0d1a1a), #0c0b12);
+  border: 1px solid var(--border);
+}
+.pick-skel {
+  opacity: 0.4;
+}
+.pick-bg {
+  position: absolute;
+  inset: -30px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) saturate(1.3) brightness(0.45);
+}
+.pick-hero .cover {
+  position: relative;
+  width: 110px;
+  flex: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+.pick-text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.pick-text em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.pick-text b {
+  font-size: 20px;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pick-text small {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+.pick-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--grad);
+  color: var(--on-grad, #111);
+  font-weight: 800;
+  font-size: 13px;
+}
+.mood-grid {
+  display: grid;
+  grid-template-rows: repeat(2, 92px);
+  grid-auto-flow: column;
+  grid-auto-columns: 150px;
+  gap: 10px;
+  padding: 0 20px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mood-grid::-webkit-scrollbar {
+  display: none;
+}
+.mood-tile,
+.genre-tile {
+  position: relative;
+  display: flex;
+  border-radius: 16px;
+  color: #fff;
+  text-align: left;
+  overflow: hidden;
+  background: linear-gradient(135deg, hsl(var(--h) 55% 42%), hsl(calc(var(--h) + 30) 60% 22%));
+  transition: transform 0.15s;
+}
+.mood-tile:active,
+.genre-tile:active {
+  transform: scale(0.96);
+}
+.mood-tile {
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 10px 12px;
+}
+.mood-tile i,
+.genre-tile i {
+  font-style: normal;
+  font-size: 22px;
+}
+.mood-tile i {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+}
+.mood-tile b {
+  font-size: 14px;
+}
+.mood-tile small {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.genre-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 0 20px;
+}
+.genre-tile {
+  align-items: center;
+  gap: 10px;
+  height: 64px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+.genre-tile::after {
+  content: '';
+  position: absolute;
+  right: -16px;
+  top: -16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+}
+.section-label .label-more {
+  margin-left: auto;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.discover .row {
+  margin-top: 22px;
+}
+.bookseller-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 40px);
+  margin: 22px 20px 0;
+  min-height: 52px;
+  padding: 10px 18px;
+  border-radius: 26px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--muted);
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%),
+    var(--surface);
+  border: 1px solid var(--border);
+}
+.bookseller-bar .icon {
+  color: var(--accent);
+  flex: none;
+}
+.bookseller-bar b {
+  color: var(--text);
+  margin-right: 4px;
+}
+.search-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 24px 0;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: left;
+}
+.search-hint .icon {
+  color: var(--accent);
+  flex: none;
+}
+.discover .bookseller-bar {
+  margin-top: 14px;
+}
+
+/* Library: sort + grid/list, list rows, phone folder actions */
+.lib-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 20px 10px;
+}
+.lib-sort {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* fade the last pill so it reads as "scroll for more", not cut off */
+  -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
+  padding-right: 24px;
+}
+.lib-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 20px;
+}
+.lib-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.lib-row .cover {
+  width: 56px;
+  flex: none;
+}
+.lib-row > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lib-row b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-row small {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.phone-manage .lib-manage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.phone-manage .lib-manage small {
+  margin-left: auto;
+  opacity: 0.7;
+  font-size: 12px;
+}
+.phone-panel {
+  margin: 0 16px 12px;
+  padding: 4px 12px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+}
+.phone-panel .phone-actions {
+  margin-top: 10px;
+}
+
+/* Home: the last book, big */
+.continue-section {
+  margin: 18px 0;
+}
+.continue-big {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: calc(100% - 40px);
+  margin: 0 20px 12px;
+  padding: 16px;
+  border-radius: 22px;
+  overflow: hidden;
+  text-align: left;
+  color: #fff;
+  background: #121018;
+  border: 1px solid var(--border);
+}
+.continue-big-bg {
+  position: absolute;
+  inset: -30px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(26px) saturate(1.3) brightness(0.45);
+}
+.continue-big .cover {
+  position: relative;
+  width: 96px;
+  flex: none;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+}
+.continue-big-text {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.continue-big-text em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.continue-big-text b {
+  font-size: 18px;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.continue-big-text small {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+.continue-big-text .progress-bar {
+  margin-top: 4px;
+}
+.continue-big-play {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--grad);
+  color: #111;
+  box-shadow: 0 8px 22px -6px var(--accent);
+}
+
+/* Cards: cover at the top, text packed tight under it (no gaps for short titles) */
+.book-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.book-card-title {
+  margin-top: 8px;
+  max-height: calc(2 * 1.25em);
+}
+.book-card-author {
+  margin-top: 2px;
+}
+.book-card-facts {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row {
+  margin-top: 20px;
+}
+.row-scroll {
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+/* =====================================================================
+   Atelier (default): warm ink / ivory, brass-to-copper accent, a serif for
+   big titles, and fine contours — hairline rims, a soft top-edge light and
+   layered shadows, so surfaces read as crafted rather than flat.
+   ===================================================================== */
+:root[data-palette='atelier'] {
+  --display: 'Fraunces Variable', Georgia, serif;
+  --radius: 16px;
+  --radius-sm: 11px;
+  --card-r: 16px;
+  --grad: linear-gradient(135deg, var(--tint), var(--tint-2));
+  --on-grad: #1c140a;
+  --rim: rgba(255, 255, 255, 0.075);
+  --rim-top: rgba(255, 255, 255, 0.11);
+  --lift: 0 6px 14px -10px rgba(0, 0, 0, 0.75);
+  --lift-hi: 0 12px 24px -14px rgba(0, 0, 0, 0.85);
+}
+:root[data-mode='dark'][data-palette='atelier'] {
+  --bg: #0f0e0d;
+  --bg-2: #181614;
+  --surface: rgba(255, 244, 230, 0.045);
+  --surface-2: rgba(255, 244, 230, 0.08);
+  --border: rgba(255, 244, 230, 0.085);
+  --text: #f4efe7;
+  --muted: #aaa298;
+  --faint: #716a62;
+}
+:root[data-mode='amoled'][data-palette='atelier'] {
+  --surface: rgba(255, 244, 230, 0.04);
+  --border: rgba(255, 244, 230, 0.08);
+  --text: #f4efe7;
+  --muted: #aaa298;
+  --faint: #716a62;
+}
+:root[data-mode='light'][data-palette='atelier'] {
+  --bg: #f7f3ec;
+  --bg-2: #fffdf9;
+  --surface: rgba(60, 40, 20, 0.045);
+  --surface-2: rgba(60, 40, 20, 0.08);
+  --border: rgba(60, 40, 20, 0.11);
+  --text: #1c1915;
+  --muted: #6a6359;
+  --faint: #978f84;
+  --on-grad: #fffaf2;
+  --grad: linear-gradient(135deg, var(--accent), var(--accent-2));
+  --rim: rgba(60, 40, 20, 0.09);
+  --rim-top: rgba(255, 255, 255, 0.9);
+  --lift: 0 6px 14px -10px rgba(60, 40, 20, 0.35);
+  --lift-hi: 0 12px 24px -14px rgba(60, 40, 20, 0.45);
+}
+
+/* Titles: an editorial serif, slightly tightened */
+:root[data-palette='atelier'] .screen-title,
+:root[data-palette='atelier'] .book .book-hero h1,
+:root[data-palette='atelier'] .pick-text b,
+:root[data-palette='atelier'] .continue-big-text b {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+:root[data-palette='atelier'] .section-label,
+:root[data-palette='atelier'] .row-head h2 {
+  font-weight: 750;
+  letter-spacing: -0.012em;
+}
+:root[data-palette='atelier'] .row-head h2 .icon {
+  color: var(--accent);
+}
+
+/* Contours: every raised surface gets a hairline rim, a lit top edge and a soft shadow */
+:root[data-palette='atelier'] :is(.continue-card, .continue-big, .pick-hero, .bookseller, .bookseller-bar, .lib-row, .stats, .search-box, .segmented, .mini-player, .bookseller-item, .card, .setting-card, .src-row, .book-tools, .gr-tile) {
+  border: 1px solid var(--rim);
+  box-shadow: inset 0 1px 0 var(--rim-top), var(--lift);
+}
+:root[data-palette='atelier'] :is(.continue-big, .pick-hero) {
+  box-shadow: inset 0 1px 0 var(--rim-top), var(--lift-hi);
+}
+:root[data-palette='atelier'] .search-box:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent), var(--lift);
+}
+
+/* Covers: a fine light rim and a grounded shadow, like a printed jacket */
+:root[data-palette='atelier'] .book-card-cover,
+:root[data-palette='atelier'] .cover {
+  box-shadow: 0 0 0 1px var(--rim), 0 6px 12px -8px rgba(0, 0, 0, 0.7);
+}
+:root[data-mode='light'][data-palette='atelier'] .book-card-cover,
+:root[data-mode='light'][data-palette='atelier'] .cover {
+  box-shadow: 0 0 0 1px var(--rim), 0 6px 12px -8px rgba(60, 40, 20, 0.4);
+}
+
+/* Colour tiles: deeper, quieter tones with a sheen and a rim (no candy colours) */
+:root[data-palette='atelier'] :is(.mood-tile, .genre-tile, .cat-tile) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 45%),
+    linear-gradient(135deg, hsl(var(--h) 34% 36%), hsl(calc(var(--h) + 24) 40% 17%));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--lift);
+}
+:root[data-palette='atelier'] .genre-chip {
+  background: linear-gradient(135deg, hsl(var(--h) 34% 36%), hsl(calc(var(--h) + 24) 40% 20%));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Accent pieces: brass gradient with dark ink text */
+:root[data-palette='atelier'] :is(.btn.primary, .play-btn, .pick-btn, .continue-big-play, .continue-play, .pill.active, .segmented button.on, .chip-btn.active) {
+  background: var(--grad);
+  color: var(--on-grad);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px -10px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-palette='atelier'] .progress-bar > div,
+:root[data-palette='atelier'] .progress-bar div {
+  background: var(--grad);
+}
+:root[data-palette='atelier'] .tabbar {
+  background: var(--bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top: 1px solid var(--rim);
+}
+:root[data-palette='atelier'] .tabbar button.on {
+  color: var(--accent);
+  position: relative;
+}
+:root[data-palette='atelier'] .tabbar button.on::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 22px;
+  height: 2px;
+  margin-left: -11px;
+  border-radius: 0 0 2px 2px;
+  background: var(--grad);
+}
+
+/* A whisper of warmth at the top of each screen instead of a flat black */
+:root[data-mode='dark'][data-palette='atelier'] body {
+  background:
+    radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--tint) 7%, transparent), transparent 60%),
+    var(--bg);
+  background-repeat: no-repeat;
+}
+:root[data-palette='atelier'] .row-head h2,
+:root[data-palette='atelier'] .section-label {
+  font-family: var(--display);
+  font-weight: 600;
+}
+:root[data-palette='atelier'] .pick-text em {
+  color: var(--tint);
+}
+:root[data-mode='light'][data-palette='atelier'] .icon-btn.glass,
+:root[data-mode='light'][data-palette='atelier'] .screen-head .icon-btn,
+:root[data-mode='light'][data-palette='atelier'] .library-head-actions .icon-btn {
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--rim);
+  box-shadow: inset 0 1px 0 var(--rim-top), var(--lift);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Nothing shows through below the tab bar (under Android's own buttons) */
+.tabbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 120px;
+  background: var(--bg);
+}
+
+.book-card-facts .icon {
+  vertical-align: -1px;
+  opacity: 0.8;
+}
+
+/* Library: the stats strip opens Listening stats */
+button.stats {
+  width: calc(100% - 40px);
+  color: inherit;
+  text-align: inherit;
+}
+
+/* Listening stats */
+.st-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 20px 0;
+}
+.st-tile,
+.st-card {
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+:root[data-palette='atelier'] :is(.st-tile, .st-card) {
+  border-color: var(--rim);
+  box-shadow: inset 0 1px 0 var(--rim-top), var(--lift);
+}
+.st-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+}
+.st-tile b {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.st-tile span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.st-card {
+  margin: 14px 20px 0;
+  padding: 16px;
+}
+.st-card h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 600;
+}
+.st-note {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.st-streak {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  text-align: center;
+}
+.st-streak div {
+  display: flex;
+  flex-direction: column;
+}
+.st-streak div + div {
+  border-left: 1px solid var(--border);
+}
+.st-streak b {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.st-streak span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.st-bars {
+  margin-top: 6px;
+}
+.st-tip {
+  min-height: 18px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+}
+.st-bars svg {
+  display: block;
+  width: 100%;
+  height: 110px;
+  overflow: visible;
+}
+.st-base {
+  stroke: var(--border);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+.st-bar {
+  fill: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.st-bar.hi {
+  fill: var(--accent);
+}
+.st-bar.sel {
+  fill: var(--text);
+}
+.st-labels {
+  display: grid;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.st-labels span {
+  white-space: nowrap;
+  overflow: visible;
+}
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 12px;
+  text-align: left;
+  color: inherit;
+}
+.st-row .cover {
+  width: 48px;
+  flex: none;
+}
+.st-row > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.st-row b,
+.st-row small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-row small {
+  color: var(--muted);
+}
+.st-row em,
+.st-author em {
+  font-style: normal;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.st-meter {
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.st-meter div {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--grad);
+}
+.st-author {
+  display: grid;
+  grid-template-columns: 9em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 14px;
+}
+.st-author span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-author .st-meter {
+  margin: 0;
+}
+.st-foot {
+  display: flex;
+  gap: 6px;
+  margin: 16px 24px 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+.st-foot .icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+
+/* PDFs: original pages view */
+.pdf-pages {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 64px 8px 90px;
+  background: #3a3a3e;
+  -webkit-overflow-scrolling: touch;
+}
+.pdf-pg {
+  margin: 0 auto 10px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.pdf-pg canvas {
+  display: block;
+}
+.pdf-zoom {
+  position: fixed;
+  right: 14px;
+  bottom: calc(52px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(20, 20, 24, 0.85);
+  color: #fff;
+  font-size: 12px;
+  z-index: 3;
+}
+.pdf-zoom button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+}
+.pdf-zoom button:disabled {
+  opacity: 0.35;
+}
+.reader-bar .pdf-mode {
+  flex: none;
+}
+.reader-text hr.pdf-page {
+  border: 0;
+  margin: 0;
+  height: 0;
+}
+
+/* Reader: selection bar, AI answers, highlights */
+.reader-text mark.hl {
+  background: color-mix(in srgb, #f5c84b 38%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.sel-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: #1f1d26;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+}
+.sel-bar button {
+  flex: none;
+  padding: 9px 11px;
+  border-radius: 10px;
+  color: #f2eff8;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sel-bar button:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+.sel-bar .hl-btn {
+  color: #f5c84b;
+}
+.sel-sheet {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.sel-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sel-quote {
+  margin: 6px 0 12px;
+  padding: 8px 12px;
+  border-left: 3px solid #f5c84b;
+  font-style: italic;
+  opacity: 0.85;
+  font-size: 14px;
+}
+.sel-answer p {
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+.sel-ask {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.sel-ask input,
+.hl-note {
+  flex: 1;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--r-fg) 20%, transparent);
+  background: color-mix(in srgb, var(--r-fg) 6%, transparent);
+  color: var(--r-fg);
+  font: inherit;
+}
+.hl-note {
+  margin-bottom: 10px;
+  resize: vertical;
+}
+.link-btn.danger {
+  color: #e5675f;
+}
+.toc-hl-title {
+  margin-top: 18px;
+}
+.toc-hl small {
+  display: block;
+  margin-top: 3px;
+  opacity: 0.7;
+  font-style: normal;
+}
+.toc-hl button {
+  font-style: italic;
+}
+
+/* Highlights & notes screen */
+.notes-search {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+.notes-book {
+  margin: 8px 16px 18px;
+}
+.notes-book-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.notes-book-head .cover {
+  width: 44px;
+  flex: none;
+}
+.notes-book-head small {
+  display: block;
+  opacity: 0.7;
+}
+.note-card {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm, 12px);
+  background: var(--surface);
+}
+.note-quote {
+  display: block;
+  text-align: left;
+  font-family: Georgia, serif;
+  font-style: italic;
+  line-height: 1.5;
+  color: inherit;
+  border-left: 3px solid #f5c84b;
+  padding-left: 10px;
+}
+.note-text {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+.note-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  opacity: 0.7;
+}
+
+/* Library: where the books are (inside Audiobooks / Ebooks) */
+.lib-where {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px;
+  margin: 2px 0 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lib-where::-webkit-scrollbar {
+  display: none;
+}
+.lib-where .pill {
+  flex: none;
+}
+.lib-count {
+  opacity: 0.6;
+  font-weight: 500;
+  margin-left: 3px;
+}
+
+/* Reader typography */
+.font-georgia .reader-text,
+.font-opt.font-georgia {
+  font-family: 'Noto Serif', Georgia, 'Times New Roman', serif;
+}
+.font-lora .reader-text,
+.font-opt.font-lora {
+  font-family: 'Lora', Georgia, serif;
+}
+.font-atkinson .reader-text,
+.font-opt.font-atkinson {
+  font-family: 'Atkinson Hyperlegible', var(--font);
+}
+.font-dyslexic .reader-text,
+.font-opt.font-dyslexic {
+  font-family: 'OpenDyslexic', var(--font);
+}
+.font-opt.font-serif {
+  font-family: 'Literata Variable', Georgia, serif;
+}
+.font-opt.font-sans {
+  font-family: var(--font);
+}
+/* Justified (default): every kind of paragraph block, not just <p>. */
+.reader:not(.nojustify) .reader-text :is(p, div, li, blockquote, dd) {
+  text-align: justify;
+  hyphens: auto;
+}
+.reader.nojustify .reader-text :is(p, div, li, blockquote, dd) {
+  text-align: left;
+  hyphens: manual;
+}
+.reader-fonts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0;
+}
+.font-opt {
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--r-fg) 16%, transparent);
+  color: var(--r-fg);
+  font-size: 15px;
+  text-align: center;
+}
+.font-opt.active {
+  border-color: var(--accent, #c9a46a);
+  background: color-mix(in srgb, var(--accent, #c9a46a) 18%, transparent);
+}
+.reader-row.labeled {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.reader-row.labeled > span {
+  width: 100%;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+/* Book page: "Available" — every way to listen / read right now */
+.available {
+  margin: 4px 16px 10px;
+}
+.available-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 6px;
+}
+.available-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.available-row::-webkit-scrollbar {
+  display: none;
+}
+.avail-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 10px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--dyn, var(--accent)) 35%, transparent);
+  color: inherit;
+  text-align: left;
+}
+.avail-chip span {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.avail-chip b {
+  font-size: 13.5px;
+}
+.avail-chip small {
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+.avail-chip.quick,
+.avail-chip.listen {
+  background: color-mix(in srgb, var(--dyn, var(--accent)) 18%, var(--surface));
+}
+.avail-chip.looking {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+/* Source results: compact cards */
+.source-results .src-list {
+  gap: 10px;
+}
+.source-results .src-row {
+  padding: 12px;
+}
+.source-results .src-title {
+  font-size: 14.5px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.source-results .src-sub {
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+.source-results .src-chips {
+  gap: 5px;
+  margin-top: 8px;
+}
+.source-results .src-chips .chip {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  min-height: 0;
+  line-height: 1.4;
+}
+/* TorBox / RD / Home: small status pills on one line */
+.source-results .src-services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.source-results .src-services .svc {
+  gap: 6px;
+  padding: 3px 3px 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  min-height: 30px;
+  border: 1px solid var(--border);
+}
+.source-results .src-services .svc b {
+  min-width: 0;
+  font-weight: 700;
+}
+.source-results .src-services .svc span {
+  flex: none;
+}
+.source-results .src-services .svc .pill {
+  height: 24px;
+  min-height: 0;
+  padding: 0 7px;
+  font-size: 12px;
+}
+.source-results .src-services .svc:not(:has(.pill)) {
+  padding-right: 10px;
+}
+.source-results .src-actions {
+  gap: 8px;
+  margin-top: 10px;
+}
+.source-results .src-actions .btn {
+  height: 38px;
+  padding: 0 12px;
+  font-size: 13.5px;
+}
+.source-results .src-actions.ready {
+  flex-wrap: nowrap;
+}
+.source-results .src-actions.ready > .btn:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.source-results .src-actions.ready > .btn.play-alt {
+  padding: 0 10px;
+}
+.ask-spoiler {
+  display: inline-block;
+  margin: 6px 0 2px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  color: inherit;
+}
+
+/* Recommendations: Not interested + why */
+.not-btn {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  z-index: 2;
+}
+.book-card-why {
+  margin-top: 2px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--accent-2, var(--muted));
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Customise Home */
+.btn.ghost-wide.home-customise {
+  margin: 18px 16px 0;
+  width: calc(100% - 32px);
+  opacity: 0.8;
+}
+.home-edit {
+  max-height: 82vh;
+}
+.home-edit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.home-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.home-edit-row.off .home-edit-text {
+  opacity: 0.5;
+}
+.home-edit-move {
+  display: flex;
+  flex-direction: column;
+}
+.home-edit-move .icon-btn {
+  width: 30px;
+  height: 26px;
+}
+.home-edit-text {
+  flex: 1;
+  min-width: 0;
+}
+.home-edit-text b {
+  display: block;
+  font-size: 14.5px;
+}
+.home-edit-text small {
+  display: block;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* Downloads manager */
+.dl-storage {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+.dl-storage > div {
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: center;
+}
+.dl-storage b {
+  display: block;
+  font-size: 18px;
+}
+.dl-storage span {
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+.dl-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--surface);
+}
+.dl-item .cover,
+.dl-open .cover {
+  width: 44px;
+  flex: none;
+}
+.dl-open {
+  flex: none;
+}
+.dl-main {
+  flex: 1;
+  min-width: 0;
+}
+.dl-main b {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+.dl-main small {
+  display: block;
+  font-size: 12px;
+  opacity: 0.75;
+  margin: 2px 0 5px;
+}
+.dl-main small.err {
+  color: #e5675f;
+  opacity: 1;
+}
+.btn.ghost-wide.lib-manage {
+  margin: 0 16px 8px;
+  width: calc(100% - 32px);
+}
+
+/* Series on the book page */
+.series-card {
+  margin: 6px 16px 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--surface);
+}
+.series-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.series-head b {
+  display: block;
+  font-size: 14.5px;
+}
+.series-head small {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.series-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-top: 10px;
+}
+.series-row::-webkit-scrollbar {
+  display: none;
+}
+.series-item {
+  flex: none;
+  width: 64px;
+  position: relative;
+  text-align: center;
+  color: inherit;
+}
+.series-item .cover {
+  width: 64px;
+  border-radius: 8px;
+}
+.series-item:not(.finished):not(.reading):not(.have):not(.here) .cover {
+  opacity: 0.45;
+}
+.series-item.here .cover {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.series-num {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.series-item small {
+  display: block;
+  margin-top: 4px;
+  font-size: 10.5px;
+  opacity: 0.75;
+  line-height: 1.2;
+}
+.series-item.finished small {
+  color: #8fbf9a;
+  opacity: 1;
+}
+.lib-series .section-label small {
+  opacity: 0.6;
+  font-weight: 500;
+  margin-left: 6px;
+}
+.copies-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+/* =====================================================================
+   Paper & Ink: a quiet digital library. Warm paper, ink type, a muted
+   forest-green accent used only for actions and selection. Flat, no glows,
+   no colour washes; covers and spacing do the work.
+   ===================================================================== */
+:root[data-palette='paperink'] {
+  --display: var(--font);
+  --radius: 16px;
+  --radius-sm: 12px;
+  --card-r: 14px;
+  --grad: var(--accent);
+  --on-grad: #fff;
+  --font: 'Inter', 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --dyn: var(--accent);
+}
+:root[data-mode='light'][data-palette='paperink'] {
+  --bg: #f6f2e9;
+  --bg-2: #fffefa;
+  --surface: #fffefa;
+  --surface-2: #efeadf;
+  --border: #e6dfd2;
+  --text: #242720;
+  --muted: #817f75;
+  --faint: #a19e93;
+  --sage: #dde5d9;
+  --shadow: 0 6px 18px -10px rgba(36, 39, 32, 0.18);
+}
+:root[data-mode='dark'][data-palette='paperink'] {
+  --bg: #191b18;
+  --bg-2: #242720;
+  --surface: #242720;
+  --surface-2: #2d302a;
+  --border: #383a33;
+  --text: #f3f0e9;
+  --muted: #b1b0a5;
+  --faint: #85847b;
+  --sage: #2f3a31;
+  --shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.5);
+}
+:root[data-palette='paperink'] body {
+  background: var(--bg);
+}
+:root[data-palette='paperink'] .ambient {
+  display: none;
+}
+/* Type: one clean sans; book titles in the player keep a restrained serif. */
+:root[data-palette='paperink'] .screen-title,
+:root[data-palette='paperink'] .book .book-hero h1,
+:root[data-palette='paperink'] .section-label,
+:root[data-palette='paperink'] h2,
+:root[data-palette='paperink'] h3 {
+  font-family: var(--font);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+:root[data-palette='paperink'] .fp-meta h2 {
+  font-family: 'Literata Variable', Georgia, serif;
+  font-weight: 500;
+}
+/* Buttons: forest with white text for the one main action; others quiet. */
+:root[data-palette='paperink'] .btn.primary,
+:root[data-palette='paperink'] .book .book-actions .btn.primary {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: none;
+}
+:root[data-mode='dark'][data-palette='paperink'] .btn.primary,
+:root[data-mode='dark'][data-palette='paperink'] .book .book-actions .btn.primary {
+  color: #191b18;
+}
+:root[data-palette='paperink'] .btn.secondary,
+:root[data-palette='paperink'] .btn.ghost-wide {
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+:root[data-palette='paperink'] .pill {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+:root[data-palette='paperink'] .pill.active,
+:root[data-palette='paperink'] .segmented button.on {
+  background: var(--sage);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: none;
+}
+:root[data-palette='paperink'] .segmented {
+  background: var(--surface-2);
+}
+/* Cards and sheets: Book White, hairline borders, soft shadows only. */
+:root[data-palette='paperink'] .set-card,
+:root[data-palette='paperink'] .continue-card,
+:root[data-palette='paperink'] .lib-row,
+:root[data-palette='paperink'] .note-card,
+:root[data-palette='paperink'] .series-card,
+:root[data-palette='paperink'] .phone-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+:root[data-palette='paperink'] .cover {
+  border-radius: 10px;
+  box-shadow: 0 4px 14px -8px rgba(36, 39, 32, 0.35);
+}
+/* Tab bar: plain paper, the current tab in forest. */
+:root[data-palette='paperink'] .tabbar {
+  background: var(--bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-top: 1px solid var(--border);
+}
+:root[data-palette='paperink'] .tabbar button.on {
+  color: var(--accent);
+}
+:root[data-palette='paperink'] .tabbar button.on .icon {
+  background: none;
+}
+:root[data-palette='paperink'] .icon-btn.glass,
+:root[data-palette='paperink'] .home-top .home-logo {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+:root[data-palette='paperink'] .home-hello b,
+:root[data-palette='paperink'] .home-hello small {
+  color: var(--text);
+}
+/* Source labels: small and neutral (Server / Cloud / Local), no provider colours. */
+:root[data-palette='paperink'] .badge {
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+/* Sliders on paper. */
+:root[data-palette='paperink'] input[type='range']::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--accent) var(--pct), var(--border) var(--pct));
+}
+:root[data-palette='paperink'] input[type='range']::-webkit-slider-thumb {
+  background: var(--accent);
+  box-shadow: none;
+}
+:root[data-palette='paperink'] input[type='range']::-moz-range-track {
+  background: linear-gradient(90deg, var(--accent) var(--pct), var(--border) var(--pct));
+}
+:root[data-palette='paperink'] input[type='range']::-moz-range-thumb {
+  background: var(--accent);
+}
+
+/* The player: paper (or night) background, the cover is the picture, no glows. */
+:root[data-palette='paperink'] .full-player {
+  background: var(--bg);
+  color: var(--text);
+}
+:root[data-palette='paperink'] .fp-bg {
+  display: none;
+}
+:root[data-palette='paperink'] .fp-controls .icon-btn,
+:root[data-palette='paperink'] .fp-top .icon-btn {
+  color: var(--text);
+}
+:root[data-palette='paperink'] .play-btn {
+  background: var(--accent);
+  color: #fff;
+}
+:root[data-mode='dark'][data-palette='paperink'] .play-btn {
+  color: #191b18;
+}
+:root[data-palette='paperink'] .play-btn.big {
+  box-shadow: none;
+}
+:root[data-palette='paperink'] .fp-art .cover {
+  box-shadow: 0 14px 34px -18px rgba(36, 39, 32, 0.45);
+}
+:root[data-palette='paperink'] .chip-btn,
+:root[data-palette='paperink'] .comp-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+:root[data-palette='paperink'] .chip-btn.active {
+  background: var(--sage);
+  color: var(--text);
+}
+:root[data-palette='paperink'] .transcript .tl {
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+}
+:root[data-palette='paperink'] .transcript .tl.past {
+  color: color-mix(in srgb, var(--text) 30%, transparent);
+}
+:root[data-palette='paperink'] .transcript .tl.on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+:root[data-palette='paperink'] .sheet {
+  background: var(--bg-2);
+  color: var(--text);
+  border-top: 1px solid var(--border);
+}
+:root[data-palette='paperink'] .sheet-handle {
+  background: var(--border);
+}
+:root[data-palette='paperink'] .sheet .pill {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+:root[data-palette='paperink'] .sheet .pill.active {
+  background: var(--sage);
+  color: var(--text);
+}
+:root[data-palette='paperink'] .sheet .ch-num {
+  background: var(--surface-2);
+}
+:root[data-palette='paperink'] .sheet-backdrop {
+  background: rgba(36, 39, 32, 0.35);
+}
+:root[data-palette='paperink'] .mini-player {
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 22px -14px rgba(36, 39, 32, 0.4);
+}
+:root[data-palette='paperink'] .mini-progress {
+  background: var(--accent);
+}
+:root[data-palette='paperink'] .mini-sub .err {
+  color: #a4473b;
+}
+/* Home under Paper & Ink: the Continue card is a book-white card, the cover is the colour. */
+:root[data-palette='paperink'] .continue-big {
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+:root[data-palette='paperink'] .continue-big-bg {
+  display: none;
+}
+:root[data-palette='paperink'] .continue-big .cover {
+  box-shadow: 0 8px 20px -12px rgba(36, 39, 32, 0.45);
+}
+:root[data-palette='paperink'] .continue-big-text em {
+  color: var(--muted);
+}
+:root[data-palette='paperink'] .continue-big-text small {
+  color: var(--muted);
+}
+:root[data-palette='paperink'] .continue-big-text .progress-bar {
+  background: var(--border);
+}
+:root[data-palette='paperink'] .continue-big-play {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: none;
+}
+:root[data-mode='dark'][data-palette='paperink'] .continue-big-play {
+  color: #191b18;
+}
+:root[data-palette='paperink'] .progress-bar > div {
+  background: var(--accent);
+}
+/* Category tiles: quiet, earthy tints instead of bright gradients. */
+:root[data-palette='paperink'] .cat-tile {
+  background: linear-gradient(135deg, hsl(var(--h) 18% 42%), hsl(calc(var(--h) + 20) 16% 30%));
+}
+:root[data-palette='paperink'] .cat-tile::after {
+  display: none;
+}
+/* Header buttons never push past the screen edge (wider fonts, "Done"). */
+.library-head-actions {
+  flex-shrink: 0;
+}
+.library-head .screen-title {
+  min-width: 0;
+}
+:root[data-palette='paperink'] .library-head-actions {
+  gap: 6px;
+}
+:root[data-palette='paperink'] .screen-title,
+:root[data-palette='paperink'] .library-head .screen-title {
+  font-size: 30px;
+}
+:root[data-palette='paperink'] .library-head-actions .icon-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.tl-ebook-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.tl-ebook-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: inherit;
+  text-align: left;
+}
+.tl-ebook-hit span {
+  flex: 1;
+  min-width: 0;
+}
+.tl-ebook-hit b {
+  display: block;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-ebook-hit small {
+  font-size: 11.5px;
+  opacity: 0.7;
+}
+.tl-ebook-hit em {
+  font-style: normal;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent);
+}
+/* Library → Ebooks: find an ebook on the phone, in the cloud, in your sources */
+.ebook-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 16px 12px;
+  padding: 0 6px 0 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.ebook-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.ebook-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px;
+}
+.ebook-results .section-label.pad {
+  padding: 0;
+  margin-top: 10px;
+}
+.ebook-results .muted.pad-s {
+  padding: 0;
+}
+.er-act {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  padding-right: 6px;
+}
+.er-src {
+  gap: 8px;
+  padding: 10px 12px;
+}
+.er-src > div {
+  flex: 1;
+  min-width: 0;
+}
+.er-src b {
+  display: block;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.er-src small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ebook-results h3.section-label {
+  padding: 0 4px;
+  margin: 10px 0 0;
+}
+.ebook-results p.muted {
+  padding: 0 4px;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Home → Continue: ✕ takes a book off the row */
+.continue-big,
+.continue-card {
+  position: relative;
+}
+.continue-hide {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  color: var(--muted);
+  opacity: 0.85;
+}
+.lib-pod-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-right: 20px;
+}
+.lib-pod-head .link-btn {
+  font-size: 13px;
+}
+.continue-card .continue-hide {
+  top: 4px;
+  right: auto;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+}
+
+/* Transcript with the ebook: lines not in the book (credits, intros) are only what was heard */
+.transcript .tl.heard {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+/* X-Ray: who and where is in the scene */
+.xray-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 6px 10px;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: 12.5px;
+  text-align: left;
+}
+.xray-strip > b {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+.xray-topic {
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.xray-chip {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font-size: 12.5px;
+}
+.xray h3 {
+  margin: 8px 0 4px;
+}
+.xray h4 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+}
+.xray-now {
+  margin: 4px 0 12px;
+}
+.xray-now > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.xray-now .xray-chip {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 6px 12px;
+  font-size: 14px;
+}
+.xray .char-list li.here {
+  outline: 1px solid var(--accent);
+}
+.xray-tl {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  max-height: 42vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 6px;
+}
+.xray-tl button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+}
+.xray-tl small {
+  grid-column: 1;
+  color: var(--muted);
+}
+.xray-tl .xray-at {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.scene-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.scene-row input {
+  flex: 1;
+  min-width: 0;
+}
+button.notes-book-head {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+.bm-list {
+  margin: 0;
+}
+
+.set-name {
+  width: 9.5em;
+  flex: none;
+}
+.home-logo {
+  min-width: 0;
+}
+
+/* Transcript: the ebook bar stays above the text */
+.transcript-col {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tl-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 4px 0;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+}
+.tl-bar > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.tl-bar .link-btn {
+  flex: none;
+  font-size: 12.5px;
+  padding: 4px 8px;
+}
+.tl-bar .pill {
+  flex: none;
+}
+.tl-bar.err > span {
+  color: #fecdd3;
+}
+.tl-pick .tl-ebook-hits {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.lib-find input {
+  width: 100%;
+}
+.find-order {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 14px;
+}
+.find-order ol {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 4px;
+  display: grid;
+  gap: 4px;
+}
+.find-order li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.find-n {
+  width: 18px;
+  font-weight: 700;
+  opacity: 0.6;
+}
+.find-name {
+  flex: 1;
+}
+.find-order li .icon-btn:disabled {
+  opacity: 0.25;
+}
+.find-order .link-btn {
+  align-self: flex-start;
+}
+.scene-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.scene-form textarea {
+  width: 100%;
+  resize: none;
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+}
+.scene-btns {
+  display: flex;
+  gap: 10px;
+}
+.scene-btns .btn {
+  flex: 1;
+}
+.drive-scene {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  padding: 18px 16px;
+  border-radius: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 26px;
+}
+.drive-scene b {
+  font-size: 22px;
+}
+.drive-scene small {
+  flex-basis: 100%;
+  font-size: 14px;
+  opacity: 0.7;
+}
+.drive-scene:disabled {
+  opacity: 0.5;
+}
+.drive-ask.listening-scene {
+  border-color: #ff6b8b;
+}
+.drive-ask.listening-scene .drive-mic {
+  background: #ff6b8b;
+  animation: drive-pulse 1.2s ease-in-out infinite;
+}
+/* Library layouts */
+.lib-views {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.lib-views .icon-btn {
+  width: 34px;
+  height: 34px;
+  opacity: 0.55;
+}
+.lib-views .icon-btn.active {
+  opacity: 1;
+  background: var(--surface);
+  color: var(--accent);
+}
+.cover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+  padding: 0 16px;
+}
+.cover-tile {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.cover-tile .cover {
+  border-radius: 8px;
+}
+.lib-shelf .row-head h3 small {
+  opacity: 0.55;
+  font-weight: 500;
+  margin-left: 4px;
+}
+.bm-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  opacity: 0.7;
+  white-space: normal;
+}
+.welcome-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 8px 8px 8px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 13.5px;
+}
+.welcome-back > span {
+  flex: 1;
+}
+.ai-key > input {
+  width: 100%;
+  margin: 6px 0 0;
+}
+.ep-votes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.tl-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.tl-top .tl-bar {
+  flex: 1;
+  min-width: 0;
+}
+.tl-grow {
+  flex: 1;
+}
+.tl-find-btn {
+  flex: none;
+  margin-top: 6px;
+}
+.tl-find {
+  flex: none;
+  margin: 8px 4px 0;
+}
+.tl-find input {
+  width: 100%;
+}
+.tl-find-hits {
+  max-height: 34vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+.tl-find-hits button {
+  display: flex;
+  gap: 10px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: 14px;
+}
+.tl-find-hits small {
+  flex: none;
+  opacity: 0.6;
+  padding-top: 1px;
+}
+.tl-find-hits mark {
+  background: var(--accent);
+  color: #111;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+/* Player: one row of buttons, the rest under More */
+.fp-actions.one-row {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.fp-actions.one-row .chip-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+.fp-actions.one-row .chip-btn .icon[stroke] {
+  stroke-width: 2;
+}
+.fp-more {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+.fp-more button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 6px;
+  border: 0;
+  border-radius: 16px;
+  /* Sheets are always dark: light text on a light tint, whatever the theme */
+  background: rgba(255, 255, 255, 0.09);
+  color: inherit;
+  font-size: 13.5px;
+}
+.paste-link {
+  margin-top: 12px;
+}
+.paste-btns {
+  display: flex;
+  gap: 10px;
+}
+.paste-btns .btn {
+  flex: 1;
+}
+/* Lists inside sheets follow the sheet's own colours (dark in the player, whatever the theme) */
+.sheet .char-list li,
+.sheet .timeline {
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  color: inherit;
+}
+.sheet .char-head span,
+.sheet .xray-tl small,
+.sheet .xray-tl .xray-at,
+.sheet .timeline-head {
+  color: inherit;
+  opacity: 0.68;
+}
+.sheet .timeline-head b {
+  color: inherit;
+}
+.sheet .fp-more button,
+.sheet .xray-tl button,
+.sheet .xray-now .xray-chip {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.fp-chapters {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.fp-chapters span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Book page: Ask AI as one slim row of one-tap questions */
+.ask-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 4px 0 8px;
+}
+.ask-chips::-webkit-scrollbar {
+  display: none;
+}
+.ask-chips .pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Book page: your copies side by side, each labelled where it is */
+.copy-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+.copy-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.7;
 }

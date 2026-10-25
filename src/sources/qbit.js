@@ -110,7 +110,9 @@ async function api(path, { method = 'GET', body, contentType } = {}) {
     return await go();
   } catch (e) {
     if (e.status !== 403 && e.status !== 401) throw e;
-    if (apiKey()) throw new Error('qBittorrent rejected the API key — copy it again from the Web UI settings');
+    if (apiKey() && e.status === 403)
+      throw new Error('qBittorrent has blocked this phone after earlier failed attempts (403). Restart qBittorrent (or wait about an hour), then press Test again — the key itself may be fine.');
+    if (apiKey()) throw new Error(`qBittorrent rejected the API key (401) at ${base()}. Check it is the key from this same qBittorrent, and in Web UI settings turn off "Host header validation" or add this address to its domains.`);
     await login();
     return go().catch((e2) => {
       if (e2.status === 401 || e2.status === 403)

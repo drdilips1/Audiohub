@@ -544,7 +544,7 @@ async function rdEnsure(magnet, hash, onStatus) {
  * details list the audio files; throws a friendly "still downloading" error
  * when the service needs more time.
  */
-export async function prepareMagnet(provider, { magnet, hash, title }, onStatus) {
+export async function prepareMagnet(provider, { magnet, hash, title }, onStatus, { ebook = false } = {}) {
   const h = infoHash(magnet, hash);
   const m = magnetFor(magnet, h, title);
   if (!m) throw new Error('This result has no magnet link');
@@ -552,7 +552,9 @@ export async function prepareMagnet(provider, { magnet, hash, title }, onStatus)
   if (provider === 'torbox') {
     let it = await tbEnsure(m, h, onStatus);
     const ready = (x) => x?.download_finished || x?.download_present;
-    for (let i = 0; i < 16 && !(ready(it) && tbAudioCount(it)); i++) {
+    // An ebook torrent has no audio: its EPUB / PDF is what we wait for.
+    const usable = (x) => tbAudioCount(x) || (ebook && (x.files || []).some((f) => EBOOK.test(f.name || f.short_name || '')));
+    for (let i = 0; i < 16 && !(ready(it) && usable(it)); i++) {
       if (!ready(it) && i >= 8) break; // really downloading: hand over to "play when ready"
       onStatus?.(ready(it) ? 'Getting the file list…' : 'TorBox is fetching it…', ready(it) ? 1 : Number(it?.progress) || 0);
       await sleep(i < 6 ? 1000 : 2500);
@@ -564,7 +566,7 @@ export async function prepareMagnet(provider, { magnet, hash, title }, onStatus)
       e.pending = { provider, hash: String(it?.hash || h).toLowerCase(), progress: Number(it?.progress) || 0 };
       throw e;
     }
-    if (!tbAudioCount(it)) throw new Error('That torrent has no playable audio files');
+    if (!usable(it)) throw new Error(ebook ? 'That torrent has no ebook files' : 'That torrent has no playable audio files');
     forget();
     tbSeen.set(`t:${it.id}`, it);
     return toBook('tb', 'tb', `t:${it.id}`, it.name || title, it.files || []);

@@ -1,4 +1,5 @@
 // Minimal stack navigator with bottom-nav tabs, Android back button friendly.
+import { useEffect, useRef } from 'preact/hooks';
 const listeners = new Set();
 let tab = 'home';
 const stacks = { home: [], discover: [], podcasts: [], library: [], tracker: [], settings: [] };
@@ -10,6 +11,24 @@ const saveScroll = () => {
   if (!stacks[tab].length) scrolls[tab] = window.scrollY;
 };
 const restore = (y) => requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y || 0)));
+
+// Open sheets and panels: Back closes the newest one first.
+const closers = [];
+
+/** While `open`, the phone's Back button calls `onClose` instead of leaving the screen. */
+export function useBackClose(open, onClose) {
+  const fn = useRef(onClose);
+  fn.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const entry = () => fn.current?.();
+    closers.push(entry);
+    return () => {
+      const i = closers.lastIndexOf(entry);
+      if (i >= 0) closers.splice(i, 1);
+    };
+  }, [open]);
+}
 
 function emit() {
   const s = nav.state();
@@ -39,6 +58,10 @@ export const nav = {
     emit();
   },
   back() {
+    if (closers.length) {
+      closers[closers.length - 1]();
+      return true;
+    }
     if (overlay) {
       overlay = null;
       emit();

@@ -1,9 +1,10 @@
 // "Story" sheet in the player: a spoiler-safe recap (read or listen) and a
 // character glossary with a timeline slider that never goes past where you are.
 import { useEffect, useState } from 'preact/hooks';
+import { askVoice } from '../lib/voiceask.js';
 import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
-import { nav } from '../lib/nav.js';
+import { nav, useBackClose } from '../lib/nav.js';
 import * as player from '../lib/player.js';
 import { persisted } from '../lib/store.js';
 import { aiReady, recap, characters, position } from '../lib/ai.js';
@@ -12,7 +13,7 @@ import { speak, stopSpeaking } from '../lib/tts.js';
 /** Characters for the current position, shared with the transcript (tap a name). */
 export const knownCharacters = persisted('knownCharacters', { uid: '', at: -1, list: [] });
 
-export function StorySheet({ close }) {
+export function StorySheet({ close, start = '' }) {
   const [tab, setTab] = useState('recap');
   if (!aiReady()) {
     return (
@@ -44,12 +45,12 @@ export function StorySheet({ close }) {
           Characters
         </button>
       </div>
-      {tab === 'recap' ? <Recap /> : <Characters />}
+      {tab === 'recap' ? <Recap start={start} /> : <Characters />}
     </div>
   );
 }
 
-function Recap() {
+function Recap({ start = '' }) {
   const [mode, setMode] = useState(null); // 'story' | 'chapter'
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -82,11 +83,15 @@ function Recap() {
     player.pause();
     setReading(true);
     try {
-      for (const para of text.split(/\n+/).filter((x) => x.trim())) await speak(para);
+      for (const para of text.split(/\n+/).filter((x) => x.trim())) await speak(para, askVoice.get() === 'phone' ? { mode: 'system' } : {});
     } catch {}
     setReading(false);
   };
   useEffect(() => () => stopSpeaking(), []);
+  // Opened from "Welcome back": the story so far, straight away.
+  useEffect(() => {
+    if (start) run(start);
+  }, []);
   let where = '';
   try {
     where = position().label;
@@ -207,6 +212,7 @@ function Characters() {
 
 /** Small card for a character tapped in the transcript. */
 export function CharacterCard({ c, close }) {
+  useBackClose(true, close);
   return (
     <div class="sheet-backdrop" onClick={close}>
       <div class="sheet char-card" onClick={(e) => e.stopPropagation()}>

@@ -22,19 +22,39 @@ Built with Preact + Vite, packaged for Android with Capacitor 8.
 **Discover**
 - Genre pages with *For you*, *Bestsellers*, *Trending* and *Best of (year)* tabs, plus an "I have N hours" length filter.
 - **Recommendations that learn your taste** — rate books (❤️ / 👍 / 😐 / 👎 / didn't finish, with story and narration scores); picks show a match % and a "why this pick" line, skip what you already have, and hold back poorly narrated titles.
-- **AI bookseller** — ask in plain words ("atmospheric sci-fi under 12 hours like Project Hail Mary"). Works with a free Groq or OpenRouter key.
+- **AI bookseller** — ask in plain words ("atmospheric sci-fi under 12 hours like Project Hail Mary").
+- **Paste a link** — an MP3 / M4B link plays (and can be kept in your Library), an EPUB / PDF link opens in the reader, an Internet Archive page or a podcast feed opens directly.
 - **Key ideas** summaries on book pages (AI), and **Goodreads ratings** on every tile.
 
 **Player**
-- Background playback with lock-screen controls, chapters, 0.5×–3× speed, bookmarks, sleep timer (fade-out, end of chapter, and sleep detection).
+- Background playback with lock-screen and earphone controls, chapters (also read from inside single-file M4B books), 0.5×–3× speed and volume boost kept per book, skip silence, sleep timer (fade-out, end of chapter, sleep detection).
+- Bookmarks named after what was being said, with your own notes; on the book page and in Notes, exported as Markdown.
+- **Live transcript** (on-device speech recognition) — with the book's ebook attached (found by itself), it shows the book's own words; search what you've heard and tap to jump.
+- **X-Ray** — who and where is in the scene, and every chapter a character appears in. **Story** — spoiler-free recaps and characters; a "welcome back" recap after a break.
+- Resumes from your latest place whichever copy you play (phone, download, server, cloud).
 - Player backgrounds: cover, living gradient, bundled wallpapers or your own photo.
-- Live transcript (on-device speech recognition).
+
+**Voice and AI (bring your own key)**
+- One **voice button** (Home, player, home-screen widget): "back 30 seconds", "next chapter", "chapter 7", "speed 1.5", "sleep in 20 minutes", "bookmark", "play Sapiens", "find a book on consciousness", or any question about a book.
+- **Driving mode** — huge controls, ask out loud and hear short answers, voice commands.
+- **Ask AI** about a book or your whole library; in the player: Explain, Challenge, Rabbit hole, Related, Recall, Remember.
+- Works with **Groq, Gemini, OpenRouter** (free keys), **Claude** (paid) or **your own** OpenAI-compatible AI (Ollama, LM Studio…). Only what an AI feature needs is sent, to the service you chose; playback and everything else work without AI.
+
+**Library**
+- List, grid, covers-only or shelves (by author / series); search your own books; smart shelves (Not started, Short listens, Recently added); series progress; one tap finds missing covers.
+- Downloads by Author / Series folders, with a storage view and "remove finished".
 
 **Ebooks**
-- EPUB reader with themes, Send to Kindle, and **read-aloud** with natural voices (Microsoft Edge neural voices, on-device Sherpa/Piper voices, or any installed TTS engine) that keeps going with the screen off.
+- EPUB and PDF reader with themes, highlights and notes, Send to Kindle, and **read-aloud** with natural voices (Microsoft Edge neural voices, on-device Sherpa/Piper voices, or any installed TTS engine) that keeps going with the screen off.
+
+**Podcasts**
+- Rate episodes (👍 / 👎 / not interested), recommended episodes, new episodes downloaded on Wi-Fi per show.
 
 **Looks**
-- Dark, black and light modes, many accent palettes, dynamic colour from cover art.
+- Light, dark and black, with many colour themes for each (each mode keeps its own), accents, dynamic colour from cover art.
+
+**Backup and sync**
+- Backup to a file (everything, with logins and API keys optional); optional cloud sync with your own Supabase.
 
 **Optional: add-ons and trackers (at your own risk)**
 - You can add **source add-ons** (your own search sources) and your own **tracker site** (the app opens it in a built-in browser and sends downloads you tap to your qBittorrent).

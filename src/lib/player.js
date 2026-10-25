@@ -2,11 +2,113 @@
 // bookmarks, progress persistence and system media controls. Audio output is
 // delegated to an engine (native Media3 on Android, <audio> on the web).
 import * as stats from './stats.js';
-import { createEngine, lastPosition } from './engine.js';
-import { progress, bookmarks, settings, summarize } from './store.js';
+import { createEngine } from './engine.js';
+import { progress, bookmarks, settings, summarize, persisted } from './store.js';
 import { syncProgress, switchTracks } from '../sources/audiobookshelf.js';
 import { fetchStatus } from '../sources/debrid.js';
-import { applyLocal, isDownloaded } from './downloads.js';
+import { applyLocal, isDownloaded, downloads } from './downloads.js';
+import { otherCopyProgress } from './works.js';
+
+// ---- safety net: a part that won't play --------------------------------------
+// First a fresh link and one more try; then another copy of the same book you
+// have (downloaded, on the phone, Audiobookshelf, TorBox / Real-Debrid), at the
+// same point in the book.
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+let rescue = { key: '', step: 0 };
+const rescueTried = new Set(); // copies already tried for this listen
+async function otherCopy(b) {
+  const { localSrc, findOwned } = await import('../sources/index.js');
+  const { matches, mainTitle } = await import('./match.js');
+  const t = mainTitle(b.title || '');
+  if (!t) return null;
+  const same = (x) => x && x.uid !== b.uid && !rescueTried.has(x.uid) && x.kind !== 'text' && matches(t, `${x.title || ''} ${x.rawName || ''}`);
+  const o = await findOwned(b).catch(() => null);
+  // Real-Debrid failing: your TorBox copy is the closest match (same files), so it goes first.
+  const tb = b.source === 'rd' ? o?.cloud?.find((x) => x.source === 'tb' && same(x)) : null;
+  if (tb) return { book: tb, label: 'your TorBox' };
+  const dl = Object.values(downloads.get()).find((d) => d?.status === 'done' && same(d.book));
+  if (dl) return { book: dl.book, label: 'your downloaded copy' };
+  const ph = (localSrc.localCfg.get().books || []).find(same);
+  if (ph) return { book: ph, label: 'the copy on this phone' };
+  const s = o?.server?.find(same);
+  if (s) return { book: s, label: 'your Audiobookshelf' };
+  const c = o?.cloud?.find(same);
+  if (c) return { book: c, label: c.source === 'rd' ? 'your Real-Debrid' : 'your TorBox' };
+  return null;
+}
+/** Returns true when it took over (retrying or switching copies). */
+async function recover(msg = '') {
+  const b = state.book;
+  if (!b || b.source === 'pod') return false;
+  const key = `${b.uid}#${state.index}`;
+  if (rescue.key !== key) rescue = { key, step: 0 };
+  const t = state.tracks[state.index];
+  const at = state.time || loadingAt?.at || 0;
+  // Real-Debrid saying its file server is down (503 hoster_unavailable…): another try won't
+  // help, go straight to TorBox.
+  const rdDown = b.source === 'rd' && /\b5\d\d\b|hoster|unavailable|not available|infringing|too many/i.test(String(msg));
+  if (rescue.step === 0 && t?.resolve && !b.offline && !rdDown) {
+    rescue.step = 1;
+    set({ loading: true, error: null, phase: 'Reconnecting…' });
+    await delay(1500);
+    t.url = null;
+    loadTrack(state.index, at);
+    return true;
+  }
+  if (rescue.step <= 1) {
+    rescue.step = 2;
+    rescueTried.add(b.uid);
+    const g = globalTime();
+    // A Real-Debrid book: your Audiobookshelf copy first (checked like "Already on your
+    // Audiobookshelf"), then the same torrent from TorBox (instant when TorBox has it).
+    if (b.source === 'rd') {
+      try {
+        const { absSrc, getDetails } = await import('../sources/index.js');
+        const qb = await import('../sources/qbit.js');
+        const hit = absSrc.connected() ? await qb.onServer({ title: b.title, author: b.author || '' }) : null;
+        if (hit && !rescueTried.has(hit.uid)) {
+          set({ loading: true, error: null, phase: 'Real-Debrid can’t serve this right now — playing it from your Audiobookshelf…' });
+          const d = await getDetails(hit);
+          rescuing = true;
+          await playBook(d, { globalStart: g });
+          return true;
+        }
+      } catch {
+        rescuing = false;
+      }
+    }
+    if (b.source === 'rd' && b.hash) {
+      try {
+        const { cloud, getDetails } = await import('../sources/index.js');
+        if (cloud.tbConnected()) {
+          set({ loading: true, error: null, phase: 'Real-Debrid can’t serve this right now — playing it from TorBox…' });
+          const stub = await cloud.prepareMagnet('torbox', { hash: b.hash, title: b.title });
+          const d = await getDetails({ ...stub, title: b.title, author: b.author, cover: b.cover });
+          rescuing = true;
+          await playBook(d, { globalStart: g });
+          return true;
+        }
+      } catch {
+        rescuing = false;
+      }
+    }
+    const alt = await otherCopy(b).catch(() => null);
+    if (alt) {
+      set({ loading: true, error: null, phase: `This copy won't play — switching to ${alt.label}…` });
+      try {
+        const { getDetails } = await import('../sources/index.js');
+        const d = await getDetails(alt.book);
+        rescuing = true;
+        await playBook(d, { globalStart: g });
+        return true;
+      } catch {
+        rescuing = false;
+      }
+    }
+  }
+  return false;
+}
+let rescuing = false;
 
 const state = {
   book: null,
@@ -65,6 +167,11 @@ const handlers = {
       handlers.ended();
     }
     if (state.sleepUntil && Date.now() >= state.sleepUntil) fadeOutAndPause();
+    // "End of chapter" inside one long file (an M4B with chapter marks): stop at the mark.
+    if (state.sleepChapterEnd && globalTime() >= state.sleepChapterEnd - 0.3) {
+      set({ sleepChapterEnd: null, sleepEndOfTrack: false });
+      fadeOutAndPause();
+    }
   },
   playing(on) {
     if (on) loadingAt = null;
@@ -119,6 +226,8 @@ const handlers = {
     const token = loadToken;
     if (isAbs(state.book) && (await trySwitch())) return;
     if (token !== loadToken) return; // something else started loading meanwhile
+    if (await recover(msg)) return;
+    if (token !== loadToken) return;
     set({ loading: false, playing: false, phase: '', error: msg });
     checkCloud(state.index, state.time, msg);
   },
@@ -131,14 +240,31 @@ const handlers = {
 const engine = createEngine(handlers);
 
 // Skip silence and volume boost (Settings, per listener; Android only).
+// Each audiobook remembers its own speed and volume boost (uid -> { speed, boost });
+// a new book starts with the last ones you used.
+export const bookPrefs = persisted('bookPrefs', {});
+const prefOf = (b) => (b?.uid && b.source !== 'pod' ? bookPrefs.get()[b.uid] : null) || {};
+function savePref(patch) {
+  const uid = state.book?.uid;
+  if (!uid || state.book.source === 'pod') return;
+  bookPrefs.set((all) => {
+    const keys = Object.keys(all);
+    const next = keys.length > 400 ? Object.fromEntries(keys.slice(-300).map((k) => [k, all[k]])) : { ...all };
+    next[uid] = { ...(all[uid] || {}), ...patch };
+    return next;
+  });
+}
+
 export function applyAudio() {
   const s = settings.get();
+  const boost = prefOf(state.book).boost;
   engine.setSkipSilence?.(!!s.skipSilence)?.catch?.(() => {});
-  engine.setBoost?.(s.boost || 0)?.catch?.(() => {});
+  engine.setBoost?.(boost ?? s.boost ?? 0)?.catch?.(() => {});
 }
 applyAudio();
 export function setAudio(patch) {
   settings.patch(patch);
+  if ('boost' in patch) savePref({ boost: patch.boost });
   applyAudio();
 }
 
@@ -187,7 +313,7 @@ function estDuration(i) {
   if (t.size > 0 && sized.length) return (t.size * sized.reduce((a, x) => a + x.duration, 0)) / sized.reduce((a, x) => a + x.size, 0);
   return known.reduce((a, x) => a + x.duration, 0) / known.length;
 }
-function trackOffset(i) {
+export function trackOffset(i) {
   const t = state.tracks[i];
   if (t && typeof t.offset === 'number') return t.offset;
   let o = 0;
@@ -239,9 +365,18 @@ async function loadTrack(i, startAt = 0, autoplay = true) {
       autoplay,
       rate: state.rate,
       headers: t.headers,
-      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '', key: b.uid, track: i },
+      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '' },
     });
     if (!autoplay) set({ loading: false, phase: '' });
+    // One long file with chapter marks inside (M4B): read them, for the chapter list,
+    // "end of chapter" and "next chapter".
+    if (state.tracks.length === 1 && !b.chaptersMeta?.length) {
+      const uid = b.uid;
+      import('./m4bchapters.js')
+        .then((m) => m.m4bChapters(uid, url, t.headers, t.duration || state.duration))
+        .then((list) => list.length && state.book?.uid === uid && patchBook(uid, { chaptersMeta: list }))
+        .catch(() => {});
+    }
     queueBase = i;
     queueAhead(token);
   } catch (e) {
@@ -254,6 +389,8 @@ async function loadTrack(i, startAt = 0, autoplay = true) {
       return loadTrack(i, startAt, autoplay);
     }
     if (isAbs(state.book) && (await trySwitch())) return;
+    if (token !== loadToken) return;
+    if (await recover(e.message)) return;
     if (token !== loadToken) return;
     set({ loading: false, playing: false, phase: '', error: e.message || 'Playback failed' });
   }
@@ -375,9 +512,13 @@ export function prefetch(book, getDetails) {
     .catch(() => ready.delete(book.uid));
 }
 
+// A different book: drop the previous one's parts at once, so nothing (the transcript,
+// the progress bar) takes the old audio for the new book while it opens.
+const freshBook = (book) => (state.book?.uid === book?.uid ? {} : { tracks: [], index: 0, time: 0, duration: 0 });
+
 export async function openAndPlay(book, getDetails, opts) {
   stopWaiting();
-  set({ book, loading: true, error: null, playing: false, phase: 'Opening the book…' });
+  set({ ...freshBook(book), book, loading: true, error: null, playing: false, phase: 'Opening the book…' });
   try {
     const early = ready.get(book.uid);
     ready.delete(book.uid);
@@ -388,10 +529,13 @@ export async function openAndPlay(book, getDetails, opts) {
   }
 }
 
-export async function playBook(details, { index, time, globalStart } = {}) {
+export async function playBook(details, { index, time, globalStart, autoplay = true } = {}) {
   stopWaiting();
+  // A book you chose (not a switch by the safety net): start its list of tried copies afresh.
+  if (!rescuing) rescueTried.clear();
+  rescuing = false;
   if (details && !details.offline && isDownloaded(details.uid)) details = applyLocal(details);
-  set({ loading: true, error: null, book: details, phase: 'Opening the book…' });
+  set({ ...freshBook(details), loading: true, error: null, book: details, phase: 'Opening the book…' });
   try {
     let tracks = details.tracks;
     let serverStart = 0;
@@ -403,20 +547,31 @@ export async function playBook(details, { index, time, globalStart } = {}) {
     }
     if (!tracks?.length) throw new Error('No audio tracks found for this title');
     set({ book: details, tracks, playing: false });
-    const saved = progress.get()[details.uid];
+    let saved = progress.get()[details.uid];
+    // One place per book, whatever the copy: if you listened further on in another copy
+    // (another source, a download, your server) more recently, carry on from there.
+    const other = index == null && time == null && globalStart == null ? otherCopyProgress(details) : null;
+    const useOther = other && (!saved || saved.finished || other.updatedAt > (saved.updatedAt || 0) + 60e3);
+    if (useOther) saved = null;
     const resume = saved && !saved.finished;
     let i = index ?? (resume ? saved.track : 0) ?? 0;
     let t = time ?? (resume ? saved.time : 0);
-    const g = globalStart ?? (index == null && time == null && !resume && serverStart ? serverStart : null);
+    const g = globalStart ?? (useOther ? other.global : null) ?? (index == null && time == null && !resume && serverStart ? serverStart : null);
     if (g != null) ({ i, t } = locate(g));
     // Gentle rewind when resuming after a break.
     if (resume && index == null && time == null && Date.now() - saved.updatedAt > 5 * 60e3) t = Math.max(0, t - 10);
+    // Back after two weeks or more: the player offers a recap (fiction: characters too).
+    const away = resume && saved.updatedAt ? Math.floor((Date.now() - saved.updatedAt) / 86400e3) : 0;
+    set({ awayDays: away >= 14 ? away : 0 });
     // The show's own speed, and skip its intro when starting from the top.
     const pref = showPrefsFor(details) || {};
-    const rate = pref.speed || settings.get().speed || 1;
+    const rate = pref.speed || prefOf(details).speed || settings.get().speed || 1;
     if (rate !== state.rate) set({ rate });
+    // This book's own volume boost.
+    applyAudio();
     if (pref.intro && !t && (i || 0) === 0) t = pref.intro;
-    await loadTrack(Math.min(i, tracks.length - 1), t);
+    // autoplay false: ready but quiet (e.g. a scene is looked up first, then it plays from there).
+    await loadTrack(Math.min(i, tracks.length - 1), t, autoplay);
   } catch (e) {
     set({ loading: false, phase: '', error: e.message || String(e) });
   }
@@ -490,15 +645,22 @@ export function setRate(r) {
   set({ rate: r });
   // A show with its own speed keeps the change for that show.
   if (showPrefsFor(state.book)?.speed && showPrefsSave) showPrefsSave(state.book, { speed: r });
-  else settings.patch({ speed: r });
+  else settings.patch({ speed: r }), savePref({ speed: r });
 }
 export function setSleep(mode) {
   const wasTrack = state.sleepEndOfTrack;
   if (mode === 'track') engine.queue?.([]);
   else if (wasTrack && state.book) setTimeout(() => queueAhead(loadToken));
-  if (mode === 'track') set({ sleepUntil: null, sleepEndOfTrack: true });
-  else if (!mode) set({ sleepUntil: null, sleepEndOfTrack: false });
-  else set({ sleepUntil: Date.now() + mode * 60e3, sleepEndOfTrack: false });
+  // A book with chapter marks inside its file(s): the end of the chapter you're in.
+  let chapterEnd = null;
+  if (mode === 'track' && state.book?.chaptersMeta?.length) {
+    const g = globalTime();
+    const c = state.book.chaptersMeta.find((x) => g >= x.start && g < (x.end || Infinity));
+    if (c?.end) chapterEnd = c.end;
+  }
+  if (mode === 'track') set({ sleepUntil: null, sleepEndOfTrack: true, sleepChapterEnd: chapterEnd });
+  else if (!mode) set({ sleepUntil: null, sleepEndOfTrack: false, sleepChapterEnd: null });
+  else set({ sleepUntil: Date.now() + mode * 60e3, sleepEndOfTrack: false, sleepChapterEnd: null });
 }
 
 /** Add details to the book that's playing (e.g. chapters fetched afterwards). */
@@ -513,6 +675,29 @@ export function stop() {
   Promise.resolve(engine.stop()).catch(() => {});
   stopWaiting();
   set({ book: null, tracks: [], playing: false, loading: false, error: null, time: 0, duration: 0, sleepUntil: null, sleepEndOfTrack: false });
+}
+
+/** Give a bookmark a better name (it's found by the moment it was made). */
+export function renameBookmark(uid, createdAt, label) {
+  if (!label) return;
+  bookmarks.set((all) => ({ ...all, [uid]: (all[uid] || []).map((b) => (b.createdAt === createdAt ? { ...b, label } : b)) }));
+}
+
+/** Play from a moment in the book (seconds from its start), whether playing or paused. */
+export function playAt(g) {
+  const at = locate(Math.max(0, g));
+  if (at.i === state.index && state.playing) seek(at.t);
+  else loadTrack(at.i, at.t, true);
+}
+
+/** Bookmarks play from a little before the marked moment, to catch the start of it. */
+export const BOOKMARK_LEAD = 15;
+export function playBookmark(bm) {
+  const t = bm.time - BOOKMARK_LEAD;
+  // Near the start of a part: the end of the part before it.
+  const at = t >= 0 || !bm.track ? { i: bm.track, t: Math.max(0, t) } : locate(trackOffset(bm.track) + t);
+  if (at.i === state.index && state.playing) seek(at.t);
+  else loadTrack(at.i, at.t, true);
 }
 
 export function addBookmark(label) {
@@ -567,14 +752,3 @@ function fadeOutAndPause() {
 }
 
 document.addEventListener('visibilitychange', () => saveProgress(true));
-
-// Android can close the app while the book plays on in the background (screen off,
-// swiped away): the phone's player kept the spot, so take it when it's newer than ours.
-lastPosition().then((r) => {
-  if (!r?.key || state.book) return;
-  const p = progress.get()[r.key];
-  if (!p || p.finished || p.kind !== 'audio' || !(r.at > (p.updatedAt || 0) + 2000)) return;
-  if (r.track === p.track && Math.abs(r.position - p.time) < 2) return;
-  const global = r.track === p.track ? (p.global || 0) - (p.time || 0) + r.position : p.global;
-  progress.set((all) => ({ ...all, [r.key]: { ...p, track: r.track, time: r.position, global, updatedAt: r.at } }));
-});

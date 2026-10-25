@@ -63,7 +63,7 @@ public final class ReadAloudEngine {
         }
     }
 
-    private static final int LOOKAHEAD = 3;
+    private static final int LOOKAHEAD = 5; // a slow piece now and then stays hidden
     private static int maxPiece = 700;
 
     private static Context app;
@@ -107,7 +107,97 @@ public final class ReadAloudEngine {
         listeners.remove(r);
     }
 
+    // ---------------------------------------------------------------- media session
+    // Earphone / Bluetooth buttons, the lock screen and car controls reach the app through a
+    // media session. Without one, a headset press went to the audiobook player instead: the
+    // reading paused (lost audio focus) but could never be resumed from the earphones.
+    private static android.media.session.MediaSession mediaSession;
+    private static boolean pausedByFocus = false;
+
+    public static android.media.session.MediaSession.Token sessionToken() {
+        return mediaSession == null ? null : mediaSession.getSessionToken();
+    }
+
+    private static void ensureSession() {
+        if (mediaSession != null || app == null) return;
+        mediaSession = new android.media.session.MediaSession(app, "Audiohub read aloud");
+        mediaSession.setCallback(new android.media.session.MediaSession.Callback() {
+            @Override
+            public void onPlay() {
+                main.post(ReadAloudEngine::play);
+            }
+
+            @Override
+            public void onPause() {
+                main.post(ReadAloudEngine::pause);
+            }
+
+            @Override
+            public void onSkipToNext() {
+                main.post(ReadAloudEngine::next);
+            }
+
+            @Override
+            public void onSkipToPrevious() {
+                main.post(ReadAloudEngine::previous);
+            }
+
+            @Override
+            public void onStop() {
+                main.post(ReadAloudEngine::stop);
+            }
+
+            @Override
+            public boolean onMediaButtonEvent(Intent i) {
+                android.view.KeyEvent k = i.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+                if (k != null && k.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                    switch (k.getKeyCode()) {
+                        case android.view.KeyEvent.KEYCODE_HEADSETHOOK:
+                        case android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                            main.post(ReadAloudEngine::toggle);
+                            return true;
+                        case android.view.KeyEvent.KEYCODE_MEDIA_PLAY:
+                            main.post(ReadAloudEngine::play);
+                            return true;
+                        case android.view.KeyEvent.KEYCODE_MEDIA_PAUSE:
+                            main.post(ReadAloudEngine::pause);
+                            return true;
+                        default:
+                    }
+                }
+                return super.onMediaButtonEvent(i);
+            }
+        });
+        mediaSession.setActive(true);
+    }
+
+    private static void updateSession() {
+        if (mediaSession == null) return;
+        long actions = android.media.session.PlaybackState.ACTION_PLAY | android.media.session.PlaybackState.ACTION_PAUSE
+            | android.media.session.PlaybackState.ACTION_PLAY_PAUSE | android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT
+            | android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS | android.media.session.PlaybackState.ACTION_STOP;
+        mediaSession.setPlaybackState(new android.media.session.PlaybackState.Builder()
+            .setActions(actions)
+            .setState(playing ? android.media.session.PlaybackState.STATE_PLAYING : android.media.session.PlaybackState.STATE_PAUSED, android.media.session.PlaybackState.PLAYBACK_POSITION_UNKNOWN, playing ? rate : 0f)
+            .build());
+        mediaSession.setMetadata(new android.media.MediaMetadata.Builder()
+            .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, title.isEmpty() ? "Reading aloud" : title)
+            .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, "Audiohub")
+            .build());
+    }
+
+    private static void releaseSession() {
+        if (mediaSession == null) return;
+        try {
+            mediaSession.setActive(false);
+            mediaSession.release();
+        } catch (Exception ignored) {
+        }
+        mediaSession = null;
+    }
+
     private static void changed() {
+        updateSession();
         for (Runnable r : listeners) r.run();
     }
 
@@ -252,7 +342,10 @@ public final class ReadAloudEngine {
         }
         playing = true;
         lastError = "";
+        pausedByFocus = false;
         requestFocus();
+        ensureSession();
+        updateSession();
         registerNoisy();
         ReadAloudService.start(app);
         if (player != null && playerReady) {
@@ -325,6 +418,7 @@ public final class ReadAloudEngine {
         pieces = new ArrayList<>();
         abandonFocus();
         unregisterNoisy();
+        releaseSession();
         if (app != null) {
             deleteTree(new File(app.getCacheDir(), "readaloud"));
             ReadAloudService.stop(app);
@@ -568,7 +662,14 @@ public final class ReadAloudEngine {
     private static AudioFocusRequest focusRequest;
     private static final AudioManager.OnAudioFocusChangeListener focusListener = change -> main.post(() -> {
         if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
-            if (playing) pause();
+            if (playing) {
+                pause();
+                // A short interruption (a call, navigation): carry on when it's over.
+                pausedByFocus = change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT;
+            }
+        } else if (change == AudioManager.AUDIOFOCUS_GAIN && pausedByFocus) {
+            pausedByFocus = false;
+            play();
         }
     });
 

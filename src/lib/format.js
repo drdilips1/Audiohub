@@ -55,6 +55,16 @@ export function hashHue(str = '') {
   return Math.abs(h) % 360;
 }
 
+/** First name for the greeting: the one you typed in Settings, else your sign-in's name or email. */
+export function firstName(typed, account = {}) {
+  const pick = (s) => String(s || '').trim().split(/\s+/)[0] || '';
+  if (String(typed || '').trim()) return String(typed).trim().slice(0, 24);
+  if (account.name) return pick(account.name);
+  // dilip.aiims@… → Dilip (only a plain word; skip addresses like x7f2k@…)
+  const w = String(account.email || '').split('@')[0].split(/[._\-+\d]/)[0];
+  return /^[a-z]{2,15}$/i.test(w) ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '';
+}
+
 export function greeting() {
   const h = new Date().getHours();
   if (h < 5) return 'Up late';

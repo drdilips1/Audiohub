@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
+import java.util.zip.GZIPInputStream;
 
 /**
  * Built-in neural voices (sherpa-onnx: Kokoro, Piper, Kitten). Voices are
@@ -70,7 +71,7 @@ public class InkwellVoicesPlugin extends Plugin {
         });
     }
 
-    /** Download a .tar.bz2 voice package and unpack it to files/voices/<id>. */
+    /** Download a .tar.bz2 (or .tar.gz) voice package and unpack it to files/voices/<id>. */
     @PluginMethod
     public void download(PluginCall call) {
         String id = call.getString("id");
@@ -106,8 +107,11 @@ public class InkwellVoicesPlugin extends Plugin {
                 //noinspection ResultOfMethodCallIgnored
                 target.mkdirs();
                 try (
+                    // .tar.gz unpacks with the phone's built-in (native) zlib: many times faster than bzip2.
                     TarArchiveInputStream tar = new TarArchiveInputStream(
-                        new BZip2CompressorInputStream(new BufferedInputStream(new FileInputStream(tmp), 1 << 16))
+                        url.endsWith(".tar.gz")
+                            ? new BufferedInputStream(new GZIPInputStream(new FileInputStream(tmp), 1 << 16), 1 << 16)
+                            : new BZip2CompressorInputStream(new BufferedInputStream(new FileInputStream(tmp), 1 << 16))
                     )
                 ) {
                     TarArchiveEntry e;

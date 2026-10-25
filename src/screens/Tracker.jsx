@@ -27,7 +27,6 @@ export function TrackerCard() {
     return (
       <>
         <p class="muted">Add the tracker site you use. You sign in inside the app once; tapping a .torrent or magnet there sends it to qBittorrent at home.</p>
-        <p class="muted small">Optional, and at your own risk: follow your tracker's rules, and only download what you have the right to.</p>
         <form
           class="set-form inline"
           onSubmit={(e) => {

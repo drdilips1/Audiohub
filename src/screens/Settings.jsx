@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-// Save / open backup files with Android's own file screens.
 import { Native as Files, available as files } from '../sources/local.js';
+import { ssBadges } from '../sources/storyshots.js';
 import { Icon } from '../components/icons.jsx';
-import { toast } from '../components/common.jsx';
+import { toast, AskButton } from '../components/common.jsx';
 import { settings, addons, abs, debrid, hardcover, goodreads, useStore, exportBackup, importBackup } from '../lib/store.js';
+import { notInterested } from '../lib/taste.js';
 import { SOURCES, absSrc, addonSrc, cloud, hc, gr, sourceOrder } from '../sources/index.js';
 import { clearHttpCache, isWeb, relayUrl, setRelayUrl, probeRelay, defaultRelayUrl } from '../lib/http.js';
 import { searchSources, sourceAddons } from '../sources/sourceaddons.js';
 import { ai, PROVIDERS as AI_PROVIDERS, testProvider } from '../lib/ai.js';
 import relayCode from '../../relay/index.ts?raw';
-import { ACCENTS, PALETTES } from '../lib/theme.js';
+import { ACCENTS, PALETTES, resolvedMode, activePalette } from '../lib/theme.js';
 import { WALLPAPERS, wallpaperUrl, saveCustom, useCustomWallpaper } from '../lib/wallpaper.js';
 import { APP_VERSION } from '../components/update.jsx';
+import { ReportCard } from '../components/report.jsx';
 import { PROVIDERS, clearMetaCache } from '../lib/meta.js';
-import { AccountCard, VoicesCard, DownloadsCard } from './settings-extra.jsx';
+import { AccountCard, NameRow, VoicesCard, DownloadsCard, FindOrderCard } from './settings-extra.jsx';
 import { UpdateCard } from '../components/update.jsx';
 import { nav } from '../lib/nav.js';
 import * as qb from '../sources/qbit.js';
@@ -54,6 +56,21 @@ function MusicToggle() {
       onChange={(v) => {
         debrid.patch({ showMusic: v });
         cloud.forget?.();
+        setOn(v);
+      }}
+    />
+  );
+}
+
+function SsToggle() {
+  const [on, setOn] = useState(ssBadges.get());
+  return (
+    <Toggle
+      label="StoryShots badges"
+      hint="A small S on covers when StoryShots has a summary of the book; tap it to open the summary"
+      on={on}
+      onChange={(v) => {
+        ssBadges.set(v);
         setOn(v);
       }}
     />
@@ -300,7 +317,7 @@ function WebRelayCard() {
   );
 }
 
-/** Free AI keys (Groq, OpenRouter) for the bookseller, recaps and the character guide. */
+/** AI keys (Groq, Gemini, OpenRouter free; Claude paid) for the bookseller, recaps and the character guide. */
 function AiCard() {
   const cfg = useStore(ai);
   return (
@@ -309,13 +326,80 @@ function AiCard() {
         Powers the <b>bookseller</b>, <b>Picked for you</b> and <b>Story</b> in the player (spoiler-free recaps and characters). Add one or more free keys: if one service is busy the app switches to the next automatically.
         Without a key the bookseller still works from the Audible catalogue.
       </p>
-      {AI_PROVIDERS.map((p) => (
+      {AI_PROVIDERS.filter((p) => !p.custom).map((p) => (
         <AiKey p={p} saved={cfg[p.keyField] || ''} />
       ))}
+      <CustomAi cfg={cfg} />
+      {AI_PROVIDERS.filter((p) => cfg[p.keyField]).length > 1 && (
+        <div class="set-row">
+          <div>
+            <b>Use first</b>
+            <small>The others take over when it's busy</small>
+          </div>
+          <select value={cfg.prefer || ''} onChange={(e) => ai.patch({ prefer: e.currentTarget.value })}>
+            <option value="">Automatic (free ones first)</option>
+            {AI_PROVIDERS.filter((p) => cfg[p.keyField]).map((p) => (
+              <option value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      <label class="set-row">
+        <div>
+          <b>No spoilers</b>
+          <small>Ask AI, Explain and the player's AI only use the book up to where you are (finished books: no limit)</small>
+        </div>
+        <input type="checkbox" class="switch" checked={useStore(settings).aiNoSpoilers !== false} onChange={(e) => settings.patch({ aiNoSpoilers: e.currentTarget.checked })} />
+      </label>
+      <HiddenRecs />
       <p class="muted small">
-        <b>Groq</b> is the fastest and most generous (recommended). <b>OpenRouter</b> gives free Llama, DeepSeek and Qwen models. No card is needed for either.
+        <b>What leaves your phone:</b> only when you use an AI feature, the question and what it needs — the book's title and author, where you are in it, and (for questions about
+        what you're hearing) the last few minutes of the transcript — go to the service you set up here, under your own key. Playback, downloads, your library, bookmarks and
+        voice commands like “back 30 seconds” never use AI and work without any key. Nothing goes to us: there is no Audiohub server.
+      </p>
+      <p class="muted small">
+        <b>Groq</b> is the fastest and most generous (recommended). <b>Gemini</b> (Google AI Studio) has a free tier too. <b>OpenRouter</b> gives free Llama, DeepSeek and Qwen models. No card is needed for these three.
+        <b> Claude</b> gives the most careful answers but is paid per use (a key from platform.claude.com with credit on it); short book answers cost very little.
       </p>
     </>
+  );
+}
+
+/** Your own AI: any OpenAI-compatible address (Ollama, LM Studio, a company endpoint…). */
+function CustomAi({ cfg }) {
+  const [url, setUrl] = useState(cfg.customUrl || '');
+  const [model, setModel] = useState(cfg.customModel || '');
+  const [key, setKey] = useState(cfg.customKey || '');
+  const [busy, setBusy] = useState(false);
+  const changed = url.trim() !== (cfg.customUrl || '') || model.trim() !== (cfg.customModel || '') || key.trim() !== (cfg.customKey || '');
+  const save = async () => {
+    ai.patch({ customUrl: url.trim(), customModel: model.trim(), customKey: key.trim() });
+    if (!url.trim()) return toast('Your own AI removed');
+    if (!model.trim()) return toast('Add the model name too');
+    setBusy(true);
+    try {
+      toast(await testProvider('custom'));
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="ai-key">
+      <div class="ai-key-head">
+        <b>Your own AI</b>
+        <small class="muted">any OpenAI-compatible address — Ollama, LM Studio, your company's…</small>
+      </div>
+      <input value={url} placeholder="Address, e.g. http://192.168.1.10:11434/v1" onInput={(e) => setUrl(e.currentTarget.value)} autocomplete="off" />
+      <input value={model} placeholder="Model, e.g. llama3.1" onInput={(e) => setModel(e.currentTarget.value)} autocomplete="off" />
+      <div class="set-row">
+        <input type="password" value={key} placeholder="Key (if it needs one)" onInput={(e) => setKey(e.currentTarget.value)} autocomplete="off" />
+        <button class="btn" disabled={busy || !changed} onClick={save}>
+          {busy ? <span class="spinner small" /> : 'Save'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -327,7 +411,7 @@ function AiKey({ p, saved }) {
     <div class="ai-key">
       <div class="ai-key-head">
         <b>{p.name}</b>
-        <small class="muted">free key at {p.site}</small>
+        <small class="muted">{p.anthropic ? 'key' : 'free key'} at {p.site}</small>
         {saved && state === 'ok' && <span class="ok-dot">Working</span>}
       </div>
       <div class="set-row">
@@ -907,7 +991,7 @@ function AddonsCard() {
   return (
     <>
       <p class="muted pad-s">
-        Paste an addon link: InkShelf-style source addons (JSON on jsonkeeper etc.), Stremio-style manifests, or addon collections. Only install addons you trust. Audiohub ships with none: what you add, and what you download through it, is your choice and your responsibility — respect copyright and the laws where you live.
+        Paste an addon link: InkShelf-style source addons (JSON on jsonkeeper etc.), Stremio-style manifests, or addon collections. Only install addons you trust.
       </p>
       {list.map((a) => (
         <div class="set-row addon-row">
@@ -1026,7 +1110,7 @@ function PreferredDebrid() {
   const d = useStore(debrid);
   if (!d.torbox || !d.realdebrid) return null;
   return (
-    <Section icon="download" title="Default debrid">
+    <Section icon="cloud" title="Default debrid">
       <div class="set-row">
         <div>
           <b>Use for Add / Play</b>
@@ -1052,7 +1136,10 @@ export function Settings() {
   const setSource = (k, v) => settings.patch({ sources: { ...st.sources, [k]: v } });
   return (
     <div class="screen settings">
-      <h1 class="screen-title">Settings</h1>
+      <div class="screen-head">
+        <h1 class="screen-title">Settings</h1>
+        <AskButton />
+      </div>
 
       <UpdateCard />
       {isWeb && (
@@ -1060,10 +1147,13 @@ export function Settings() {
           <WebRelayCard />
         </Section>
       )}
-      <Section icon="server" title="Account & sync">
+      <p class="set-group">Account</p>
+      <Section icon="user" title="Account & sync">
+        <NameRow />
         <AccountCard />
       </Section>
 
+      <p class="set-group">Where your books are</p>
       <Section icon="server" title="Audiobookshelf">
         <AbsCard />
       </Section>
@@ -1073,15 +1163,18 @@ export function Settings() {
       <Section icon="external" title="Tracker">
         <TrackerCard />
       </Section>
-      <Section icon="download" title="TorBox">
+      <Section icon="cloud" title="TorBox">
         <DebridCard provider="torbox" label="TorBox" keyHint="torbox.app/settings" keyUrl="https://torbox.app/settings" />
         <MusicToggle />
       </Section>
-      <Section icon="download" title="Real-Debrid">
+      <Section icon="cloud" title="Real-Debrid">
         <DebridCard provider="realdebrid" label="Real-Debrid" keyHint="real-debrid.com/apitoken" keyUrl="https://real-debrid.com/apitoken" />
         <MusicToggle />
       </Section>
       <PreferredDebrid />
+      <Section icon="search" title="Finding your books">
+        <FindOrderCard />
+      </Section>
       <Section icon="puzzle" title="Addons">
         <AddonsCard />
       </Section>
@@ -1091,10 +1184,11 @@ export function Settings() {
       <Section icon="upload" title="Send to Kindle">
         <KindleCard />
       </Section>
+      <p class="set-group">Voices & book info</p>
       <Section icon="headphones" title="Voices">
         <VoicesCard />
       </Section>
-      <Section icon="sparkle" title="Metadata providers">
+      <Section icon="info" title="Metadata providers">
         <MetadataCard />
       </Section>
       <Section icon="book" title="Hardcover">
@@ -1104,35 +1198,50 @@ export function Settings() {
         <GoodreadsCard />
       </Section>
 
+      <p class="set-group">App</p>
       <Section icon="palette" title="Appearance">
-        <div class="set-row">
-          <b>Mode</b>
+        <div class="set-row column">
+          <div>
+            <b>Mode</b>
+            <small>Like phone: light by day, dark at night — each with the colours you last picked for it below</small>
+          </div>
           <div class="chips">
-            {['dark', 'amoled', 'light'].map((m) => (
+            {['system', 'light', 'dark', 'amoled'].map((m) => (
               <button class={'pill small' + (st.mode === m ? ' active' : '')} onClick={() => settings.patch({ mode: m })}>
-                {m === 'amoled' ? 'Black' : m[0].toUpperCase() + m.slice(1)}
+                {m === 'amoled' ? 'Black' : m === 'system' ? 'Like phone' : m[0].toUpperCase() + m.slice(1)}
               </button>
             ))}
           </div>
         </div>
-        {st.mode !== 'amoled' && (
+        {/* Every colour theme right here, light and dark: one tap sets the mode and the colours. */}
+        {[
+          ['Light', true],
+          ['Dark', false],
+        ].map(([label, light]) => (
           <div class="set-row column">
-            <b>Theme</b>
+            <b>{label} colours</b>
             <div class="palette-grid">
-              {PALETTES.filter((p) => p.light === (st.mode === 'light')).map((p) => (
+              {PALETTES.filter((p) => p.light === light).map((p) => (
                 <button
-                  class={'palette' + ((st.palette || 'default') === p.id ? ' active' : '')}
+                  class={'palette' + (activePalette(st, light ? 'light' : 'dark') === p.id && !(st.mode === 'amoled' && !light) ? ' active' : '')}
                   style={{ background: `linear-gradient(160deg, ${p.swatch[0]} 45%, ${p.swatch[1]})`, color: p.light ? '#1b1b1f' : '#f1eef8' }}
-                  onClick={() => settings.patch({ palette: p.id })}
+                  // Shown at once (switches to that mode), and kept for that mode when you go back to "Like phone".
+                  onClick={() => settings.patch({ palette: p.id, [light ? 'paletteLight' : 'paletteDark']: p.id, mode: light ? 'light' : 'dark' })}
                 >
                   <span class="palette-dot" />
                   {p.name}
                 </button>
               ))}
+              {!light && (
+                <button class={'palette' + (st.mode === 'amoled' ? ' active' : '')} style={{ background: '#000', color: '#f1eef8' }} onClick={() => settings.patch({ mode: 'amoled' })}>
+                  <span class="palette-dot" />
+                  Black
+                </button>
+              )}
             </div>
           </div>
-        )}
-        <div class="set-row column">
+        ))}
+        {activePalette(st) !== 'paperink' && <div class="set-row column">
           <b>Accent</b>
           <div class="accent-grid">
             {Object.entries(ACCENTS).map(([k, a]) => (
@@ -1146,7 +1255,8 @@ export function Settings() {
               </button>
             ))}
           </div>
-        </div>
+        </div>}
+        <SsToggle />
         <Toggle label="Dynamic colour" hint="Tint the player and book pages from the cover art" on={st.dynamicColor} onChange={(v) => settings.patch({ dynamicColor: v })} />
         <PlayerBackgroundPicker st={st} />
       </Section>
@@ -1161,12 +1271,12 @@ export function Settings() {
       </Section>
 
 
-      <Section icon="sparkle" title="Sources">
+      <Section icon="list" title="Sources">
         <SourceOrder st={st} setSource={setSource} />
         <Stepper label="Ebook language" value={st.language} options={['en', 'fr', 'de', 'es', 'it', 'pt', 'nl']} fmt={(v) => v.toUpperCase()} onChange={(v) => settings.patch({ language: v })} />
       </Section>
 
-      <Section icon="download" title="Data">
+      <Section icon="database" title="Data">
         <BackupRow />
         <div class="set-row">
           <b>Network cache</b>
@@ -1182,8 +1292,13 @@ export function Settings() {
         </div>
       </Section>
 
+      <p class="set-group">Help</p>
+      <Section icon="alert" title="Report a problem">
+        <ReportCard />
+      </Section>
+
       <p class="about">
-        Audiohub {APP_VERSION} · Built-in sources are free and public domain.
+        Audiohub {APP_VERSION}
         <br />
         Addons and servers you add are your responsibility.
       </p>
@@ -1317,6 +1432,26 @@ function PlayerBackgroundPicker({ st }) {
           <input type="range" min="0" max="0.8" step="0.05" value={st.playerDim ?? 0.45} onInput={(e) => settings.patch({ playerDim: +e.currentTarget.value })} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Books you marked "Not interested" on recommendations: count, and show them again. */
+function HiddenRecs() {
+  const all = useStore(notInterested);
+  const n = Object.keys(all || {}).length;
+  if (!n) return null;
+  return (
+    <div class="set-row">
+      <div>
+        <b>Not interested</b>
+        <small>
+          {n} book{n > 1 ? 's' : ''} hidden from recommendations (and fewer like them)
+        </small>
+      </div>
+      <button class="pill small" onClick={() => (notInterested.set({}), toast('Recommendations reset'))}>
+        Show again
+      </button>
     </div>
   );
 }

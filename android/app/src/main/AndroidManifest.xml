@@ -37,7 +37,44 @@
                 <data android:scheme="app.inkwell.books" android:host="auth" />
             </intent-filter>
 
+            <!-- App shortcuts: Driving mode, and Ask AI by voice straight away -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="app.inkwell.books" android:host="drive" />
+                <data android:scheme="app.inkwell.books" android:host="ask" />
+                <data android:scheme="app.inkwell.books" android:host="scene" />
+            </intent-filter>
+            <!-- Open with / Share: EPUB and PDF files open in the reader -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+
         </activity>
+
+        <!-- Home-screen widget: Play a scene, Driving mode -->
+        <receiver
+            android:name=".SceneWidget"
+            android:label="@string/widget_scene"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_scene_info" />
+        </receiver>
 
         <!-- Background audiobook playback (Media3) -->
         <service
@@ -76,6 +113,16 @@
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- Google's speech input, for voice questions in Ask AI -->
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+        <!-- The StoryShots app, opened from a book's "S" (found by id, else by name) -->
+        <package android:name="com.storyshots.android" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
 

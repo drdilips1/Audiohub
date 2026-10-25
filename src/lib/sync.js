@@ -24,6 +24,7 @@ export const account = persisted('account', {
   url: BAKED_URL,
   anonKey: BAKED_KEY,
   email: '',
+  name: '',
   userId: '',
   accessToken: '',
   refreshToken: '',
@@ -129,6 +130,8 @@ function saveSession(s) {
     expiresAt: Date.now() + (s.expires_in || 3600) * 1000,
     userId: s.user?.id || cfg().userId,
     email: s.user?.email || cfg().email,
+    // The name your sign-in gives (Google), for Home's greeting.
+    name: s.user?.user_metadata?.full_name || s.user?.user_metadata?.name || cfg().name || '',
   });
 }
 

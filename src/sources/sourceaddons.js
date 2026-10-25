@@ -3,16 +3,14 @@
 // JSON response into results carrying a magnet link / info-hash. Inkwell hands
 // the magnet to the user's TorBox or Real-Debrid account to stream it.
 import { getJson, sendJson } from '../lib/http.js';
-import { addons } from '../lib/store.js';
+import { addons, persisted } from '../lib/store.js';
+import { logError, redact } from '../lib/report.js';
 import { words, matches, mainTitle } from '../lib/match.js';
 import { infoHash, torboxCached } from './debrid.js';
 
 export const isSourceManifest = (m) => !!(m && typeof m === 'object' && m.id && m.name && m.adapters?.source?.request?.url);
 
-// Accept source manifests installed by older builds/backups even if the persisted
-// entry lost its explicit `kind: 'source'` marker. The manifest itself is authoritative.
-export const sourceAddons = () =>
-  addons.get().filter((a) => a.kind === 'source' || isSourceManifest(a.manifest));
+export const sourceAddons = () => addons.get().filter((a) => a.kind === 'source');
 
 // ---- helpers ----------------------------------------------------------------
 function fill(v, vars, encode) {
@@ -51,6 +49,33 @@ export function fmtSize(bytes) {
 // Per-addon rate limiting + short result cache.
 const calls = new Map();
 const cache = new Map();
+// Results survive restarts for a few hours, so reopening a book shows its sources at once.
+const saved = persisted('sourceCache', {}); // key -> { t, v }
+const SAVED_TTL = 6 * 3600e3;
+function remembered(key) {
+  const hit = cache.get(key) || saved.get()[key];
+  return hit && Date.now() - hit.t < (cache.has(key) ? 10 * 60e3 : SAVED_TTL) ? hit.v : null;
+}
+// When a site doesn't answer: what it found for the same search before (up to 30 days old).
+function fallback(addon, attempts) {
+  for (const p of attempts) {
+    const { title = '', author = '', query = '' } = p;
+    const vars = { TITLE: title || query, AUTHOR: author, QUERY: query || [title, author].filter(Boolean).join(' '), LIMIT: '20' };
+    const hit = saved.get()[addon.manifest.id + '|' + JSON.stringify(vars)];
+    if (hit && Date.now() - hit.t < 30 * 86400e3 && hit.v?.length) return Object.assign([...hit.v], { older: hit.t });
+  }
+  return null;
+}
+function remember(key, v) {
+  const e = { t: Date.now(), v };
+  cache.set(key, e);
+  saved.set((c) => {
+    const next = { ...c, [key]: e };
+    const keys = Object.keys(next);
+    if (keys.length > 80) keys.sort((a, b) => next[a].t - next[b].t).slice(0, keys.length - 80).forEach((k) => delete next[k]);
+    return next;
+  });
+}
 // Respect an addon's requests-per-minute by waiting for a free slot instead of
 // failing the search.
 async function takeSlot(addon) {
@@ -82,9 +107,10 @@ function cachedFlag(v) {
 }
 
 // ---- search ------------------------------------------------------------------
-async function run(addon, params) {
+async function run(addon, params, onSlow) {
   // Try the precise search first; if it finds nothing, widen it (title only, then
-  // the plain query) and retry once after a network hiccup.
+  // the plain query). A dropped connection or a slow site (often a free server
+  // waking up, or a busy search for a popular title) gets one more, longer go.
   const { title = '', author = '', query = '' } = params;
   const attempts = [params];
   if (author) attempts.push({ title, query });
@@ -92,39 +118,57 @@ async function run(addon, params) {
   for (const p of attempts) {
     for (let retry = 0; retry < 2; retry++) {
       try {
-        const r = await runOnce(addon, p);
+        const r = await runOnce(addon, p, retry);
         if (r.length) return r;
         break;
       } catch (e) {
         lastErr = e;
         if (e.final || /too many searches/.test(e.message)) throw e;
-        // A slow site gets no second go (that doubled the wait); a dropped connection does.
-        if (e.timeout || retry) break;
+        // Twice too slow: say so rather than make you wait through a wider search too.
+        if (retry) {
+          if (e.timeout) throw e;
+          break;
+        }
+        if (e.timeout) onSlow?.();
         await new Promise((res) => setTimeout(res, 800));
       }
     }
   }
-  if (lastErr) throw lastErr;
+  if (lastErr) {
+    const old = fallback(addon, attempts);
+    if (old) return old;
+    throw lastErr;
+  }
   return [];
 }
 
-async function runOnce(addon, { title = '', author = '', query = '' }) {
-  const src = addon.manifest.adapters.source;
+// The same search already on its way (the book page refreshing, a second list) shares
+// that request instead of sending another to a slow site.
+const inflight = new Map();
+function runOnce(addon, p, retry = 0) {
+  const { title = '', author = '', query = '' } = p;
   const vars = { TITLE: title || query, AUTHOR: author, QUERY: query || [title, author].filter(Boolean).join(' '), LIMIT: '20' };
   const key = addon.manifest.id + '|' + JSON.stringify(vars);
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.t < 10 * 60e3) return hit.v;
+  const hit = remembered(key);
+  if (hit) return Promise.resolve(hit);
+  if (!inflight.has(key)) inflight.set(key, searchOnce(addon, vars, key, p, retry).finally(() => inflight.delete(key)));
+  return inflight.get(key);
+}
+
+async function searchOnce(addon, vars, key, { title = '', author = '', query = '' }, retry) {
+  const src = addon.manifest.adapters.source;
   await takeSlot(addon);
 
   const req = src.request || {};
   const method = (req.method || 'GET').toUpperCase();
   const url = fill(req.url, vars, true);
   const headers = req.headers || {};
-  const timeout = req.timeout || 20000;
+  // Torrent search sites can take a while; the second go waits longer.
+  const timeout = Math.max(req.timeout || 0, retry ? 60000 : 30000);
   const data =
     method === 'GET'
       ? await getJson(url, { headers, timeout, fresh: true })
-      : await sendJson(url, method, fill(req.body || {}, vars, false), headers);
+      : await sendJson(url, method, fill(req.body || {}, vars, false), headers, { timeout });
 
   const res = src.response || {};
   const list = at(data, res.resultsPath);
@@ -169,10 +213,25 @@ async function runOnce(addon, { title = '', author = '', query = '' }) {
   if (title && author) results = sameBook(results, title, author);
 
   results.sort((a, b) => Number(b.cache.any) - Number(a.cache.any) || Number(b.seeders > 0) - Number(a.seeders > 0) || b.score - a.score || b.seeders - a.seeders);
+  // For "Report a problem": what was asked and how many came back / were kept.
+  noteSearch(addon, url, {
+    reply: data == null ? 'empty reply' : Array.isArray(list) ? `${list.length} results` : 'no result list',
+    usable: all.length,
+    kept: results.filter((r) => !r.loose).length,
+    loose: results.filter((r) => r.loose).length,
+  });
   // Only remember searches that found something, so a temporary empty answer isn't sticky.
-  if (results.length) cache.set(key, { t: Date.now(), v: results });
+  if (results.length) remember(key, results);
   return results;
 }
+
+// The last few searches per source, for Settings → Report a problem.
+const searchLog = [];
+function noteSearch(addon, url, info) {
+  searchLog.push({ t: Date.now(), name: addon.manifest.name, url: redact(url), ...info });
+  if (searchLog.length > 12) searchLog.shift();
+}
+export const recentSearches = () => searchLog.slice();
 
 // The book's author(s) as first and last names: "Vivek H. Murthy, Jane Doe" ->
 // { last: [murthy, doe], first: [vivek, jane] } (initials and "Dr" / "PhD" left out).
@@ -221,18 +280,28 @@ function sameBook(list, title, author) {
   });
 }
 
-/** Search all installed source addons; `onResult(addonName, results, error)` per addon. */
-export function searchSources(params, onResult) {
+/**
+ * Search the installed source addons (all, or just those named in `only`).
+ * `onResult(addonName, results, error, slow)` per addon; `slow` means it's still trying.
+ */
+export function searchSources(params, onResult, only = null) {
   return Promise.all(
-    sourceAddons().map((a) =>
-      run(a, params)
-        .then((r) => {
-          // Show results straight away; which ones TorBox can stream instantly is filled in after.
-          onResult(a.manifest.name, r, null);
-          return markInstant(r).then((marked) => marked && onResult(a.manifest.name, marked, null));
-        })
-        .catch((e) => onResult(a.manifest.name, [], e))
-    )
+    sourceAddons()
+      .filter((a) => !only || only.includes(a.manifest.name))
+      .map((a) =>
+        run(a, params, () => onResult(a.manifest.name, [], null, true))
+          .then((r) => {
+            // Show results straight away; which ones TorBox can stream instantly is filled in after.
+            // Didn't answer, but found this book before: show that, and say so.
+            if (r.older) return onResult(a.manifest.name, r, Object.assign(new Error('older'), { older: r.older }));
+            onResult(a.manifest.name, r, null);
+            return markInstant(r).then((marked) => marked && onResult(a.manifest.name, marked, null));
+          })
+          .catch((e) => {
+            logError(`source ${a.manifest.name}`, `${e.status ? `HTTP ${e.status} ` : ''}${e.message}`);
+            onResult(a.manifest.name, [], e);
+          })
+      )
   );
 }
 

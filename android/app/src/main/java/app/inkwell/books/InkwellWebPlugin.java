@@ -66,12 +66,90 @@ public class InkwellWebPlugin extends Plugin {
         }
     }
 
+    /** Open another app by its package name; its Play Store page if it isn't installed. */
+    @PluginMethod
+    public void openApp(PluginCall call) {
+        String pkg = call.getString("package");
+        if (pkg == null || pkg.isEmpty()) {
+            call.reject("Missing package");
+            return;
+        }
+        JSObject ret = new JSObject();
+        String name = call.getString("name", "");
+        try {
+            android.content.pm.PackageManager pm = getContext().getPackageManager();
+            Intent launch = pm.getLaunchIntentForPackage(pkg);
+            // Not under that id: look for an installed app with this name.
+            if (launch == null && !name.isEmpty()) {
+                Intent main = new Intent(Intent.ACTION_MAIN);
+                main.addCategory(Intent.CATEGORY_LAUNCHER);
+                for (android.content.pm.ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
+                    CharSequence label = ri.loadLabel(pm);
+                    if (label != null && label.toString().toLowerCase().contains(name.toLowerCase())
+                        && !ri.activityInfo.packageName.equals(getContext().getPackageName())) {
+                        launch = new Intent(Intent.ACTION_MAIN);
+                        launch.addCategory(Intent.CATEGORY_LAUNCHER);
+                        launch.setClassName(ri.activityInfo.packageName, ri.activityInfo.name);
+                        ret.put("package", ri.activityInfo.packageName);
+                        break;
+                    }
+                }
+            }
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getActivity().startActivity(launch);
+                ret.put("opened", "app");
+                call.resolve(ret);
+                return;
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            Intent store = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg));
+            store.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(store);
+            ret.put("opened", "store");
+            call.resolve(ret);
+        } catch (Exception e) {
+            try {
+                Intent web = new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + pkg));
+                web.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getActivity().startActivity(web);
+                ret.put("opened", "web");
+                call.resolve(ret);
+            } catch (Exception e2) {
+                call.reject("Couldn't open the app");
+            }
+        }
+    }
+
     /** A short message that shows over any screen (e.g. while the in-app browser is open). */
     @PluginMethod
     public void toast(PluginCall call) {
         String text = call.getString("text", "");
         getActivity().runOnUiThread(() -> Toast.makeText(getContext(), text, Toast.LENGTH_LONG).show());
         call.resolve();
+    }
+
+    /** Share plain text through Android's share sheet (e.g. a problem report into the Claude app). */
+    @PluginMethod
+    public void shareText(PluginCall call) {
+        String text = call.getString("text", "");
+        String title = call.getString("title", "Share");
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_TEXT, text);
+        send.putExtra(Intent.EXTRA_SUBJECT, call.getString("subject", "Audiohub"));
+        Intent chooser = Intent.createChooser(send, title);
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getActivity().runOnUiThread(() -> {
+            try {
+                getContext().startActivity(chooser);
+                call.resolve();
+            } catch (Exception e) {
+                call.reject("Could not open the share sheet: " + e.getMessage());
+            }
+        });
     }
 
     /**

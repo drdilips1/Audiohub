@@ -4,6 +4,7 @@
 import { unzip, strFromU8 } from 'fflate';
 import { details as cloudDetails } from '../sources/debrid.js';
 import { getBytes } from './http.js';
+import { persisted, summarize, progress } from './store.js';
 import { textBlocks, speakable } from './tts.js';
 
 const IMG_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
@@ -115,6 +116,29 @@ const unzipAsync = (bytes) =>
     unzip(bytes, (err, files) => (err ? reject(new Error("This file isn't a readable EPUB")) : resolve(files)))
   );
 
+/** The cover picture inside an EPUB (Uint8Array), or null. Unpacks only the files it needs. */
+export async function epubCover(bytes) {
+  const pick = (want) =>
+    new Promise((resolve) => unzip(bytes, { filter: (f) => want(f.name) }, (err, files) => resolve(err ? {} : files)));
+  const meta = await pick((n) => n === 'META-INF/container.xml' || n.endsWith('.opf'));
+  const text = (p) => (meta[p] ? strFromU8(meta[p]) : '');
+  const opfPath = parseXml(text('META-INF/container.xml')).querySelector('rootfile')?.getAttribute('full-path') || Object.keys(meta).find((f) => f.endsWith('.opf'));
+  let href = '';
+  if (opfPath && meta[opfPath]) {
+    const opf = parseXml(text(opfPath));
+    const items = [...opf.querySelectorAll('manifest > item')];
+    const img = (it) => /^image\//.test(it.getAttribute('media-type') || '');
+    const id = opf.querySelector('meta[name="cover"]')?.getAttribute('content');
+    const it =
+      items.find((x) => /(^|\s)cover-image(\s|$)/.test(x.getAttribute('properties') || '')) ||
+      (id && items.find((x) => x.getAttribute('id') === id && img(x))) ||
+      items.find((x) => img(x) && /cover/i.test(`${x.getAttribute('id')} ${x.getAttribute('href')}`));
+    if (it) href = join(opfPath, it.getAttribute('href') || '');
+  }
+  const files = await pick((n) => (href ? n === href : /cover[^/]*\.(jpe?g|png|gif|webp)$/i.test(n)));
+  return files[href] || Object.values(files)[0] || null;
+}
+
 /**
  * Returns { html, headings, title, author, urls }. `bytes` is the EPUB file
  * (Uint8Array). Works in small steps so a big book never freezes the app.
@@ -208,7 +232,7 @@ export async function epubToHtml(bytes) {
 // ---- ebooks in your TorBox / Real-Debrid -------------------------------------
 
 /** Reader UIDs for cloud ebooks look like "tb:t:123#ebook" (kept apart from the item's audio progress). */
-export const isCloudEbook = (book) => /^(tb|rd|src):/.test(book?.uid || '') && book.uid.endsWith('#ebook');
+export const isCloudEbook = (book) => /^(tb|rd|src|loc):/.test(book?.uid || '') && book.uid.endsWith('#ebook');
 
 // ---- direct ebook links from source addons (e.g. Bookracy) -------------------
 
@@ -294,13 +318,40 @@ async function cachedBytes(uid) {
     return null;
   }
 }
-async function keepBytes(uid, bytes) {
+/** Ebooks kept on the phone (opened once in the app): readable offline, listed in Library → Ebooks → Downloaded. */
+export const savedEbooks = persisted('savedEbooks', {}); // uid -> { book, format, size, at }
+export const savedEbook = (uid) => savedEbooks.get()[uid] || null;
+// Ebooks kept before this list existed: add them (with what the reading history knows).
+setTimeout(async () => {
   try {
-    await (await caches.open(CACHE)).put(cacheKey(uid), new Response(bytes, { headers: { 'Content-Type': 'application/epub+zip' } }));
+    if (savedEbooks.get().__checked) return;
+    const keys = await (await caches.open(CACHE)).keys();
+    const prog = progress.get();
+    const found = {};
+    for (const req of keys) {
+      const uid = decodeURIComponent(req.url.split('/ebook/')[1] || '');
+      const book = prog[uid]?.book;
+      if (uid && book && !savedEbooks.get()[uid]) found[uid] = { book: { ...book, kind: 'text' }, format: book.ebookFormat || 'EPUB', size: 0, at: prog[uid].updatedAt || Date.now() };
+    }
+    savedEbooks.set((all) => ({ ...all, ...found, __checked: 1 }));
+  } catch {}
+}, 6000);
+async function keepBytes(book, bytes, format) {
+  try {
+    await (await caches.open(CACHE)).put(cacheKey(book.uid), new Response(bytes, { headers: { 'Content-Type': format === 'PDF' ? 'application/pdf' : 'application/epub+zip' } }));
+    savedEbooks.set((all) => ({ ...all, [book.uid]: { book: { ...summarize(book), kind: 'text' }, format, size: bytes.length, at: Date.now() } }));
+    // Ask Android not to clear the app's stored files when space runs low.
+    navigator.storage?.persist?.().catch(() => {});
   } catch {}
 }
 export async function forgetEbook(uid) {
   docs.delete(uid);
+  savedEbooks.set((all) => {
+    if (!all[uid]) return all;
+    const next = { ...all };
+    delete next[uid];
+    return next;
+  });
   try {
     await (await caches.open(CACHE)).delete(cacheKey(uid));
   } catch {}
@@ -314,9 +365,18 @@ export function loadCloudEbook(book) {
   return loading.get(book.uid);
 }
 
+// PDFs: pdf.js loads only now (it's big). The bytes stay with the doc for the Pages view.
+const isPdf = (bytes) => bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46; // %PDF
+async function toDoc(bytes) {
+  if (!isPdf(bytes)) return epubToHtml(bytes);
+  const { pdfToDoc } = await import('./pdf.js');
+  const doc = await pdfToDoc(bytes);
+  return { ...doc, bytes };
+}
+
 async function loadEbook(book) {
   const saved = await cachedBytes(book.uid);
-  if (saved) return remember(book.uid, await epubToHtml(saved));
+  if (saved) return remember(book.uid, await toDoc(saved));
   let file = book.ebookFile;
   // Direct links (reopened from Continue): the saved link is all we need.
   if (!file && book.ebookUrl) file = { name: book.ebookName || 'book.epub', format: book.ebookFormat || 'EPUB', resolve: async () => book.ebookUrl };
@@ -326,9 +386,9 @@ async function loadEbook(book) {
     file = list.find((e) => e.name === book.ebookName) || list.find((e) => e.format === 'EPUB') || list[0];
   }
   if (!file) throw new Error('This ebook is no longer in your cloud');
-  if (file.format !== 'EPUB') throw new Error(`${file.format} files can't be opened in the reader — use Send to Kindle / Open in another app on the book page`);
+  if (file.format !== 'EPUB' && file.format !== 'PDF') throw new Error(`${file.format} files can't be opened in the reader — use Send to Kindle / Open in another app on the book page`);
   const bytes = await getBytes(await file.resolve());
-  const doc = await epubToHtml(bytes); // throws before caching if it isn't a readable EPUB
-  keepBytes(book.uid, bytes);
+  const doc = await toDoc(bytes); // throws before caching if it isn't a readable EPUB / PDF
+  if (!book.uid.startsWith('loc:')) keepBytes(book, bytes, isPdf(bytes) ? 'PDF' : 'EPUB'); // phone files are already on the phone
   return remember(book.uid, doc);
 }

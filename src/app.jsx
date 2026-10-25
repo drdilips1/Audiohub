@@ -1,18 +1,29 @@
 import * as qbit from './sources/qbit.js';
+import { Ask } from './screens/Ask.jsx';
+import { Stats } from './screens/Stats.jsx';
+import { Notes } from './screens/Notes.jsx';
+import { Downloads } from './screens/Downloads.jsx';
+import { onIncoming } from './sources/local.js';
+
+// An EPUB / PDF opened with (or shared to) Audiohub from another app: straight into the reader.
+onIncoming((book, error) => (book ? setTimeout(() => nav.push('reader', { book }), 300) : error && toast(error)));
+import { DriveMode, openDrive } from './components/drive-mode.jsx';
+import { SceneHost, openScene } from './components/scene-cmd.jsx';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
-import { Stats } from './screens/Stats.jsx';
-import { Ask } from './screens/Ask.jsx';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { nav } from './lib/nav.js';
 import { settings, useStore } from './lib/store.js';
-import { applyTheme } from './lib/theme.js';
+import { applyTheme, onThemeApplied } from './lib/theme.js';
 import { Icon } from './components/icons.jsx';
 import { Toaster, Guard } from './components/common.jsx';
+import { StoryShotsSheet } from './components/ss-sheet.jsx';
 import { UpdatePrompt } from './components/update.jsx';
 import { MiniPlayer, FullPlayer, usePlayerBasics } from './components/player-ui.jsx';
+import * as player from './lib/player.js';
+import { logError } from './lib/report.js';
 import { Home } from './screens/Home.jsx';
 import { Discover } from './screens/Discover.jsx';
 import { Library } from './screens/Library.jsx';
@@ -35,6 +46,31 @@ const TABS = [
   ['settings', 'Settings', 'settings'],
 ];
 const ROOTS = { home: Home, discover: Discover, podcasts: Podcasts, library: Library, tracker: Settings, settings: Settings }; // tracker: the old tab, now in Settings
+// Playback errors go in the problem-report log (Settings → Report a problem).
+let lastPlayerError = '';
+player.subscribe((s) => {
+  if (s.error && s.error !== lastPlayerError) logError('player', `${s.error}${s.book?.title ? ` — “${s.book.title}”` : ''}`);
+  lastPlayerError = s.error || '';
+});
+
+// App shortcuts (long-press the icon, Google Assistant) and the home-screen widget:
+// app.inkwell.books://drive, ://ask, ://scene (Play a scene, listening) and ://drivescene.
+function openShortcut(url) {
+  const m = /^app\.inkwell\.books:\/\/(drivescene|drive|ask|scene)/.exec(url || '');
+  if (!m) return;
+  if (m[1] === 'scene') return setTimeout(() => openScene(true), 400);
+  setTimeout(() => openDrive(m[1] === 'ask' ? true : m[1] === 'drivescene' ? 'scene' : false), 300);
+}
+if (Capacitor.isNativePlatform()) {
+  CapApp.addListener('appUrlOpen', ({ url }) => openShortcut(url));
+  CapApp.getLaunchUrl()
+    .then((r) => openShortcut(r?.url))
+    .catch(() => {});
+}
+
+// New podcast episodes for shows set to download by themselves (on Wi-Fi), soon after opening.
+setTimeout(() => import('./lib/podauto.js').then((m) => m.autoDownload()).catch(() => {}), 20000);
+
 // A kept-alive tab: redraws only when its own data changes, not on every tab switch.
 const KeptTab = memo(function KeptTab({ Root }) {
   return (
@@ -44,7 +80,7 @@ const KeptTab = memo(function KeptTab({ Root }) {
   );
 });
 
-const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast, ask: Ask, stats: Stats };
+const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast, ask: Ask, stats: Stats, notes: Notes, downloads: Downloads };
 
 export function App() {
   const [route, setRoute] = useState(nav.state());
@@ -76,11 +112,9 @@ export function App() {
     return () => (clearTimeout(t), clearInterval(iv), document.removeEventListener('visibilitychange', onResume));
   }, []);
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) onThemeApplied((light) => StatusBar.setStyle({ style: light ? Style.Light : Style.Dark }).catch(() => {}));
     applyTheme(st);
-    if (Capacitor.isNativePlatform()) {
-      StatusBar.setStyle({ style: st.mode === 'light' ? Style.Light : Style.Dark }).catch(() => {});
-    }
-  }, [st.mode, st.accent]);
+  }, [st.mode, st.accent, st.palette, st.paletteLight, st.paletteDark]);
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const h = CapApp.addListener('backButton', () => {
@@ -131,7 +165,10 @@ export function App() {
         </>
       )}
       {route.overlay === 'player' && <FullPlayer />}
+      {route.overlay === 'drive' && <DriveMode />}
+      <SceneHost />
       <UpdatePrompt />
+      <StoryShotsSheet />
       <Toaster />
     </div>
   );

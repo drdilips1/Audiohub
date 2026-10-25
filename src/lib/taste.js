@@ -8,6 +8,12 @@ import { words, mainTitle } from './match.js';
 // key -> { verdict, story, narration, reasons[], title, author, narrator, genres[], updatedAt }
 // A cleared rating stays as { verdict: '', updatedAt } so the clearing syncs too.
 export const myRatings = persisted('myRatings', {});
+// "Not interested" on a recommendation: never shown again, and less like it (author, genres).
+export const notInterested = persisted('notInterested', {}); // rateKey -> { title, author, genres, at }
+export function markNotInterested(b) {
+  notInterested.set((all) => ({ ...all, [rateKey(b)]: { title: mainTitle(b.title), author: b.author || '', genres: (b.genres || []).slice(0, 6), at: Date.now() } }));
+}
+export const isNotInterested = (b, all = notInterested.get()) => !!all[rateKey(b)];
 
 export const VERDICTS = [
   ['love', '❤️', 'Loved it'],
@@ -94,6 +100,8 @@ export function profile() {
     const narration = r.narration ? PART_W[r.narration] : r.reasons?.includes('Narration') ? -2 : r.verdict === 'love' ? 0.8 : 0;
     feed(r, w, { story, narration, verdict: r.verdict });
   }
+  // "Not interested": a gentle push away from that author and those genres.
+  for (const n of Object.values(notInterested.get())) feed(n, -0.8, { story: -0.8 });
   // Then what you've finished, are listening to, and saved.
   for (const p of Object.values(progress.get())) if (p?.book) feed(p.book, p.finished ? 0.8 : 0.3, { verdict: p.finished ? 'finished' : 'listening' });
   for (const b of Object.values(library.get())) if (b) feed(b, 0.2, { verdict: 'saved' });
@@ -102,6 +110,7 @@ export function profile() {
   return cached;
 }
 myRatings.subscribe(() => (cached = null));
+notInterested.subscribe(() => (cached = null));
 
 /** Titles you own, are listening to, finished or rated: never recommended back to you. */
 export function knownTitles() {
@@ -110,6 +119,7 @@ export function knownTitles() {
   Object.values(library.get()).forEach(add);
   Object.values(progress.get()).forEach((p) => add(p?.book));
   Object.values(myRatings.get()).forEach((r) => r?.verdict && add(r));
+  Object.values(notInterested.get()).forEach(add);
   return t;
 }
 export const isKnown = (b, known = knownTitles()) => known.has(words(mainTitle(b?.title)).join(' '));

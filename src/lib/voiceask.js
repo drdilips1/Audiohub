@@ -16,9 +16,9 @@ export const LANGS = [
 ];
 export const voiceLang = persisted('askVoiceLang', 'en-IN');
 
-// The voice answers are read in (Android): Microsoft's natural voices, Indian ones first.
-// '' = the same as Settings → Voices.
-export const askVoice = persisted('askVoice', '');
+// The voice answers are read in: 'phone' (default — starts at once), '' = the same as
+// Settings → Voices, or one of Microsoft's natural voices (Indian ones first).
+export const askVoice = persisted('askVoice2', 'phone');
 // Read every answer aloud (on by default); answers to spoken questions are always read.
 export const autoRead = persisted('askAutoRead', true);
 export const canPickVoice = nativeReader;
@@ -66,7 +66,7 @@ let run = 0;
 let readerOn = false;
 // The Microsoft voice to use, if any: the Ask screen's pick, else Settings' when it's a Microsoft voice.
 function edgeVoice() {
-  if (!nativeReader) return '';
+  if (!nativeReader || askVoice.get() === 'phone') return '';
   const c = ttsCfg.get();
   return askVoice.get() || (c.mode === 'edge' || !c.mode ? c.edgeVoice || EDGE_VOICES[0][0] : '');
 }
@@ -136,7 +136,8 @@ export async function speakAnswer(text, onDone) {
   try {
     for (const p of parts) {
       if (my !== run) return;
-      if (p.trim()) await speak(p);
+      // Phone voice: the phone's own engine (instant), even when Settings picks an offline voice.
+      if (p.trim()) await speak(p, askVoice.get() === 'phone' ? { mode: 'system' } : {});
     }
   } catch {
     // stopped or no voice available
