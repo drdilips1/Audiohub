@@ -17,6 +17,7 @@ import { ReportCard } from '../components/report.jsx';
 import { PROVIDERS, clearMetaCache } from '../lib/meta.js';
 import { AccountCard, NameRow, VoicesCard, DownloadsCard, FindOrderCard } from './settings-extra.jsx';
 import { UpdateCard } from '../components/update.jsx';
+import { showWhatsNew } from '../components/whats-new.jsx';
 import { nav } from '../lib/nav.js';
 import * as qb from '../sources/qbit.js';
 import { QbitListActions } from '../components/qbit-actions.jsx';
@@ -1142,6 +1143,9 @@ export function Settings() {
       </div>
 
       <UpdateCard />
+      <button class="btn ghost-wide whats-new-btn" onClick={() => showWhatsNew()}>
+        <Icon name="sparkle" size={16} /> What’s new in this version
+      </button>
       {isWeb && (
         <Section icon="link" title="Web app">
           <WebRelayCard />

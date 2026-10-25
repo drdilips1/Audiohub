@@ -9316,3 +9316,66 @@ button.notes-book-head {
   font-weight: 600;
   opacity: 0.7;
 }
+/* What's new walk-through */
+.whats-new {
+  text-align: center;
+}
+.wn-kicker {
+  display: block;
+  opacity: 0.6;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 2px 0 14px;
+}
+.wn-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+.whats-new h3 {
+  margin: 14px 0 8px;
+  font-size: 20px;
+}
+.whats-new p {
+  margin: 0 auto 10px;
+  max-width: 34em;
+  line-height: 1.5;
+  font-size: 15px;
+}
+.wn-tip {
+  opacity: 0.75;
+  font-size: 13.5px !important;
+}
+.wn-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 14px 0;
+}
+.wn-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+}
+.wn-dots span.on {
+  opacity: 0.9;
+  width: 18px;
+  border-radius: 4px;
+}
+.wn-btns {
+  display: flex;
+  gap: 10px;
+}
+.wn-btns .btn {
+  flex: 1;
+}
+.whats-new-btn {
+  margin: 0 0 12px;
+}

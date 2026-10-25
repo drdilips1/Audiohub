@@ -9,6 +9,7 @@ import { onIncoming } from './sources/local.js';
 onIncoming((book, error) => (book ? setTimeout(() => nav.push('reader', { book }), 300) : error && toast(error)));
 import { DriveMode, openDrive } from './components/drive-mode.jsx';
 import { SceneHost, openScene } from './components/scene-cmd.jsx';
+import { WhatsNew } from './components/whats-new.jsx';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { App as CapApp } from '@capacitor/app';
@@ -167,6 +168,7 @@ export function App() {
       {route.overlay === 'player' && <FullPlayer />}
       {route.overlay === 'drive' && <DriveMode />}
       <SceneHost />
+      <WhatsNew />
       <UpdatePrompt />
       <StoryShotsSheet />
       <Toaster />
