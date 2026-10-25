@@ -610,7 +610,12 @@ function MissingCovers({ items, local }) {
   if (!missing.length && !run) return null;
   const go = async () => {
     setRun({ done: 0, total: missing.length, found: 0 });
-    const r = await findMissingCovers(missing, (done, total, found) => setRun({ done, total, found }));
+    const r = await findMissingCovers(
+      missing,
+      (done, total, found) => setRun({ done, total, found }),
+      // A phone book keeps its cover with its file details too (survives rescans), like a picked one.
+      (b, cover) => b.source === 'loc' && localSrc.setCover?.(b.uid, cover)
+    );
     setRun(null);
     toast(r.found ? `Found ${r.found} of ${r.total} covers` : 'No covers found for these — try “Find cover & details” on a book');
   };

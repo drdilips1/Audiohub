@@ -6,9 +6,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import { getJson, qs } from './http.js';
 import { persisted, settings } from './store.js';
-import { words } from './match.js';
+import { words, mainTitle } from './match.js';
 import { stripHtml } from './format.js';
-import { audibleRating } from '../sources/catalogs.js';
+import { audibleRating, audible as audibleCat, googleBooks } from '../sources/catalogs.js';
 
 export const PROVIDERS = {
   audible: { name: 'Audible', blurb: 'Audiobook covers, narrators, series & runtime' },
@@ -225,32 +225,52 @@ const bare = (t) => String(t || '').replace(/^[\s\-–—_.,:;]+/, '').replace(/
 /** The cover a book shows now (its own, one found for it, or one you picked), or ''. */
 export const coverNow = (book) => (book && (fixFor(book.uid)?.cover || book.cover || (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v?.cover : ''))) || '';
 
+/** Does a search result look like this book? Most of the title's words, and the author's surname when both are known. */
+function sameBook(want, hit) {
+  const t = new Set(words(mainTitle(bare(want.title))));
+  const h = words(String(hit.title || '').replace(/[:(].*$/, ''));
+  if (!t.size || !h.length) return false;
+  const shared = h.filter((w) => t.has(w)).length;
+  if (shared / Math.max(t.size, h.length) < 0.6) return false;
+  const sn = words(String(want.author || '').split(',')[0]).pop();
+  return !sn || !hit.author || words(hit.author).includes(sn);
+}
+
 /**
- * Look up covers for every book here that has none — the release name first, then the bare
- * title with the author, then the title alone. Found covers are kept for good (like picking
- * one by hand). onProgress(done, total, found). Resolves { found, total }.
+ * Look up covers for every book here that has none — the same search as "Find cover & details"
+ * on a book page (Audible, then Google Books, with the book's clean title and author), taking
+ * the first result that is the same book. Two at a time with a short pause, so the services
+ * don't turn requests away; nothing is remembered as "not found", so trying again really tries
+ * again. Found covers are kept for good (like picking one by hand).
+ * onProgress(done, total, found); onFound(book, cover). Resolves { found, total }.
  */
-export async function findMissingCovers(books, onProgress = () => {}) {
+export async function findMissingCovers(books, onProgress = () => {}, onFound = () => {}) {
   const todo = books.filter((b) => b && b.source !== 'pod' && !coverNow(b));
   let done = 0;
   let found = 0;
   const one = async (b) => {
-    const tries = [b, { title: bare(b.title), author: b.author || '' }, { title: bare(b.title) }];
-    for (const t of tries) {
-      if (!t.title && !t.rawName) continue;
-      const m = await lookup(t, { fresh: t === b }).catch(() => null);
-      if (m?.cover) {
-        setFix(b.uid, { ...(fixFor(b.uid) || {}), cover: m.cover });
+    const title = mainTitle(bare(b.title));
+    const author = String(b.author || '').split(',')[0].trim();
+    for (const term of [`${title} ${author}`.trim(), title]) {
+      if (!title) break;
+      const [a, g] = await Promise.all([audibleCat.search(term).catch(() => []), googleBooks.search(term).catch(() => [])]);
+      const hit = [...a, ...g].find((m) => m?.cover && sameBook({ title, author }, m));
+      if (hit) {
+        setFix(b.uid, { ...(fixFor(b.uid) || {}), cover: hiRes(hit.cover) });
+        onFound(b, hiRes(hit.cover));
         found++;
         break;
       }
+      if (!author) break; // the title alone was already tried
     }
     onProgress(++done, todo.length, found);
+    await new Promise((r) => setTimeout(r, 400));
   };
-  // A few at a time (the lookups queue themselves too).
   const queue = [...todo];
-  await Promise.all(Array.from({ length: 4 }, async () => {
-    while (queue.length) await one(queue.shift());
-  }));
+  await Promise.all(
+    Array.from({ length: 2 }, async () => {
+      while (queue.length) await one(queue.shift());
+    })
+  );
   return { found, total: todo.length };
 }
