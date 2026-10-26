@@ -10,6 +10,30 @@ Built with Preact + Vite, packaged for Android with Capacitor 8.
 
 ---
 
+## Screenshots
+
+<table>
+<tr>
+<td align="center" width="33%"><img src="docs/screenshots/01-discover.jpg" width="240" alt="Discover by mood, genre or just describe it"><br><sub>Discover by mood, genre or just describe it</sub></td>
+<td align="center" width="33%"><img src="docs/screenshots/02-book.jpg" width="240" alt="Everything for a book in one place"><br><sub>Everything for a book in one place</sub></td>
+<td align="center" width="33%"><img src="docs/screenshots/03-player-transcript.jpg" width="240" alt="Read along: the ebook's exact words as you listen"><br><sub>Read along: the ebook's exact words as you listen</sub></td>
+</tr>
+<tr>
+<td align="center" width="33%"><img src="docs/screenshots/04-ask-ai.jpg" width="240" alt="Ask AI about what you just heard"><br><sub>Ask AI about what you just heard</sub></td>
+<td align="center" width="33%"><img src="docs/screenshots/05-rabbit-hole.jpg" width="240" alt="Rabbit hole: dig into an idea"><br><sub>Rabbit hole: dig into an idea</sub></td>
+<td align="center" width="33%"><img src="docs/screenshots/06-reader-explain.jpg" width="240" alt="Select any passage in the reader and get it explained"><br><sub>Select any passage in the reader and get it explained</sub></td>
+</tr>
+<tr>
+<td align="center" width="33%"><img src="docs/screenshots/07-home.jpg" width="240" alt="Home"><br><sub>Home</sub></td>
+<td align="center" width="33%"><img src="docs/screenshots/08-library.jpg" width="240" alt="Your library, with covers found for you"><br><sub>Your library, with covers found for you</sub></td>
+<td align="center" width="33%"><img src="docs/screenshots/09-themes.jpg" width="240" alt="Light and dark themes for every taste"><br><sub>Light and dark themes for every taste</sub></td>
+</tr>
+</table>
+
+<sub>Screenshots from the latest version.</sub>
+
+---
+
 ## Features
 
 **Your library, wherever it lives**
