@@ -1,3 +1,4 @@
+import { sameWork } from '../lib/works.js';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../components/icons.jsx';
 import { gb } from '../sources/index.js';
@@ -7,12 +8,15 @@ import { isCloudEbook, loadCloudEbook } from '../lib/epub.js';
 import { progress, settings, summarize, useStore } from '../lib/store.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { readAloud, attachAloud } from '../lib/readaloud.js';
-import { paragraphs, estimate, textBlocks, isSkippable, skipFrontMatter, nativeReader, ttsCfg, voiceSpec } from '../lib/tts.js';
+import { dragSelect } from '../lib/dragselect.js';
+import { trCfg, LANGS, lang, voiceFor, bookTranslation, translateParas } from '../lib/translate.js';
+import { paragraphs, estimate, textBlocks, isSkippable, skipFrontMatter, nativeReader, ttsCfg, voiceSpec, speakable, blockText, Reader as ReadAloudNative } from '../lib/tts.js';
 import { VoicesCard } from './settings-extra.jsx';
 import { narrate, canNarrate } from '../sources/ttsbooks.js';
 import * as player from '../lib/player.js';
 import { toast } from '../components/common.jsx';
-import { forBook, addHighlight, updateHighlight, removeHighlight, markText, unmark, selectionParts } from '../lib/highlights.js';
+import { HighlightCards, AudioNotes, hasAudioNotes } from '../components/book-notes.jsx';
+import { highlights, forWork, addHighlight, updateHighlight, removeHighlight, markText, unmark, selectionParts, growSelection } from '../lib/highlights.js';
 import { SelectionBar, AiSheet, HighlightSheet } from '../components/reader-select.jsx';
 
 // Reading fonts (bundled, so they work offline). Literata is the default serif.
@@ -113,6 +117,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
   const lit = useRef(null);
   const aloudHandlers = () => ({
     onIndex: (i, el) => {
+      if (trRef.current) keepAhead(el);
       lit.current?.classList.remove('aloud');
       el.classList.add('aloud');
       lit.current = el;
@@ -128,6 +133,117 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
     },
   });
 
+  // ---- the book in another language: translated as you read (and kept) --------------
+  const tr = useStore(trCfg);
+  const trTo = tr.books?.[book.uid] || null;
+  const trRef = useRef(null); // { to, store } while the book is shown translated
+  const originals = useRef(new Map()); // paragraph -> its original HTML
+  const trBusy = useRef(new Set());
+  const aloudEls = useRef([]);
+  const [trWorking, setTrWorking] = useState(false);
+  const showTr = (el, text) => {
+    if (!originals.current.has(el)) originals.current.set(el, el.innerHTML);
+    el.textContent = text;
+    el.classList.add('translated');
+  };
+  const restoreOriginals = () => {
+    for (const [el, html] of originals.current) {
+      el.innerHTML = html;
+      el.classList.remove('translated');
+    }
+    originals.current.clear();
+  };
+  /** Translate paragraphs [from, from + n) of the page (those not done yet); returns the new ones. */
+  const translateRange = async (from, n) => {
+    const t = trRef.current;
+    if (!t) return [];
+    await t.store.loaded;
+    if (trRef.current !== t) return [];
+    const list = blocks();
+    const need = [];
+    for (let i = Math.max(0, from); i < Math.min(list.length, from + n); i++) {
+      const done = t.store.get(i);
+      if (done) !list[i].classList.contains('translated') && showTr(list[i], done);
+      else if (!trBusy.current.has(i) && speakable(list[i].textContent)) need.push(i);
+    }
+    const added = [];
+    while (need.length) {
+      // About a page per request: up to 8 paragraphs or 3,000 characters.
+      const batch = [];
+      let size = 0;
+      while (need.length && batch.length < 8 && (size < 3000 || !batch.length)) {
+        const i = need.shift();
+        batch.push(i);
+        size += list[i].textContent.length;
+      }
+      batch.forEach((i) => trBusy.current.add(i));
+      setTrWorking(true);
+      try {
+        const out = await translateParas(batch.map((i) => list[i].textContent), t.to);
+        batch.forEach((i, k) => {
+          if (!out[k]) return;
+          t.store.set(i, out[k]);
+          if (trRef.current === t) {
+            showTr(list[i], out[k]);
+            added.push(i);
+          }
+        });
+      } catch (e) {
+        toast(e.message);
+        break;
+      } finally {
+        batch.forEach((i) => trBusy.current.delete(i));
+        setTrWorking(trBusy.current.size > 0);
+      }
+    }
+    return added;
+  };
+  // On / off / another language: show the translation of what's on screen, or the original.
+  useEffect(() => {
+    if (!doc) return;
+    restoreOriginals();
+    trRef.current = trTo ? { to: trTo, store: bookTranslation(book.uid, trTo) } : null;
+    if (!trTo) return void requestAnimationFrame(markAll);
+    const el = scroller.current;
+    let t;
+    const onScroll = () => {
+      clearTimeout(t);
+      t = setTimeout(() => translateRange(Math.max(0, topBlock() - 1), 10), 400);
+    };
+    translateRange(Math.max(0, topBlock() - 1), 10);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      clearTimeout(t);
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [doc, trTo]);
+  // Reading aloud translated: keep about 20 paragraphs ahead translated, and hand the
+  // new ones to the voice as they come.
+  const keepAhead = (el) => {
+    const bi = blocks().indexOf(el);
+    if (bi < 0) return;
+    translateRange(bi, 20).then((added) => {
+      if (!added.length || !ctl.current?.native) return;
+      const els = aloudEls.current;
+      const paras = added.map((i) => ({ i: els.indexOf(blocks()[i]), t: blockText(blocks()[i]) })).filter((p) => p.i >= 0);
+      if (paras.length) ReadAloudNative.addParas({ paras }).catch(() => {});
+    });
+  };
+  const startTranslatedAloud = async (els, from, all) => {
+    lit.current?.classList.remove('aloud');
+    els[from].classList.add('aloud');
+    lit.current = els[from];
+    ctl.current?.stop();
+    player.pause();
+    aloudAll.current = all;
+    aloudEls.current = els;
+    setAloud({ playing: true, index: from });
+    await translateRange(blocks().indexOf(els[from]), 8);
+    if (!trRef.current) return;
+    const paras = els.map((el) => (el.classList.contains('translated') ? blockText(el) : ''));
+    ctl.current = readAloud(els, from, aloudHandlers(), { uid: book.uid, title: book.title, paras, voice: { ...voiceSpec(), engine: 'edge', edgeVoice: voiceFor(trRef.current.to) } });
+  };
+
   // `all`: read from every paragraph, contents / preface included (a tap or chapter there).
   const aloudAll = useRef(false);
   const startAloud = (from, all = false, restart = false) => {
@@ -136,6 +252,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
     // start at the first paragraph visible on screen
     if (from == null) from = Math.max(0, firstVisible(els));
     from = Math.min(Math.max(0, from), els.length - 1);
+    if (trRef.current) return startTranslatedAloud(els, from, all);
     // Show the jump straight away (the voice follows within a moment).
     if (els[from]) {
       lit.current?.classList.remove('aloud');
@@ -143,7 +260,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
       lit.current = els[from];
     }
     // Native engine already reading this book (same list of paragraphs): just move.
-    if (ctl.current?.native && aloudAll.current === all && !restart) {
+    if (ctl.current?.native && aloudAll.current === all && !restart && !trRef.current) {
       ctl.current.seek(from);
       ctl.current.resume();
       setAloud({ playing: true, index: from });
@@ -170,7 +287,9 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
     else startAloud(all.indexOf(target), true);
   };
   // A different voice picked while reading: carry on in it from the same paragraph.
-  const voice = JSON.stringify(voiceSpec(useStore(ttsCfg)));
+  const voiceCfg = useStore(ttsCfg);
+  const voiceRate = voiceCfg.rate || 1;
+  const voice = JSON.stringify(voiceSpec(voiceCfg));
   const lastVoice = useRef(voice);
   useEffect(() => {
     if (voice === lastVoice.current) return;
@@ -268,10 +387,22 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
     if (!root) return;
     unmark(root);
     const list = blocks();
-    for (const h of forBook(book.uid)) for (const p of h.parts) markText(list[p.a], p.t, h.id);
+    const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+    for (const h of forWork(book, sameWork))
+      for (const p of h.parts) {
+        // Its paragraph first; else wherever its words are (another copy or edition).
+        if (!h.elsewhere && markText(list[p.a], p.t, h.id)) continue;
+        const words = norm(p.t);
+        const at = words.length > 12 ? list.findIndex((b) => norm(b.textContent).includes(words)) : -1;
+        if (at >= 0) markText(list[at], p.t, h.id);
+        else if (h.elsewhere) markText(list[p.a], p.t, h.id);
+      }
   };
   useEffect(() => {
-    if (doc) requestAnimationFrame(markAll);
+    if (!doc) return;
+    requestAnimationFrame(markAll);
+    // A note edited or a highlight removed in the Notes panel (or synced in): redraw the marks.
+    return highlights.subscribe(() => requestAnimationFrame(markAll));
   }, [doc]);
 
   // Long-press selection → the action bar (after the selection settles).
@@ -284,18 +415,35 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
         const s = window.getSelection();
         const root = scroller.current?.querySelector('.reader-text');
         if (!s || s.isCollapsed || !s.rangeCount || !root || !root.contains(s.anchorNode)) return setSel(null);
+        selAt.current = Date.now();
         const range = s.getRangeAt(0);
         const text = s.toString().trim();
         if (!text) return setSel(null);
         const parts = selectionParts(range, blocks());
         const context = parts.length ? blocks()[parts[0].a]?.textContent || text : text;
-        setSel({ text, parts, context, rect: range.getBoundingClientRect() });
+        setSel({ text, parts, context, rect: range.getBoundingClientRect(), range: range.cloneRange() });
       }, 250);
     };
-    document.addEventListener('selectionchange', onSel);
+    // Press, hold and slide to select (the bar shows once the finger lifts).
+    let dragging = false;
+    const off = dragSelect(scroller.current, '.reader-text', {
+      onStart: () => {
+        dragging = true;
+        selAt.current = Date.now();
+        setSel(null);
+      },
+      onDone: () => {
+        dragging = false;
+        selAt.current = Date.now();
+        onSel();
+      },
+    });
+    const onSelWhenFree = () => !dragging && onSel();
+    document.addEventListener('selectionchange', onSelWhenFree);
     return () => {
       clearTimeout(t);
-      document.removeEventListener('selectionchange', onSel);
+      off();
+      document.removeEventListener('selectionchange', onSelWhenFree);
     };
   }, [doc]);
 
@@ -338,6 +486,8 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
     return () => el.removeEventListener('scroll', onScroll);
   }, [doc, chrome]);
 
+  const selAt = useRef(0); // when words were last selected: a tap then isn't a page turn
+  const selecting = () => Date.now() - selAt.current < 900 || !(window.getSelection()?.isCollapsed ?? true);
   const lastTap = useRef(null);
   const tapTimer = useRef(null);
   const downAt = useRef(null);
@@ -372,6 +522,9 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
         >
           <Icon name="headphones" />
         </button>
+        <button class="icon-btn" onClick={() => setPanel(panel === 'notes' ? null : 'notes')} aria-label="This book's notes">
+          <Icon name="edit" />
+        </button>
         <button class="icon-btn" onClick={() => setPanel(panel === 'toc' ? null : 'toc')} aria-label="Contents">
           <Icon name="list" />
         </button>
@@ -394,6 +547,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
         onPointerUp={(e) => {
           const d = downAt.current;
           if (!d || Date.now() - d.t > 350 || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 20) return; // a scroll or a long press
+          if (selecting()) return (lastTap.current = null); // moving the selection handles
           const now = Date.now();
           const prev = lastTap.current;
           lastTap.current = { at: now, x: e.clientX, y: e.clientY };
@@ -414,10 +568,11 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
         onClick={(e) => {
           if (e.target.closest('a')) return;
           if (Date.now() - doubleAt.current < 500) return; // the second tap of a double tap
-          if (sel) return; // finishing a selection, not a page tap
+          // Finishing or adjusting a selection (or tapping it away): not a page turn.
+          if (sel || selecting()) return;
           const mark = e.target.closest('mark.hl');
           if (mark) {
-            const h = forBook(book.uid).find((x) => x.id === mark.dataset.id);
+            const h = forWork(book, sameWork).find((x) => x.id === mark.dataset.id);
             if (h) return setSheet({ type: 'hl', h });
           }
           const x = e.clientX / window.innerWidth;
@@ -460,7 +615,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
         <span>{Math.round(pct * 100)}%</span>
       </footer>
 
-      {sel && !sheet && <SelectionBar sel={sel} onAction={onSelAction} />}
+      {sel && !sheet && <SelectionBar sel={sel} onAction={onSelAction} onGrow={(kind) => growSelection(kind, blocks(), sel.range) || toast('Nothing more to add')} />}
       {sheet?.type === 'ai' && (
         <AiSheet
           kind={sheet.kind}
@@ -479,12 +634,12 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
           h={sheet.h}
           onClose={() => setSheet(null)}
           onSave={(note) => {
-            updateHighlight(book.uid, sheet.h.id, { note });
+            updateHighlight(sheet.h.home || book.uid, sheet.h.id, { note });
             setSheet(null);
             toast(note ? 'Note saved' : 'Saved');
           }}
           onRemove={() => {
-            removeHighlight(book.uid, sheet.h.id);
+            removeHighlight(sheet.h.home || book.uid, sheet.h.id);
             const root = scroller.current?.querySelector('.reader-text');
             if (root) unmark(root, sheet.h.id);
             setSheet(null);
@@ -524,6 +679,19 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
           <button class="icon-btn" onClick={() => startAloud(aloud.index + 1, aloudAll.current)} aria-label="Next paragraph">
             <Icon name="next" size={20} />
           </button>
+          <button
+            class="pill small aloud-rate"
+            aria-label="Reading speed"
+            onClick={() => {
+              const SPEEDS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+              const cur = ttsCfg.get().rate || 1;
+              const next = SPEEDS[(SPEEDS.findIndex((r) => r >= cur - 0.001) + 1) % SPEEDS.length];
+              ttsCfg.patch({ rate: next });
+              if (ctl.current?.native) ctl.current.setRate(next); // reading now: faster at once
+            }}
+          >
+            {+voiceRate.toFixed(2)}×
+          </button>
           <span class="aloud-label">{nativeReader ? 'Keeps reading with the screen off · double-tap a paragraph to read from there' : 'Double-tap a paragraph to read from there'}</span>
           <button class="icon-btn" onClick={() => setPanel(panel === 'listen' ? null : 'listen')} aria-label="Choose a voice">
             <Icon name="mic" size={18} />
@@ -557,29 +725,26 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
               <li class="muted">No chapter headings in this edition.</li>
             )}
           </ol>
-          {forBook(book.uid).length > 0 && (
-            <>
-              <h3 class="toc-hl-title">Your highlights</h3>
-              <ol class="toc toc-hl">
-                {forBook(book.uid).map((h) => (
-                  <li>
-                    <button
-                      onClick={() => {
-                        const m = scroller.current.querySelector(`mark.hl[data-id="${h.id}"]`) || blocks()[h.parts[0].a];
-                        m?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        setPanel(null);
-                      }}
-                    >
-                      “{h.text.length > 90 ? h.text.slice(0, 90) + '…' : h.text}”{h.note && <small>{h.note.length > 80 ? h.note.slice(0, 80) + '…' : h.note}</small>}
-                    </button>
-                  </li>
-                ))}
-              </ol>
-              <button class="link-btn" onClick={() => nav.push('notes')}>
-                All highlights & notes
-              </button>
-            </>
+        </div>
+      )}
+      {panel === 'notes' && doc && (
+        <div class="reader-panel book-notes">
+          <PanelHead title="This book's notes" onClose={() => setPanel(null)} />
+          <HighlightCards
+            book={book}
+            onOpen={(h) => {
+              const m = scroller.current.querySelector(`mark.hl[data-id="${h.id}"]`) || blocks()[h.parts[0].a];
+              m?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              setPanel(null);
+            }}
+          />
+          <AudioNotes book={book} onPlay={() => setPanel(null)} title="From the audiobook" />
+          {!forWork(book, sameWork).length && !hasAudioNotes(book) && (
+            <p class="muted">Press and hold on a word or drag across a passage, then tap Highlight. Your highlights and notes for this book — and bookmarks from its audiobook — show here.</p>
           )}
+          <button class="link-btn" onClick={() => nav.push('notes')}>
+            All highlights & notes
+          </button>
         </div>
       )}
       {panel === 'style' && (
@@ -631,6 +796,38 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
               <small>When reading aloud or making an audiobook</small>
             </span>
           </label>
+          <div class="reader-tr">
+            <label class="reader-toggle">
+              <input
+                type="checkbox"
+                checked={!!trTo}
+                onChange={(e) => trCfg.set((c) => ({ ...c, books: { ...c.books, [book.uid]: e.currentTarget.checked ? c.to : undefined } }))}
+              />
+              <span>
+                <b>Read this book in {lang(tr.to)[1]} {trWorking && <span class="spinner small" />}</b>
+                <small>Translated by your AI as you read (and kept), read aloud in a natural {lang(tr.to)[1]} voice</small>
+              </span>
+            </label>
+            <div class="tr-langs one-row">
+              {LANGS.map(([code, name, own]) => (
+                <button
+                  class={'pill small' + (tr.to === code ? ' active' : '')}
+                  onClick={() => trCfg.set((c) => ({ ...c, to: code, books: c.books[book.uid] ? { ...c.books, [book.uid]: code } : c.books }))}
+                >
+                  {own === name ? name : own}
+                </button>
+              ))}
+            </div>
+            <div class="reader-row labeled">
+              <span>Voice</span>
+              <button class={'pill small' + (!tr.male ? ' active' : '')} onClick={() => trCfg.patch({ male: false })}>
+                Female
+              </button>
+              <button class={'pill small' + (tr.male ? ' active' : '')} onClick={() => trCfg.patch({ male: true })}>
+                Male
+              </button>
+            </div>
+          </div>
           <div class="reader-row themes">
             {THEMES.map(([k, label]) => (
               <button class={`theme-swatch t-${k}` + (st.readerTheme === k ? ' active' : '')} onClick={() => settings.patch({ readerTheme: k })}>

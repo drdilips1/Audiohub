@@ -211,6 +211,61 @@ public class InkwellWebPlugin extends Plugin {
         }).start();
     }
 
+    /**
+     * Your notes and highlights, also kept as small files in the app's own storage: the web
+     * storage has a hard limit of about 5 MB for everything, and once it is full new saves
+     * fail. These files have no such limit (and go with the app's data, like the rest).
+     */
+    @PluginMethod
+    public void keepWrite(PluginCall call) {
+        String name = call.getString("name", "").replaceAll("[^A-Za-z0-9_-]", "");
+        String text = call.getString("text");
+        if (name.isEmpty() || text == null) {
+            call.reject("Missing name or text");
+            return;
+        }
+        try {
+            File dir = new File(getContext().getFilesDir(), "keep");
+            //noinspection ResultOfMethodCallIgnored
+            dir.mkdirs();
+            File tmp = new File(dir, name + ".tmp");
+            try (FileOutputStream out = new FileOutputStream(tmp)) {
+                out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            File f = new File(dir, name + ".json");
+            if (!tmp.renameTo(f)) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+                if (!tmp.renameTo(f)) throw new java.io.IOException("rename failed");
+            }
+            call.resolve();
+        } catch (Throwable e) {
+            call.reject("Couldn't save: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void keepRead(PluginCall call) {
+        String name = call.getString("name", "").replaceAll("[^A-Za-z0-9_-]", "");
+        JSObject ret = new JSObject();
+        File f = new File(new File(getContext().getFilesDir(), "keep"), name + ".json");
+        if (name.isEmpty() || !f.exists()) {
+            call.resolve(ret);
+            return;
+        }
+        try {
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                byte[] b = new byte[16384];
+                for (int n; (n = in.read(b)) > 0; ) buf.write(b, 0, n);
+            }
+            ret.put("text", buf.toString("UTF-8"));
+            call.resolve(ret);
+        } catch (Throwable e) {
+            call.reject("Couldn't read: " + e.getMessage());
+        }
+    }
+
     /** A download that is really an HTML page (login, captcha, error) rather than the file. */
     private static boolean looksLikeWebPage(File f) {
         try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {

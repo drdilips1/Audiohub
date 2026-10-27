@@ -46,11 +46,12 @@ function follow(elements, { onIndex, onDone, onError, onState } = {}) {
 }
 
 function nativeReadAloud(elements, from, handlers, meta) {
-  const paras = elements.map((el) => blockText(el));
+  // meta.paras / meta.voice: what to say and in which voice, when not the page as shown (a translation).
+  const paras = meta?.paras || elements.map((el) => blockText(el));
   const chapters = [];
   elements.forEach((el, i) => /^H[1-3]$/.test(el.tagName) && chapters.push({ para: i, title: speakable(el.textContent).slice(0, 80) }));
   const ctl = follow(elements, handlers);
-  Reader.start({ uid: meta?.uid || '', title: meta?.title || '', paras, from, chapters, rate: ttsCfg.get().rate || 1, voice: voiceSpec() }).catch((e) => handlers.onError?.(e));
+  Reader.start({ uid: meta?.uid || '', title: meta?.title || '', paras, from, chapters, rate: ttsCfg.get().rate || 1, voice: meta?.voice || voiceSpec() }).catch((e) => handlers.onError?.(e));
   return ctl;
 }
 

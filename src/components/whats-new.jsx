@@ -7,63 +7,27 @@ import { persisted, useStore } from '../lib/store.js';
 import { useBackClose } from '../lib/nav.js';
 
 // Change the id for the next update's notes: everyone sees them once.
-const EDITION = 'oct-2026';
+const EDITION = 'nov-2026';
 const seen = persisted('whatsNewSeen', '');
 
 const STEPS = [
   {
-    icon: 'mic',
-    title: 'One voice button for everything',
-    text: 'Tap 🎤 on Home or in the player and just say it: “back 30 seconds”, “next chapter”, “chapter 7”, “speed 1.5”, “sleep in 20 minutes”, “bookmark”, “play Sapiens”, “find a book on consciousness” — or ask anything about a book. Hold the button to type instead.',
-    tip: 'Add the Voice widget to your home screen: long-press the home screen → Widgets → Audiohub.',
+    icon: 'book',
+    title: 'Select by sliding',
+    text: 'In an ebook, press on a word, hold a moment, then slide your finger — the selection follows it word by word (the page scrolls at the edges). Or tap Sentence, Paragraph or + Next to select exactly that.',
+    tip: 'The buttons stay at the bottom, out of the way, and the page no longer jumps while you select.',
   },
   {
-    icon: 'car',
-    title: 'Driving mode',
-    text: 'Huge buttons, and one big area to ask out loud: the book pauses, you hear a short answer, and it carries on. Voice commands work here too.',
-    tip: 'Open it with the car on Home or in the player, or long-press the app icon.',
+    icon: 'edit',
+    title: 'This book’s notes, right there',
+    text: 'In the reader, tap ✎ at the top; in the player, More → Notes. Highlights, notes and bookmarks of that book — from its ebook and its audiobook — to jump to or edit. Highlights are also saved in the app’s own files, so they can’t be lost, and they’re in backups and sync.',
+    tip: 'All of them, for every book, are still in Notes.',
   },
   {
     icon: 'text',
-    title: 'A transcript in the book’s own words',
-    text: 'Tap Text in the player to read along. When the book’s ebook is on hand (it’s found by itself), the transcript shows its exact words. Tap 🔍 to search everything you’ve heard and jump there.',
-    tip: 'The current line is highlighted in the middle; tap any line to play from there.',
-  },
-  {
-    icon: 'xray',
-    title: 'X-Ray, recaps and Ask AI',
-    text: 'X-Ray shows who and where is in the scene, and every chapter a character appears in. Story gives spoiler-free recaps — and after a break, a “welcome back” recap. Explain, Challenge and Rabbit hole answer about the part you’re hearing.',
-    tip: 'AI uses your own free key: Groq, Gemini or OpenRouter (or Claude, or your own AI) in Settings → AI.',
-  },
-  {
-    icon: 'book',
-    title: 'A much better ebook reader',
-    text: 'Select any text → Explain, Meaning, Ask, Translate or Highlight. Add notes to highlights; they all collect in Notes. PDFs open in the reader too, and there are new fonts (Lora, Atkinson Hyperlegible, OpenDyslexic), line spacing, margins and justified text.',
-    tip: 'Read aloud: double-tap any paragraph to read from there; earphone buttons pause and resume it.',
-  },
-  {
-    icon: 'bookmark',
-    title: 'Bookmarks that say something',
-    text: 'Bookmarks are named after what was being said, and you can add your own note (✎). Find them on the book page and in Notes, and export highlights, bookmarks and ideas as one file.',
-    tip: 'Each audiobook also keeps its own speed and volume boost now.',
-  },
-  {
-    icon: 'covers',
-    title: 'Your library, your way',
-    text: 'Show it as a list, a grid, covers only or shelves by author / series. Search your own books, use smart shelves (Not started, Short listens, Recently added), and fill in missing covers in one tap.',
-    tip: 'Podcasts: rate episodes, get recommended ones, and let new episodes download by themselves on Wi-Fi.',
-  },
-  {
-    icon: 'download',
-    title: 'Backup, folders and your place',
-    text: 'Back up everything to a real file (logins and API keys optional) and restore by picking it. Downloads go into Author / Series folders — one tap sorts the older ones too. Your listening spot is kept even when Android closes the app.',
-    tip: 'Backup: Settings → Data. Sync with your own Supabase now needs just one Continue, no confirmation email.',
-  },
-  {
-    icon: 'palette',
-    title: 'More colours, and a few handy extras',
-    text: 'Settings → Appearance has light and dark colour themes side by side; each mode keeps its own. Paste any MP3 / M4B or EPUB link in Discover to play or read it. Single-file M4B books now show their chapters.',
-    tip: 'See this tour again any time: Settings → What’s new in this version.',
+    title: 'Translate into your language — and listen',
+    text: 'Translate now works in Hindi, Bengali, Marathi, Tamil, Telugu, Gujarati, Urdu, Spanish, French and more, and 🔊 reads it in a natural voice. Text (T) → “Read this book in…” translates the whole book as you read, and Read aloud speaks it.',
+    tip: 'While reading aloud, the 1× button on the bar changes the speed at once (up to 2×).',
   },
 ];
 

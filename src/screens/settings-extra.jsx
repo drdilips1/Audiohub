@@ -244,7 +244,7 @@ function SystemVoices() {
           </button>
         </div>
         <div class="chips">
-          {[0.8, 0.9, 1, 1.1, 1.25].map((r) => (
+          {[0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2].map((r) => (
             <button type="button" class={'pill small' + (c.rate === r ? ' active' : '')} onClick={() => ttsCfg.patch({ rate: r })}>
               {r}× read-along
             </button>

@@ -11,7 +11,7 @@ import { Browser } from '@capacitor/browser';
 import { App as CapApp } from '@capacitor/app';
 import { podcasts } from '../sources/podcasts.js';
 import { ai } from './ai.js';
-import { persisted, settings, library, progress, bookmarks, addons, abs, debrid, hardcover, goodreads, removedBooks, mergeRemoved, cleanLibrary, cleanProgress } from './store.js';
+import { persisted, settings, library, progress, bookmarks, addons, abs, debrid, hardcover, goodreads, removedBooks, mergeRemoved, cleanLibrary, cleanProgress, highlights, mergeHighlights } from './store.js';
 import { cleanUrl } from './http.js';
 import { ttsCfg } from './tts.js';
 import { myRatings } from './taste.js';
@@ -52,6 +52,7 @@ const SECTIONS = {
   debrid: { store: debrid, secret: true },
   hardcover: { store: hardcover, secret: true },
   tts: { store: ttsCfg, secret: true },
+  highlights: { store: highlights, merge: mergeHighlights },
 };
 
 // Installs from before the server was built in saved an empty address — use the built-in one.

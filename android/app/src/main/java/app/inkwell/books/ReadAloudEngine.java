@@ -298,6 +298,59 @@ public final class ReadAloudEngine {
     }
 
     /**
+     * Paragraphs that became ready later (a translation arriving while reading): read
+     * them in their place. Ones already passed are ignored; if the reading had come to
+     * the end waiting for them, it carries on.
+     */
+    public static void addParas(Map<Integer, String> add) {
+        if (pieces.isEmpty() || add.isEmpty()) return;
+        boolean wasDone = finished;
+        int oldSize = pieces.size();
+        synchronized (ready) {
+            List<Piece> next = new ArrayList<>(pieces);
+            int firstChanged = Integer.MAX_VALUE;
+            List<Integer> keys = new ArrayList<>(add.keySet());
+            java.util.Collections.sort(keys);
+            for (int i : keys) {
+                String t = add.get(i) == null ? "" : add.get(i).trim();
+                if (t.isEmpty() || !t.matches("(?s).*[\\p{L}\\p{N}].*")) continue;
+                boolean have = false;
+                int at = next.size();
+                for (int k = 0; k < next.size(); k++) {
+                    if (next.get(k).para == i) have = true;
+                    if (next.get(k).para > i) {
+                        at = k;
+                        break;
+                    }
+                }
+                if (have || at <= pos) continue;
+                List<Piece> parts = new ArrayList<>();
+                for (String x : EdgeTts.splitLong(t, maxPiece)) parts.add(new Piece(i, x));
+                next.addAll(at, parts);
+                firstChanged = Math.min(firstChanged, at);
+                total = Math.max(total, i + 1);
+            }
+            if (firstChanged == Integer.MAX_VALUE) return;
+            Iterator<Map.Entry<Integer, Future<File>>> it = ready.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<Integer, Future<File>> e = it.next();
+                if (e.getKey() >= firstChanged) {
+                    e.getValue().cancel(true);
+                    it.remove();
+                }
+            }
+            pieces = next;
+        }
+        if (wasDone && pieces.size() > oldSize) {
+            finished = false;
+            pos = Math.min(oldSize, pieces.size() - 1);
+            play();
+        } else if (playing) {
+            for (int i = pos + 1; i < Math.min(pieces.size(), pos + 1 + LOOKAHEAD); i++) prepare(i);
+        }
+    }
+
+    /**
      * Jumping to a paragraph: its audio isn't made yet, and a whole paragraph takes a
      * few seconds. Speak its first sentence on its own (ready in about a second) while
      * the rest is made.

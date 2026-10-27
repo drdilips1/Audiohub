@@ -1,13 +1,26 @@
 // Highlights and notes in ebooks. Each one remembers its book, the paragraph(s) it's
 // in (index among the reader's text blocks) and the exact words, so it can be shown
 // again, listed in the notebook and opened at its place.
-import { persisted, summarize } from './store.js';
+import { highlights, highlightsGone, summarize } from './store.js';
 
-export const highlights = persisted('highlights', {}); // uid -> [{ id, parts: [{ a, t }], text, note, at, book }]
+export { highlights }; // uid -> [{ id, parts: [{ a, t }], text, note, at, book }]
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 export const forBook = (uid) => highlights.get()[uid] || [];
+
+/**
+ * Highlights to show in this ebook: its own, and those made in another copy of the same
+ * book (opened from a source, then from Downloads, re-downloaded…), found by their words.
+ */
+export function forWork(book, same) {
+  const all = highlights.get();
+  const own = all[book.uid] || [];
+  const others = Object.entries(all)
+    .filter(([uid, list]) => uid !== book.uid && list?.length && same(list[0].book, book))
+    .flatMap(([uid, list]) => list.map((h) => ({ ...h, elsewhere: true, home: uid })));
+  return [...own, ...others];
+}
 
 export function addHighlight(book, parts, note = '') {
   const h = { id: newId(), parts, text: parts.map((p) => p.t).join(' ').replace(/\s+/g, ' ').trim(), note, at: Date.now(), book: summarize(book) };
@@ -20,6 +33,7 @@ export function updateHighlight(uid, id, patch) {
 }
 
 export function removeHighlight(uid, id) {
+  highlightsGone.set((g) => Object.fromEntries([...Object.entries(g), [id, Date.now()]].slice(-500)));
   highlights.set((all) => {
     const list = (all[uid] || []).filter((h) => h.id !== id);
     const next = { ...all };
@@ -123,4 +137,98 @@ export function selectionParts(range, blocks) {
     if (t.trim()) parts.push({ a: i, t });
   }
   return parts;
+}
+
+// ---- growing a selection: the sentence, the paragraph, one more sentence ------------
+// Dragging selection handles on a phone is fiddly; these snap it to what you meant.
+
+const ABBR = /\b(mr|mrs|ms|dr|st|jr|sr|prof|rev|vs|etc|no|vol|ch|fig|e\.g|i\.e|[a-z])$/i;
+
+/** Sentences of a paragraph's text, as [start, end) offsets (end before trailing spaces). */
+export function sentenceSpans(text) {
+  const spans = [];
+  let start = 0;
+  const re = /[.!?…]+["'”’»)\]]*(\s+|$)/g;
+  for (let m; (m = re.exec(text)); ) {
+    if (!m[0]) break;
+    const end = m.index + m[0].length - m[1].length;
+    const before = text.slice(start, m.index);
+    // "Mr. Bennet", "e.g. this", "J. Austen": not the end of a sentence.
+    if (m[1] && m[0].trim() === '.' && ABBR.test(before)) continue;
+    if (end > start) spans.push([start, end]);
+    start = m.index + m[0].length;
+    if (!m[1]) break;
+  }
+  if (start < text.length && text.slice(start).trim()) spans.push([start, text.replace(/\s+$/, '').length]);
+  while (spans.length && !text.slice(spans[0][0], spans[0][1]).trim()) spans.shift();
+  return spans.map(([s, e]) => [s + (text.slice(s, e).length - text.slice(s, e).trimStart().length), e]);
+}
+
+const offsetIn = (block, node, off) => {
+  const r = document.createRange();
+  r.setStart(block, 0);
+  r.setEnd(node, off);
+  return r.toString().length;
+};
+
+/** A DOM range over [start, end) of a paragraph's text. */
+function rangeIn(block, start, end, r = document.createRange(), setStart = true) {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  let at = 0;
+  let didStart = !setStart;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const len = n.nodeValue.length;
+    if (!didStart && start <= at + len) {
+      r.setStart(n, start - at);
+      didStart = true;
+    }
+    if (didStart && end <= at + len) {
+      r.setEnd(n, end - at);
+      return r;
+    }
+    at += len;
+  }
+  r.setEndAfter(block.lastChild || block);
+  return r;
+}
+
+/** Grow the current selection: 'sentence', 'paragraph' or 'more' (one sentence further). */
+export function growSelection(kind, blocks, range) {
+  const sel = window.getSelection();
+  // The selection as last seen (tapping a button can clear the live one on some phones).
+  range ||= sel?.rangeCount ? sel.getRangeAt(0) : null;
+  if (!range) return false;
+  const find = (node) => blocks.findIndex((b) => b === node || b.contains(node));
+  const si = find(range.startContainer);
+  const ei = find(range.endContainer);
+  if (si < 0 || ei < 0) return false;
+  const sb = blocks[si];
+  let eb = blocks[ei];
+  const r = document.createRange();
+  if (kind === 'paragraph') {
+    const end = eb.textContent.replace(/\s+$/, '').length;
+    rangeIn(sb, 0, 0, r);
+    rangeIn(eb, end, end, r, false);
+  } else {
+    const so = offsetIn(sb, range.startContainer, range.startOffset);
+    const eo = offsetIn(eb, range.endContainer, range.endOffset);
+    const ss = sentenceSpans(sb.textContent);
+    const s = ss.find(([a, b]) => so < b) || ss[ss.length - 1];
+    let es = sentenceSpans(eb.textContent);
+    let e = kind === 'more' ? es.find(([a]) => a >= eo) : [...es].reverse().find(([a]) => a < eo) || es[0];
+    if (kind === 'more' && !e) {
+      // The paragraph ends here: take the next one's first sentence.
+      const next = blocks.slice(ei + 1).find((b) => b.textContent.trim());
+      if (!next) return false;
+      eb = next;
+      es = sentenceSpans(eb.textContent);
+      e = es[0];
+    }
+    if (!s || !e) return false;
+    rangeIn(sb, s[0], s[0], r);
+    rangeIn(eb, e[1], e[1], r, false);
+  }
+  sel.removeAllRanges();
+  sel.addRange(r);
+  return true;
 }

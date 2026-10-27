@@ -288,3 +288,20 @@ export function importBackup(text) {
 export const debrid = persisted('debrid', { torbox: '', realdebrid: '' });
 export const hardcover = persisted('hardcover', { token: '', username: '' });
 export const goodreads = persisted('goodreads', { books: [], importedAt: 0 });
+// Ebook highlights and notes: uid -> [{ id, parts: [{ a, t }], text, note, at, book }] (see highlights.js)
+export const highlights = persisted('highlights', {});
+// Ids of highlights you removed (id -> when), so a backup or another device doesn't bring them back.
+export const highlightsGone = persisted('highlightsGone', {});
+
+/** Highlights from two places (backup, another device): every one of both, by id. */
+export function mergeHighlights(local, remote) {
+  const out = { ...local };
+  for (const [uid, list] of Object.entries(remote || {})) {
+    if (!Array.isArray(list)) continue;
+    const have = new Set((out[uid] || []).map((h) => h.id));
+    const gone = highlightsGone.get();
+    const more = list.filter((h) => h?.id && h.parts?.length && !have.has(h.id) && !gone[h.id]);
+    if (more.length) out[uid] = [...(out[uid] || []), ...more].sort((x, y) => x.parts[0].a - y.parts[0].a);
+  }
+  return out;
+}

@@ -18,6 +18,7 @@ import { StorySheet } from './story-sheet.jsx';
 import { XrayStrip, XraySheet } from './xray.jsx';
 import { SceneButton } from './scene-cmd.jsx';
 import { Rows as BookmarkRows } from './bookmarks.jsx';
+import { HighlightCards, AudioNotes, useBookNoteCount } from './book-notes.jsx';
 import { transcriptCfg, stopTranscript } from '../lib/transcript.js';
 import { sleepDetectAvailable, setSleepDetect } from '../lib/sleepdetect.js';
 
@@ -150,6 +151,7 @@ export function FullPlayer() {
   const s = usePlayer();
   const st = useStore(settings);
   const bms = useStore(bookmarks)[s.book?.uid] || [];
+  const noteCount = useBookNoteCount(s.book);
   const color = useCoverColor(s.book);
   const [sheet, setSheet] = useState(null); // 'chapters' | 'speed' | 'sleep' | 'bookmarks'
   // "Welcome back" offered once per book opening.
@@ -387,7 +389,7 @@ export function FullPlayer() {
                 </button>
                 <button onClick={() => setSheet('bookmarks')}>
                   <Icon name="bookmark" size={22} />
-                  Bookmarks · {bms.length}
+                  Notes · {noteCount}
                 </button>
                 <button
                   onClick={() => {
@@ -527,10 +529,21 @@ export function FullPlayer() {
               </>
             )}
             {sheet === 'bookmarks' && (
-              <>
-                <h3>Bookmarks</h3>
+              <div class="book-notes">
+                <h3>This book's notes</h3>
+                {noteCount === 0 && <p class="muted">Tap 🔖 to bookmark a moment, or long-press a line in the Text view to highlight it. Highlights from its ebook show here too.</p>}
                 <BookmarkRows uid={s.book.uid} book={s.book} list={bms} onPlay={() => setSheet(null)} />
-              </>
+                <AudioNotes book={s.book} except={s.book.uid} onPlay={() => setSheet(null)} />
+                <HighlightCards
+                  book={s.book}
+                  title="From the ebook"
+                  onOpen={(h) => {
+                    setSheet(null);
+                    nav.closeOverlay();
+                    nav.push('reader', { book: h.book, at: h.parts[0].a });
+                  }}
+                />
+              </div>
             )}
           </div>
         </div>

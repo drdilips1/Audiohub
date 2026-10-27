@@ -105,6 +105,19 @@ public class InkwellReadAloudPlugin extends Plugin {
         }
     }
 
+    /** { paras: [{ i, t }] } — paragraphs ready later (a translation), read in their place. */
+    @PluginMethod
+    public void addParas(PluginCall call) {
+        JSArray arr = call.getArray("paras");
+        java.util.Map<Integer, String> add = new java.util.HashMap<>();
+        if (arr != null) for (int k = 0; k < arr.length(); k++) {
+            JSONObject o = arr.optJSONObject(k);
+            if (o != null) add.put(o.optInt("i", -1), o.optString("t", ""));
+        }
+        add.remove(-1);
+        onMain(call, () -> ReadAloudEngine.addParas(add));
+    }
+
     @PluginMethod
     public void pause(PluginCall call) {
         onMain(call, ReadAloudEngine::pause);
