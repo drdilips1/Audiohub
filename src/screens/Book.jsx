@@ -552,13 +552,27 @@ export function Book({ book: initial }) {
             class="section-label parts-toggle"
             onClick={() => setShowParts(!partsOpen)}
           >
-            <Icon name="library" size={16} /> {tracks.length}{" "}
-            {tracks.length === 1 ? "part" : "parts"}
+            <Icon name="library" size={16} />
+            <span class="parts-sum">
+              <b>
+                {tracks.length} {tracks.length === 1 ? "file" : "files"}
+              </b>
+              {!partsOpen && (
+                <small>
+                  {/* Folded: which file you're on — the list opens on tap. */}
+                  you're on {(isCurrent ? ps.index : prog?.track || 0) + 1} ·{" "}
+                  {tracks[isCurrent ? ps.index : prog?.track || 0]?.title}
+                </small>
+              )}
+            </span>
             {tracks.length > 5 && (
-              <Icon name={partsOpen ? "up" : "down"} size={16} />
+              <span class="parts-more">
+                {partsOpen ? "Hide" : "Show all"}
+                <Icon name={partsOpen ? "up" : "down"} size={14} />
+              </span>
             )}
           </button>
-          <ol class="chapter-list flat">
+          {partsOpen && <ol class="chapter-list flat">
             {tracks.map((t, i) => {
               // Folded: only the part you're on (or the first) is listed.
               const here = isCurrent ? ps.index : prog?.track || 0;
@@ -589,7 +603,7 @@ export function Book({ book: initial }) {
                 </li>
               );
             })}
-          </ol>
+          </ol>}
         </section>
       )}
 

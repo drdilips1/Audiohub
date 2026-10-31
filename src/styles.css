@@ -5280,6 +5280,7 @@ button.rt {
 }
 
 /* Your verdict, match % and "why this pick" */
+.book .myrate,
 .myrate {
   margin: 18px 16px 4px;
   padding: 14px 14px 12px;
@@ -10853,4 +10854,79 @@ button.notes-book-head {
   & .feature-spacer {
     display: none;
   }
+}
+
+/* Book page: the audio files as one line ("6 files · you're on 1 · …", Show all). */
+.parts-toggle {
+  padding: 10px 0;
+  text-align: left;
+}
+.parts-sum {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.parts-sum b {
+  font-size: 15px;
+}
+.parts-sum small {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.parts-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+/* Your verdict: one slim row — the label, then five small faces (the picked one says its name). */
+.book .myrate,
+.myrate {
+  margin: 8px 20px 12px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.myrate-head {
+  margin-bottom: 6px;
+}
+.myrate-head h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.myrate-verdicts {
+  display: flex;
+  gap: 6px;
+}
+.myrate-v {
+  flex: 0 0 auto;
+  flex-direction: row;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.myrate-emoji {
+  font-size: 17px;
+}
+.myrate-v small {
+  display: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+.myrate-v.on small {
+  display: inline;
 }
