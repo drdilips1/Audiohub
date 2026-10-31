@@ -193,15 +193,16 @@ export async function readyHit(hit, book) {
 }
 
 /** Ebooks already on the phone (saved, phone folders, added files): this book's first. */
-export function ebooksOnHand(book, query = '') {
+export function ebooksOnHand(book, query = '', { all: everything = false } = {}) {
   const t = query.trim() || mainTitle(book.title || '');
   const seen = new Set();
   const all = [...Object.values(savedEbooks.get()).map((x) => x?.book), ...(localCfg.get().books || []).filter((b) => b.kind === 'text')].filter(
     (b) => b && !seen.has(b.uid) && seen.add(b.uid)
   );
   const hit = (b) => (t && matches(t, `${b.title || ''} ${b.ebookName || ''}`) ? 0 : 1);
-  if (query.trim()) return all.filter((b) => !hit(b));
-  return all.sort((a, b) => hit(a) - hit(b));
+  // Only this book's (or your words'): every ebook on the phone only when you ask for it.
+  if (everything) return all.sort((a, b) => hit(a) - hit(b));
+  return all.filter((b) => !hit(b));
 }
 
 /** Download a found ebook, keep it on the phone and use it for this audiobook's transcript. */
@@ -216,6 +217,8 @@ export async function keepFoundEbook(audioUid, hit, book = null) {
 // sources, TorBox / Real-Debrid, Audiobookshelf by default), kept on the phone and
 // attached to the transcript. Only what's ready: nothing new is added to a debrid service.
 const tried = persisted('ebookTried', {}); // audiobook uid -> when nothing was found (looked again after a day)
+// Sources added or changed: books that found nothing are looked at again.
+import('./store.js').then(({ addons }) => addons.subscribe(() => tried.set({})));
 const finding = new Map();
 
 /** Find, keep and attach this audiobook's ebook; resolves the ebook (book summary) or null. */

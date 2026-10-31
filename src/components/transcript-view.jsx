@@ -56,6 +56,11 @@ function EbookStatus({ b }) {
     try {
       const found = await findEbook(q);
       if (my === run.current) setHits(found);
+      // Nothing attached yet and a clear match in your sources: attach it straight away.
+      if (my === run.current && !q && b?.state !== 'on' && found[0] && clearMatch(found[0])) {
+        toast(`Attaching “${found[0].r.title || found[0].file.name}”…`);
+        return take(found[0]);
+      }
     } catch (e) {
       if (my === run.current) (toast(e?.message || String(e)), setHits([]));
     }
@@ -88,10 +93,22 @@ function EbookStatus({ b }) {
     }
     setBusy('');
   };
+  // The audiobook's title words and its author's surname both in the result.
+  const clearMatch = (h) => {
+    const ps = player.getState().book;
+    const sn = String(ps?.author || '').split(',')[0].trim().split(/\s+/).pop()?.toLowerCase() || '';
+    const hay = `${h.r.title || ''} ${h.r.author || ''} ${h.file.name || ''}`.toLowerCase();
+    return h.file.format !== '?' && (!sn || hay.includes(sn));
+  };
+  const [allPhone, setAllPhone] = useState(false);
+  const showAllPhone = async () => {
+    setAllPhone(true);
+    setMine(await ebooksOnPhone('', true));
+  };
   const phoneList = mine?.length > 0 && (
     <div class="tl-ebook-hits">
       <p class="tl-source">On this phone</p>
-      {mine.slice(0, 8).map((eb) => (
+      {mine.slice(0, allPhone ? 40 : 8).map((eb) => (
         <button class="tl-ebook-hit" disabled={busy && busy !== 'search'} onClick={() => pickMine(eb)}>
           <span>
             <b>{eb.title}</b>
@@ -134,6 +151,7 @@ function EbookStatus({ b }) {
     setHits(null);
     setMine(null);
     setQuery('');
+    setAllPhone(false);
   };
   const sheet = open && (
     <PickSheet close={close}>
@@ -153,6 +171,11 @@ function EbookStatus({ b }) {
       </form>
       {phoneList}
       {mine && !mine.length && query.trim() && <p class="tl-source">Nothing on this phone matches “{query.trim()}”.</p>}
+      {mine && !allPhone && !query.trim() && (
+        <button class="link-btn tl-all-phone" onClick={showAllPhone}>
+          {mine.length ? 'Show every ebook on this phone' : 'None of this book on the phone · show every ebook on it'}
+        </button>
+      )}
       <button class="btn secondary wide tl-pick-file" disabled={!!busy && busy !== 'search'} onClick={pickFile}>
         <Icon name="book" size={15} /> Choose a file from this phone (Downloads…)
       </button>

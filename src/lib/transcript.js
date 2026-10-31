@@ -107,11 +107,11 @@ export async function findEbook(query = '') {
 }
 
 /** Ebooks already on the phone to choose from (this book's first). */
-export async function ebooksOnPhone(query = '') {
+export async function ebooksOnPhone(query = '', all = false) {
   const ps = player.getState();
   if (!ps.book) return [];
   const { ebooksOnHand } = await import('./booktext.js');
-  return ebooksOnHand(ps.book, query);
+  return ebooksOnHand(ps.book, query, { all });
 }
 
 /** Use an ebook already on the phone for this audiobook's transcript. */
