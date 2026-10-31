@@ -8,6 +8,7 @@
 import { persisted } from './store.js';
 
 const known = persisted('m4bChapters2', {}); // uid -> [{ title, start, end }] (or [] when none)
+const missAt = persisted('m4bChapterMiss', {}); // uid -> when none were found (looked at again later)
 
 const u16 = (b, i) => (b[i] << 8) | b[i + 1];
 const u32 = (b, i) => ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
@@ -199,42 +200,66 @@ async function publishedChapters(book, getDuration) {
   if (!book?.title) return [];
   // The file's own length (known once it starts playing) — not the catalogue's.
   let duration = 0;
-  for (let i = 0; i < 20 && !(duration = getDuration()); i++) await new Promise((r) => setTimeout(r, 500));
-  if (!duration) return []; // length unknown: can't tell if it's the same edition (tried again next time)
-  const { audible } = await import('../sources/catalogs.js');
+  for (let i = 0; i < 30 && !(duration = getDuration()); i++) await new Promise((r) => setTimeout(r, 500));
+  if (!duration) throw new Error('length unknown'); // tried again next time
   const { mainTitle } = await import('./match.js');
-  const asin = book.uid?.startsWith('au:') ? book.uid.slice(3) : (await audible.find(mainTitle(book.title), (book.author || '').split(',')[0].trim()).catch(() => null))?.uid?.slice(3);
-  if (!asin) return [];
-  const res = await fetch(`https://api.audnex.us/books/${asin}/chapters`);
-  if (!res.ok) return [];
-  const d = await res.json();
-  const flat = [];
-  const walk = (list) => (list || []).forEach((c) => (flat.push(c), walk(c.chapters)));
-  walk(d.chapters);
-  const total = (d.runtimeLengthMs || flat.reduce((a, c) => a + (c.lengthMs || 0), 0)) / 1000;
-  if (flat.length < 2 || !total) return [];
-  // Another edition (abridged, a different narrator) can be much longer or shorter: then the
-  // times would be wrong, so don't guess. Small differences (intros, credits) are scaled.
-  const k = duration > 0 ? duration / total : 1;
-  if (duration > 0 && Math.abs(1 - k) > 0.08) return [];
-  return flat.map((c, i) => ({ title: c.title || `Chapter ${i + 1}`, start: ((c.startOffsetMs || 0) / 1000) * k, published: true }));
+  const title = mainTitle(book.title);
+  const author = String(book.author || '').split(',')[0].trim();
+  // Candidates: this book's own Audible id, then Audible's editions of it — the one whose
+  // length matches this file (another edition, abridged or another narrator, would put the
+  // chapters in the wrong places).
+  const asins = [];
+  if (book.uid?.startsWith('au:')) asins.push({ asin: book.uid.slice(3), min: 0 });
+  for (const kw of [`${title} ${author}`.trim(), title]) {
+    if (asins.length > 6) break;
+    try {
+      const res = await fetch('https://api.audible.com/1.0/catalog/products?' + new URLSearchParams({ keywords: kw, num_results: '8', products_sort_by: 'Relevance', response_groups: 'product_attrs' }));
+      const d = res.ok ? await res.json() : {};
+      for (const p of d.products || []) if (p.asin && !asins.some((x) => x.asin === p.asin)) asins.push({ asin: p.asin, min: p.runtime_length_min || 0 });
+    } catch {}
+  }
+  const close = (min) => !min || Math.abs(1 - duration / (min * 60)) <= 0.08;
+  const ranked = asins.filter((x) => close(x.min)).sort((x, y) => Math.abs(duration - x.min * 60) - Math.abs(duration - y.min * 60));
+  for (const { asin } of ranked.slice(0, 4)) {
+    const res = await fetch(`https://api.audnex.us/books/${asin}/chapters`).catch(() => null);
+    if (!res?.ok) continue;
+    const d = await res.json().catch(() => null);
+    const flat = [];
+    const walk = (list) => (list || []).forEach((c) => (flat.push(c), walk(c.chapters)));
+    walk(d?.chapters);
+    const total = (d?.runtimeLengthMs || flat.reduce((a, c) => a + (c.lengthMs || 0), 0)) / 1000;
+    if (flat.length < 2 || !total) continue;
+    const k = duration / total;
+    if (Math.abs(1 - k) > 0.08) continue; // another edition
+    return flat.map((c, i) => ({ title: c.title || `Chapter ${i + 1}`, start: ((c.startOffsetMs || 0) / 1000) * k, published: true }));
+  }
+  return [];
 }
 
 /** The chapters of one remote audio file, or [] (none found). `book` gives the published list. */
 export async function m4bChapters(uid, url, headers, duration = 0, book = null) {
   const getDuration = typeof duration === 'function' ? duration : () => duration;
   const have = known.get()[uid];
-  if (have) return have;
+  // A book that had none: looked at again after a day (the lookup can fail for a moment).
+  if (have && (have.length || Date.now() - (missAt.get()[uid] || 0) < 864e5)) return have;
   let list = [];
   let failed = false;
+  let why = '';
   try {
     const read = reader(url, headers);
     const head = await read(0, 12);
     list = type(head, 0).startsWith('ID3') || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) ? await mp3Chapters(read) : type(head, 4) === 'ftyp' ? await mp4Chapters(read) : [];
-  } catch {
+  } catch (e) {
     failed = true; // maybe next time (a fresh link)
+    why = `file: ${e?.message || e}`;
   }
-  if (list.length < 2) list = await publishedChapters(book, getDuration).catch(() => []);
+  if (list.length < 2)
+    list = await publishedChapters(book, getDuration).catch((e) => {
+      failed = true;
+      why += ` · published: ${e?.message || e}`;
+      return [];
+    });
+  if (list.length < 2) import('./report.js').then((m) => m.logError('chapters', `${book?.title || uid}: none found${why ? ` (${why})` : ''}`)).catch(() => {});
   if (list.length < 2 && (failed || !getDuration())) return [];
   list = list.length > 1 ? list.map((c, k) => ({ title: c.title, start: c.start, end: list[k + 1]?.start ?? (getDuration() || null), ...(c.published ? { published: true, estimated: true } : {}) })) : [];
   known.set((all) => {
@@ -243,5 +268,6 @@ export async function m4bChapters(uid, url, headers, duration = 0, book = null) 
     next[uid] = list;
     return next;
   });
+  if (!list.length) missAt.set((m) => ({ ...m, [uid]: Date.now() }));
   return list;
 }
