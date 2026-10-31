@@ -7,6 +7,7 @@ import { SceneButton } from '../components/scene-cmd.jsx';
 import { useTileRating } from '../lib/ratings.js';
 import { openExternal } from '../sources/summaries.js';
 import { useMeta } from '../lib/meta.js';
+import { useLocalCover } from '../sources/local.js';
 import { picksForYou } from '../lib/bookseller.js';
 import { mainTitle } from '../lib/match.js';
 import { Icon } from '../components/icons.jsx';
@@ -16,7 +17,7 @@ import { sameWork } from '../lib/works.js';
 import { progress, settings, addons, abs, debrid, hardcover, goodreads, useStore, persisted, library, toggleLibrary, hideFromContinue } from '../lib/store.js';
 import { greeting, firstName, fmtDuration, hiResCover } from '../lib/format.js';
 import { useSquareCover } from '../lib/meta.js';
-import { UpNextRow } from '../components/up-next.jsx';
+import { UpNextRow, PlanRow } from '../components/up-next.jsx';
 import { account } from '../lib/sync.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { GENRES } from './genres.js';
@@ -370,6 +371,21 @@ const today = () => new Date().toLocaleDateString(undefined, { weekday: 'short',
 // "Audiobooks in your folders / cloud" rows: audiobooks only (ebooks are in Library → Ebooks).
 const audioOnly = (load) => () => load().then((list) => (list || []).filter((b) => b.kind !== 'text'));
 
+// A Continue card's cover: the book's own current cover (the phone copy's, or one you picked),
+// not only the picture saved with your place — that one can be out of date or another book's.
+const topUidKey = (p) => p.book.uid;
+function ContinueCover({ book, big }) {
+  const local = useLocalCover(book);
+  const meta = useMeta(book);
+  const b = withMeta(local ? { ...book, cover: local } : book, meta?.fixed ? meta : null);
+  return (
+    <>
+      {big && b.cover && <div class="continue-big-bg" style={{ backgroundImage: `url("${b.cover}")` }} />}
+      <Cover book={b} eager={big} />
+    </>
+  );
+}
+
 function ContinueRow() {
   const prog = useStore(progress);
   const items = useMemo(
@@ -414,8 +430,7 @@ function ContinueRow() {
     <section class="continue-section">
       {/* The book you were last on, big; the others in a row below. */}
       <button class="continue-big" onClick={() => open(top)}>
-        {top.book.cover && <div class="continue-big-bg" style={{ backgroundImage: `url("${top.book.cover}")` }} />}
-        <Cover book={top.book} eager />
+        <ContinueCover key={topUidKey(top)} book={top.book} big />
         <div class="continue-big-text">
           <em>{top.kind === 'text' ? 'Continue reading' : 'Continue listening'}</em>
           <b>{top.book.title}</b>
@@ -436,7 +451,7 @@ function ContinueRow() {
         <div class="row-scroll continue">
           {rest.map(([uid, p]) => (
             <button key={uid} class="continue-card" onClick={() => open(p)}>
-              <Cover book={p.book} />
+              <ContinueCover key={uid} book={p.book} />
               <div class="continue-meta">
                 <b>{p.book.title}</b>
                 <span>{left(p)}</span>
@@ -626,6 +641,8 @@ export function Home() {
             );
           case 'upnext':
             return <UpNextRow key={id} />;
+          case 'plan':
+            return <PlanRow key={id} />;
           case 'rec':
             return <Row key={id} title="Recommended for you" subtitle="Non-fiction from your listening and ratings" icon="sparkle" cacheKey="homeRec" shuffle rec load={recommendedForYou} deps={[]} />;
           case 'new':
@@ -660,6 +677,7 @@ const HOME_SECTIONS = [
   ['hero', 'Banner', 'Picked for you, top rated, your server & cloud'],
   ['continue', 'Continue', 'What you’re listening to and reading'],
   ['upnext', 'Up next', 'Books lined up to play next'],
+  ['plan', 'Listen for…', '10 / 30 / 60-minute plans from your books'],
   ['rec', 'Recommended for you', 'From your listening and ratings'],
   ['new', 'New releases', 'In your topics'],
   ['top', 'Top titles this month', 'Best sellers in your topics'],

@@ -2,7 +2,7 @@
 import { Icon } from './icons.jsx';
 import { Cover } from './common.jsx';
 import { useStore } from '../lib/store.js';
-import { upNext, removeUpNext, moveUpNext, playUpNext } from '../lib/upnext.js';
+import { upNext, removeUpNext, moveUpNext, playUpNext, startPlan } from '../lib/upnext.js';
 import { fmtTime } from '../lib/format.js';
 
 export function UpNextList({ onPlay }) {
@@ -53,6 +53,34 @@ export function UpNextRow() {
       </header>
       <div class="pad">
         <UpNextList />
+      </div>
+    </section>
+  );
+}
+
+/** Home: "Listen for 10 / 30 / 60 minutes" — a plan from your books and saved passages. */
+export function PlanRow() {
+  return (
+    <section class="row plan-row">
+      <header class="row-head">
+        <div>
+          <h2>
+            <Icon name="moon" size={18} /> Listen for…
+          </h2>
+          <p>A plan from your books and saved passages; it stops on time</p>
+        </div>
+      </header>
+      <div class="pad plan-chips">
+        {[
+          [10, 'Saved passages'],
+          [30, 'Your current book'],
+          [60, 'Current + next book'],
+        ].map(([m, sub]) => (
+          <button class="plan-chip" onClick={() => startPlan(m)}>
+            <b>{m} min</b>
+            <small>{sub}</small>
+          </button>
+        ))}
       </div>
     </section>
   );

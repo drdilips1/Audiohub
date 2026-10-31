@@ -54,6 +54,11 @@ const STEPS = [
     text: 'Line up what to listen to next: press and hold a book → Add to Up next (or hold a bookmark to queue that passage). It shows on Home and in the player (More → Up next), and the next one starts when a book ends — each from its own place.',
   },
   {
+    icon: 'target',
+    title: 'Listening plans',
+    text: 'Home → Listen for 10, 30 or 60 minutes: a mix of your saved passages and unfinished books that ends on time.',
+  },
+  {
     icon: 'chart',
     title: 'Reading stats',
     text: 'Library → Stats now has Listening and Reading: time spent reading ebooks, your reading streak, when you read, your most-read books and the ebooks you finished.',

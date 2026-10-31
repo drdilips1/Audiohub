@@ -11100,3 +11100,31 @@ button.notes-book-head {
   font: inherit;
   font-size: 15px;
 }
+
+/* Listening plans (Home) */
+.plan-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.plan-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+}
+.plan-chip b {
+  font-size: 15px;
+  color: var(--accent);
+}
+.plan-chip small {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.25;
+}
