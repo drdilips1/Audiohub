@@ -11,7 +11,8 @@ import { coverColor } from '../lib/color.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { bookmarks, settings, useStore } from '../lib/store.js';
 import { openDrive } from './drive-mode.jsx';
-import { COMPANION, rememberHere } from '../lib/askbook.js';
+import { COMPANION, rememberHere, chapterSummary, chapterSummaries } from '../lib/askbook.js';
+import { Answer } from '../screens/Ask.jsx';
 import { aiReady } from '../lib/ai.js';
 import { TranscriptView } from './transcript-view.jsx';
 import { StorySheet } from './story-sheet.jsx';
@@ -612,6 +613,8 @@ export function FullPlayer() {
                           <span class="ch-title">{c.title}</span>
                           <span class="ch-time">{c.end > c.start ? (c.estimated ? '≈ ' : '') + fmtTime(c.end - c.start) : ''}</span>
                         </button>
+                        {/* Chapters you've reached: a short AI summary (kept for next time). */}
+                        {s.book.source !== 'pod' && c.start <= g && <ChapterSummary book={s.book} chapters={chapters} i={i} total={total} />}
                       </li>
                     );
                   })}
@@ -687,6 +690,34 @@ function PlayerBackground({ book, st }) {
  * about the part you're hearing (the book pauses; the mini player brings you back),
  * and Remember to keep the idea as a card.
  */
+function ChapterSummary({ book, chapters, i, total }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(() => chapterSummaries.get()[book.uid]?.[i] || '');
+  const [busy, setBusy] = useState(false);
+  const toggle = async () => {
+    if (open) return setOpen(false);
+    setOpen(true);
+    if (text) return;
+    if (!aiReady()) return setText('Add an AI key in Settings → AI to get chapter summaries.');
+    setBusy(true);
+    try {
+      setText(await chapterSummary(book, chapters, i, total));
+    } catch (e) {
+      setText(e.message || 'Couldn’t summarise this chapter');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div class={'ch-sum' + (open ? ' open' : '')}>
+      <button class="ch-sum-btn" onClick={toggle} aria-label="Chapter summary">
+        <Icon name="ai" size={14} /> {open ? 'Hide summary' : text ? 'Summary' : 'Summarise'}
+      </button>
+      {open && <div class="ch-sum-text">{busy ? <span class="spinner small" /> : <Answer text={text} />}</div>}
+    </div>
+  );
+}
+
 /** The player's AI row: Ask, Explain (what's being said), Find (in what you've heard), X-Ray. */
 function Signature({ book, openXray }) {
   if (!book || book.source === 'pod') return null;

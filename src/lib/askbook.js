@@ -296,3 +296,39 @@ Reply with JSON only: {"questions": [{"q": "question", "options": ["A", "B", "C"
   saveThread(book, [...msgs, { role: 'user', text: 'Quiz me' }, { role: 'ai', text: '', quiz: questions }]);
   return questions;
 }
+
+// ---- Chapter summaries (kept once per book and chapter) -------------------------------
+export const chapterSummaries = persisted('chapterSummaries', {}); // uid -> { 'i': text }
+/**
+ * A short summary of one chapter: from the ebook's words for that stretch of the book (its
+ * place in the audio, as a share of the whole), else from what the AI knows of the book.
+ * Only chapters you've reached (no spoilers).
+ */
+export async function chapterSummary(book, chapters, i, total) {
+  const uid = book?.uid;
+  const have = chapterSummaries.get()[uid]?.[i];
+  if (have) return have;
+  const c = chapters[i];
+  const tokens = await bookTokens(book).catch(() => null);
+  let text = '';
+  if (tokens && total > 0) {
+    const a = Math.floor((c.start / total) * tokens.length);
+    const b = Math.ceil(((c.end || total) / total) * tokens.length);
+    const slice = tokens.slice(Math.max(0, a - 40), Math.min(tokens.length, b + 40));
+    // Long chapters: its start, middle and end (keeps the request small).
+    const pick = slice.length > 3600 ? [...slice.slice(0, 1400), '…', ...slice.slice(Math.floor(slice.length / 2) - 400, Math.floor(slice.length / 2) + 400), '…', ...slice.slice(-1400)] : slice;
+    text = pick.join(' ');
+  }
+  const prompt = `${context(book, { description: book.description || '' })}
+Summarise chapter ${i + 1}${c.title && !/^chapter\s*\d+$/i.test(c.title) ? ` ("${c.title}")` : ''} of this book for someone who has just listened to it.
+${text ? `Its text (from the ebook, roughly this chapter's stretch of the book):\n"""\n${text}\n"""\nSummarise from this text.` : 'You do not have the text: summarise what this chapter covers as best you know the book, and say briefly if you are unsure which chapter is which.'}
+Write 3–5 short bullet points ("- ") of what happens or is argued in it, then one line starting "Key idea:". No spoilers beyond this chapter. Under 140 words.`;
+  const out = (await askAi(prompt)).trim();
+  chapterSummaries.set((all) => {
+    const keys = Object.keys(all);
+    const next = keys.length > 60 ? Object.fromEntries(keys.slice(-40).map((k) => [k, all[k]])) : { ...all };
+    next[uid] = { ...(next[uid] || {}), [i]: out };
+    return next;
+  });
+  return out;
+}

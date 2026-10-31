@@ -10993,3 +10993,28 @@ button.notes-book-head {
   width: 34px;
   height: 34px;
 }
+
+/* Chapter summaries in the chapter list */
+.ch-sum {
+  padding: 0 8px 8px 46px;
+}
+.ch-sum-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 2px 0;
+}
+.ch-sum-text {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.ch-sum-text .ask-answer ul {
+  padding-left: 18px;
+}

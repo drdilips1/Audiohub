@@ -44,6 +44,11 @@ const STEPS = [
     text: 'Press and hold a book → Find cover & details (or on the book page): it searches Audible, Apple audiobooks, Apple Books, Goodreads, Google Books and Open Library at once. Missing covers are also looked up in Apple Books and Goodreads by themselves.',
   },
   {
+    icon: 'ai',
+    title: 'Chapter summaries',
+    text: 'In the player’s chapter list, chapters you’ve reached have a Summary — a few points and the key idea, from the book’s own text when its ebook is attached. No spoilers: later chapters don’t offer one.',
+  },
+  {
     icon: 'list',
     title: 'Up next',
     text: 'Line up what to listen to next: press and hold a book → Add to Up next (or hold a bookmark to queue that passage). It shows on Home and in the player (More → Up next), and the next one starts when a book ends — each from its own place.',
