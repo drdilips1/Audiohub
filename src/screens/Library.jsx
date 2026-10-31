@@ -178,6 +178,10 @@ export function Library() {
       };
       // Every copy of a book (phone, download, server, cloud) shows once.
       sub.all = oneEach(unique([...pick(started.map((p) => p.book)), ...sub.saved, ...sub.downloaded, ...sub.phone]));
+      // Most recent first: whichever is latest — played / read, added to the library, or kept
+      // on the phone (an ebook attached to its audiobook counts as new too).
+      const when = (b) => Math.max(prog?.[b.uid]?.updatedAt || 0, lib?.[b.uid]?.addedAt || 0, b.addedAt || 0, kept?.[b.uid]?.at || 0, dls?.[b.uid]?.at || 0);
+      sub.all.sort((x, y) => when(y) - when(x));
       // Smart shelves: never played; under 5 hours (audiobooks); added in the last 30 days.
       sub.notstarted = sub.all.filter((b) => !prog?.[b.uid]);
       const secs = (b) => Number(b.duration) || Number(metaNow(b)?.runtime) || 0;
@@ -256,7 +260,15 @@ export function Library() {
       </div>
       {finding && (
         <div class="pad lib-find">
-          <input type="search" autoFocus placeholder="Search your library — title, author, narrator, series" value={libQ} onInput={(e) => setLibQ(e.currentTarget.value)} />
+          <label class="lib-find-box">
+            <Icon name="search" size={18} />
+            <input type="search" autoFocus placeholder="Title, author, narrator, series…" value={libQ} onInput={(e) => setLibQ(e.currentTarget.value)} />
+            {libQ && (
+              <button class="icon-btn" aria-label="Clear" onClick={() => setLibQ('')}>
+                <Icon name="close" size={16} />
+              </button>
+            )}
+          </label>
         </div>
       )}
       {found ? (

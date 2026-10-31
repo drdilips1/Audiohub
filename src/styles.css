@@ -11070,3 +11070,33 @@ button.notes-book-head {
   border: 1.5px solid var(--accent);
   color: var(--accent);
 }
+
+/* Library search (the 🔍 at the top): a full box like "Find an ebook", part of the page. */
+.lib-find {
+  margin: 4px 0 12px;
+}
+.lib-find-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.lib-find-box input,
+.lib-find .lib-find-box input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  padding: 13px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  outline: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
