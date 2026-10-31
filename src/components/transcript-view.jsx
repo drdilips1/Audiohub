@@ -10,6 +10,7 @@ import { useStore, bookmarks } from '../lib/store.js';
 import { MODELS, transcriptAvailable, subscribeTranscript, follow, installedModels, downloadModel, restartTranscript, findEbook, takeEbook, ebooksOnPhone, takeOnPhone, heardLines, fixHeard, stopLooking, transcriptCfg } from '../lib/transcript.js';
 import { cachedXray } from '../lib/xray.js';
 import { fmtTime } from '../lib/format.js';
+import { surname } from '../lib/match.js';
 
 // Wrap known character names in tappable spans.
 function withNames(text, names, onTap) {
@@ -96,7 +97,7 @@ function EbookStatus({ b }) {
   // The audiobook's title words and its author's surname both in the result.
   const clearMatch = (h) => {
     const ps = player.getState().book;
-    const sn = String(ps?.author || '').split(',')[0].trim().split(/\s+/).pop()?.toLowerCase() || '';
+    const sn = surname(ps?.author);
     const hay = `${h.r.title || ''} ${h.r.author || ''} ${h.file.name || ''}`.toLowerCase();
     return h.file.format !== '?' && (!sn || hay.includes(sn));
   };

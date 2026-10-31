@@ -11,15 +11,14 @@ import { canDownload, downloadBook } from '../lib/downloads.js';
 import { translit } from '../lib/translit.js';
 import * as qb from '../sources/qbit.js';
 import { cleanTitle } from '../sources/debrid.js';
-import { mainTitle, searchTitle } from '../lib/match.js';
+import { mainTitle, searchTitle, surname } from '../lib/match.js';
 
 // Search words for your tracker: the book's main title and the author's surname (what a
 // tracker's search matches best). Without a book (Discover search), the torrent's own
 // name, cut down to its title part.
 const trackerWords = (name, book) => {
   if (book?.title) {
-    const surname = String(book.author || '').split(',')[0].trim().split(/\s+/).pop() || '';
-    return `${searchTitle(book.title)} ${surname}`.trim();
+    return `${searchTitle(book.title)} ${surname(book.author)}`.trim();
   }
   const clean = cleanTitle(name).replace(/\b(19|20)\d{2}\b/g, ' ');
   const parts = clean.split(/\s[-–]\s/).map((x) => x.trim()).filter(Boolean);

@@ -8,13 +8,13 @@ import { mainTitle, matches, words } from './match.js';
 import { persisted, progress, library } from './store.js';
 import { sameWork } from './works.js';
 import { findOrder, autoEbook } from './findorder.js';
+import { surname } from './match.js';
 
 /** Ebooks you chose for an audiobook's transcript: audiobook uid -> ebook (book summary). */
 export const ebookLinks = persisted('ebookLinks', {});
 export const linkEbook = (audioUid, ebook) => ebookLinks.set((all) => ({ ...all, [audioUid]: ebook }));
 import { paragraphs } from './tts.js';
 
-const surname = (a) => String(a || '').split(',')[0].trim().split(/\s+/).pop()?.toLowerCase() || '';
 const norm = (w) => w.toLowerCase().replace(/[’‘]/g, "'").replace(/[^\p{L}\p{N}']/gu, '');
 
 /** The ebook of this audiobook, if one is on hand. */

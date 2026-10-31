@@ -12,10 +12,10 @@ import { heardLines } from './transcript.js';
 import * as player from './player.js';
 import { findOrder, placeOf } from './findorder.js';
 import { STOPWORDS } from './scenefind.js';
+import { surname } from './match.js';
 
 const LEAD = 30; // seconds before the scene
 const NOISE = new Set(['unabridged', 'abridged', 'audiobook', 'audio', 'book', 'a', 'novel', 'edition', 'mp3', 'm4b', 'by', 'read', 'narrated', 'the', 'and']);
-const surname = (a) => String(a || '').split(',')[0].trim().split(/\s+/).pop()?.toLowerCase() || '';
 const norm = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
 
 /** What was asked for: { title, author, scene, chapter, chapterTitle, at, quote } (title '' if not a book request). */

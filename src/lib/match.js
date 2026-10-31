@@ -36,6 +36,15 @@ export function searchTitle(t) {
   return mainTitle(out || raw);
 }
 
+// Degrees, titles and suffixes that end an author's name but aren't it ("Bruce H. Lipton PhD").
+const NOT_SURNAME = /^(phd|ph|d|md|m\.?d|dr|prof|professor|jr|sr|ii|iii|iv|mba|msc|ma|bsc|dphil|psyd|edd|rn|esq|obe|cbe|frs|mrs|mr|ms)$/i;
+/** An author's surname: the first author's last real name word (lower case), '' if none. */
+export function surname(author) {
+  const first = String(author || '').split(/,|&|;|\/|\band\b/)[0] || '';
+  const w = first.replace(/[().]/g, ' ').split(/\s+/).filter(Boolean).filter((x) => !NOT_SURNAME.test(x.replace(/\.$/, '')));
+  return (w[w.length - 1] || '').toLowerCase();
+}
+
 /** true when every significant word of `query` appears in `text`. */
 export function matches(query, text) {
   const q = words(query);

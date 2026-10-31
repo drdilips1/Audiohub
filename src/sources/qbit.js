@@ -7,7 +7,7 @@ import { persisted } from '../lib/store.js';
 import { requestText, requestFull, cleanUrl } from '../lib/http.js';
 import { readTorrent } from '../lib/torrentfile.js';
 import * as absSrc from './audiobookshelf.js';
-import { words, matches, mainTitle } from '../lib/match.js';
+import { words, matches, mainTitle, surname } from '../lib/match.js';
 import { infoHash, magnetFor, torboxLibrary, realdebridLibrary, tbConnected, rdConnected, hasAudio, forget as forgetCloud } from './debrid.js';
 
 export const qbit = persisted('qbit', { url: '', lanUrl: '', username: '', password: '', apiKey: '', savePath: '', ebookPath: '', category: 'audiobooks', auto: false });

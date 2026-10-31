@@ -11,11 +11,11 @@ import { savedEbooks, cloudReaderBook, badEbooks, isBadEbook } from '../lib/epub
 import { mainTitle, matches } from '../lib/match.js';
 import { useQuickSources, quickPlay, readerBookFor } from './source-results.jsx';
 import { wait } from '../lib/waitlist.js';
+import { surname } from '../lib/match.js';
 
 const fmtMb = (b) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : `${Math.round(b / 1048576)} MB`);
 
 const SVC = { tb: 'TorBox', rd: 'Real-Debrid', abs: 'Audiobookshelf', torbox: 'TorBox', realdebrid: 'Real-Debrid' };
-const surname = (a) => String(a || '').split(',')[0].trim().split(/\s+/).pop()?.toLowerCase() || '';
 
 /**
  * "Available": every way to listen to or read this book right now, as one row of
