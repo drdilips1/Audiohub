@@ -8,6 +8,7 @@ import { nav, useBackClose } from '../lib/nav.js';
 import { allTags } from './book-tags.jsx';
 import { FixDetails } from './fix-details.jsx';
 import { upNext, addUpNext, removeUpNext } from '../lib/upnext.js';
+import { markNotInterested } from '../lib/taste.js';
 
 // The book whose sheet is open (not saved).
 let current = null;
@@ -169,6 +170,11 @@ export function BookActionsSheet() {
         <button class="menu-item" onClick={act(() => nav.push('book', { book }))}>
           <Icon name="info" size={18} /> Details
         </button>
+        {book.rec && (
+          <button class="menu-item danger" onClick={act(() => (markNotInterested(book), toast('Hidden — you’ll see less like this (undo in Settings → AI)')))}>
+            <Icon name="close" size={18} /> Not interested — show less like this
+          </button>
+        )}
         {p && !p.hidden && (
           <button class="menu-item danger" onClick={act(() => (hideFromContinue([book.uid]), toast('Taken off Continue listening')))}>
             <Icon name="close" size={18} /> Remove from Continue listening

@@ -190,32 +190,17 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
       : null);
   const ss = useStoryShots(book);
   const pct = prog ? Math.round((prog.percent || 0) * 100) : 0;
+  const match = !(book.rank > 0) && book.match > 0 ? book.match : 0;
   // Press and hold: the book's actions (play, download, tag, finished…).
   const hold = useMemo(() => longPress(() => bookRef.current), []);
   const bookRef = useRef(book);
-  bookRef.current = book;
+  bookRef.current = rec ? { ...book, rec: true } : book;
   return (
     <button class={'book-card' + (wide ? ' wide' : '')} {...hold} onClick={() => (isReaderEbook(book) ? nav.push('reader', { book }) : nav.push('book', { book }))}>
       <div class="book-card-cover">
         <Cover book={book} />
         {book.rank > 0 && <span class="rank-badge">#{book.rank}</span>}
         {book.copies > 1 && <span class="copies-badge">{book.copies} copies</span>}
-        {!(book.rank > 0) && book.match > 0 && <span class={'match-badge' + (book.match >= 80 ? ' hi' : '')}>{book.match}% match</span>}
-        {rec && (
-          <span
-            class="not-btn"
-            role="button"
-            aria-label="Not interested"
-            title="Not interested — show less like this"
-            onClick={(e) => {
-              e.stopPropagation();
-              markNotInterested(book);
-              toast('Hidden — you’ll see less like this (undo in Settings → AI)');
-            }}
-          >
-            ✕
-          </span>
-        )}
         {book.fetching != null && <span class="fetch-badge">{Math.round((book.fetching || 0) * 100)}%</span>}
       </div>
       {/* How far you are: a thin line under the cover, not on it. */}
@@ -226,8 +211,10 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
       )}
       <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
       <div class="book-card-author">{book.author || ' '}</div>
-      {(rt || ss) && (
+      {(rt || ss || match || rec) && (
         <div class="book-card-badges">
+          {/* How well it suits you, under the cover (not on it). */}
+          {match > 0 && <span class={'card-match' + (match >= 80 ? ' hi' : '')}>{match}%</span>}
           {rt && (
             <span
               class="card-rating"
@@ -253,6 +240,21 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
               }}
             >
               S
+            </span>
+          )}
+          {rec && (
+            <span
+              class="card-not"
+              role="button"
+              aria-label="Not interested"
+              title="Not interested — show less like this (or press and hold the book)"
+              onClick={(e) => {
+                e.stopPropagation();
+                markNotInterested(book);
+                toast('Hidden — you’ll see less like this (undo in Settings → AI)');
+              }}
+            >
+              <Icon name="close" size={11} />
             </span>
           )}
         </div>
