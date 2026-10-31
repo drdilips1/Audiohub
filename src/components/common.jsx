@@ -209,9 +209,28 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
           <div style={{ width: pct + '%' }} />
         </div>
       )}
-      <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
+      {rec ? (
+        <div class="book-card-head">
+          <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
+          <span
+              class="card-not"
+              role="button"
+              aria-label="Not interested"
+              title="Not interested — show less like this (or press and hold the book)"
+              onClick={(e) => {
+                e.stopPropagation();
+                markNotInterested(book);
+                toast('Hidden — you’ll see less like this (undo in Settings → AI)');
+              }}
+            >
+              <Icon name="close" size={11} />
+            </span>
+        </div>
+      ) : (
+        <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
+      )}
       <div class="book-card-author">{book.author || ' '}</div>
-      {(rt || ss || match || rec) && (
+      {(rt || ss || match) && (
         <div class="book-card-badges">
           {/* How well it suits you, under the cover (not on it). */}
           {match > 0 && <span class={'card-match' + (match >= 80 ? ' hi' : '')}>{match}%</span>}
@@ -240,21 +259,6 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
               }}
             >
               S
-            </span>
-          )}
-          {rec && (
-            <span
-              class="card-not"
-              role="button"
-              aria-label="Not interested"
-              title="Not interested — show less like this (or press and hold the book)"
-              onClick={(e) => {
-                e.stopPropagation();
-                markNotInterested(book);
-                toast('Hidden — you’ll see less like this (undo in Settings → AI)');
-              }}
-            >
-              <Icon name="close" size={11} />
             </span>
           )}
         </div>

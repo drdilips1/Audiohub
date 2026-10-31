@@ -11212,3 +11212,22 @@ button.notes-book-head {
   border: 1px solid var(--border);
   flex: 0 0 auto;
 }
+/* Recommendations: "not interested" sits at the right of the book's own title */
+.book-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.book-card-head .book-card-title {
+  flex: 1;
+  min-width: 0;
+}
+.book-card-head .card-not {
+  margin: 1px 0 0;
+}
+/* Match, rating and summary under a card wrap instead of running into the next card */
+.book-card-badges {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-width: 0;
+}
