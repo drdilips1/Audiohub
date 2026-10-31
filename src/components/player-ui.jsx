@@ -176,6 +176,13 @@ export function FullPlayer() {
   }, [s.sleepUntil]);
   if (!s.book) return null;
   const dur = s.duration || s.tracks[s.index]?.duration || 0;
+  const held = useRef(false); // a finger is on the slider
+  // A drag left over (no finger on it for a few seconds): follow the playing time again.
+  useEffect(() => {
+    if (scrub == null) return;
+    const id = setTimeout(() => !held.current && setScrub(null), 4000);
+    return () => clearTimeout(id);
+  }, [scrub]);
   const t = scrub ?? s.time;
   const chapters = player.chapters();
   const g = player.globalTime();
@@ -296,6 +303,19 @@ export function FullPlayer() {
             player.seek(+e.currentTarget.value);
             setScrub(null);
           }}
+          // The finger lifted without a "change" (same spot, or the pull-down gesture took the
+          // touch): never stay stuck on the dragged value while the book plays on.
+          onPointerDown={() => (held.current = true)}
+          onPointerUp={(e) => {
+            held.current = false;
+            if (scrub == null) return;
+            const v = +e.currentTarget.value;
+            if (Math.abs(v - s.time) > 1) player.seek(v);
+            setScrub(null);
+          }}
+          onPointerCancel={() => ((held.current = false), setScrub(null))}
+          onTouchCancel={() => ((held.current = false), setScrub(null))}
+          onBlur={() => ((held.current = false), setScrub(null))}
         />
         <div class="fp-times">
           <span>{fmtTime(t)}</span>
