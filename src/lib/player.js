@@ -16,10 +16,28 @@ import { otherCopyProgress, sameWork } from './works.js';
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 let rescue = { key: '', step: 0 };
 const rescueTried = new Set(); // copies already tried for this listen
+/**
+ * The names a book may go by when looking for another copy: its title, and — when the server's
+ * title is wrong (e.g. the author's name) — the title in its own file names
+ * ("The Selfish Gene Unabridged 1_001" → "The Selfish Gene").
+ */
+async function titlesFor(b) {
+  const { searchTitle, words } = await import('./match.js');
+  const fromFiles = [b?.tracks?.[0]?.title, state.book?.uid === b?.uid ? state.tracks[0]?.title : '', b?.chaptersMeta?.[0]?.title]
+    .map((x) => searchTitle(x || ''))
+    .find((x) => words(x).length >= 2 && !/^(chapter|part|track|disc|cd)\b/i.test(x));
+  return [...new Set([b?.title, fromFiles].filter(Boolean))];
+}
 async function otherCopy(b) {
   const { localSrc, findOwned } = await import('../sources/index.js');
   const { matches, mainTitle } = await import('./match.js');
-  const t = mainTitle(b.title || '');
+  for (const title of await titlesFor(b)) {
+    const hit = await otherCopyNamed({ ...b, title }, findOwned, localSrc, matches, mainTitle(title));
+    if (hit) return hit;
+  }
+  return null;
+}
+async function otherCopyNamed(b, findOwned, localSrc, matches, t) {
   if (!t) return null;
   const same = (x) => x && x.uid !== b.uid && !rescueTried.has(x.uid) && x.kind !== 'text' && matches(t, `${x.title || ''} ${x.rawName || ''}`);
   const o = await findOwned(b).catch(() => null);
@@ -547,10 +565,16 @@ async function playOtherCopy(book, err, opts = {}) {
         .filter((d) => d?.status === 'done')
         .map((d) => d.book),
     ];
-    let copy = near.find((c) => c && c.uid !== book.uid && sameWork(c, book) && !rescueTried.has(c.uid));
-    if (!copy) {
-      const o = await findOwned({ title: book.title, author: book.author || '' }).catch(() => null);
-      copy = (o?.cloud || []).find((c) => c.kind !== 'text' && c.uid !== book.uid && sameWork(c, book) && !rescueTried.has(c.uid));
+    let copy = null;
+    // By its title, then (a server title that's wrong) by the title in its file names.
+    for (const title of await titlesFor(book)) {
+      const named = { ...book, title };
+      copy = near.find((c) => c && c.uid !== book.uid && sameWork(c, named) && !rescueTried.has(c.uid));
+      if (!copy) {
+        const o = await findOwned({ title, author: book.author || '' }).catch(() => null);
+        copy = (o?.cloud || []).find((c) => c.kind !== 'text' && c.uid !== book.uid && sameWork(c, named) && !rescueTried.has(c.uid));
+      }
+      if (copy) break;
     }
     if (!copy) return false;
     rescueTried.add(copy.uid);
