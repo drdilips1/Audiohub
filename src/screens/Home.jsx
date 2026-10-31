@@ -595,8 +595,8 @@ export function Home() {
             <path d="M170 300 h26 l14 -34 l20 70 l22 -96 l22 112 l18 -52 h30 l14 22 h24" fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           <div class="home-hello">
-            <b>{me ? `${greeting()}, ${me}` : greeting()}</b>
-            <small>{today()}</small>
+            <small>{me ? `${greeting()}, ${me}` : greeting()}</small>
+            <b>Audiohub</b>
           </div>
         </div>
         <div class="home-top-actions">
@@ -605,7 +605,7 @@ export function Home() {
           </button>
           <SceneButton />
           <AskButton glass />
-          <button class="icon-btn glass" onClick={() => nav.tab('discover')} aria-label="Search">
+          <button class="icon-btn glass home-search" onClick={() => nav.tab('discover')} aria-label="Search">
             <Icon name="search" />
           </button>
         </div>
