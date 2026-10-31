@@ -6,6 +6,25 @@ import { persisted, progress } from './store.js';
 // days: { 'YYYY-MM-DD': { s: seconds listened, c: book-seconds covered, h: [24 × seconds], b: { uid: seconds } } }
 // books: { uid: { title, author, cover, source } } — enough to show the top books
 export const listenLog = persisted('listenLog', { since: 0, days: {}, books: {} });
+// The same for ebooks: time spent reading (the reader open and in use, or reading aloud).
+export const readLog = persisted('readLog', { since: 0, days: {}, books: {} });
+
+/** Reading time: `secs` more of reading `book` (called from the reader while you read). */
+export function readTick(book, secs) {
+  if (!book?.uid || !(secs > 0)) return;
+  const d = new Date();
+  const day = dayKey(d);
+  const hour = d.getHours();
+  readLog.set((log) => {
+    const days = { ...log.days };
+    const cur = days[day] || { s: 0, c: 0, h: Array(24).fill(0), b: {} };
+    const h = [...(cur.h || Array(24).fill(0))];
+    h[hour] += secs;
+    days[day] = { s: cur.s + secs, c: (cur.c || 0) + secs, h, b: { ...cur.b, [book.uid]: (cur.b?.[book.uid] || 0) + secs } };
+    const { title, author, cover, source } = book;
+    return { since: log.since || Date.now(), days, books: { ...log.books, [book.uid]: { title, author, cover, source } } };
+  });
+}
 
 const pad = (n) => String(n).padStart(2, '0');
 export const dayKey = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -70,8 +89,9 @@ const DAY = 864e5;
 const keysBack = (n) => Array.from({ length: n }, (_, i) => dayKey(new Date(Date.now() - (n - 1 - i) * DAY)));
 
 /** Everything the Stats screen shows, worked out from the log and your progress. */
-export function summary() {
-  const { days, books, since } = listenLog.get();
+export function summary(kind = 'listen') {
+  const reading = kind === 'read';
+  const { days, books, since } = (reading ? readLog : listenLog).get();
   const sum = (keys) => keys.reduce((a, k) => a + (days[k]?.s || 0), 0);
   const today = dayKey();
   const week = keysBack(7);
@@ -117,7 +137,8 @@ export function summary() {
     .slice(0, 5);
 
   // Finished books come from your progress (it has them from before the log began too).
-  const prog = Object.values(progress.get() || {}).filter((p) => p?.book);
+  // Ebooks (kind 'text') for reading stats, everything else for listening.
+  const prog = Object.values(progress.get() || {}).filter((p) => p?.book && (p.kind === 'text' || p.book.kind === 'text') === reading);
   const finished = prog.filter((p) => p.finished).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const year = new Date().getFullYear();
 

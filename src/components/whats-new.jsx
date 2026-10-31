@@ -44,6 +44,12 @@ const STEPS = [
     text: 'Press and hold a book → Find cover & details (or on the book page): it searches Audible, Apple audiobooks, Apple Books, Goodreads, Google Books and Open Library at once. Missing covers are also looked up in Apple Books and Goodreads by themselves.',
   },
   {
+    icon: 'chart',
+    title: 'Reading stats',
+    text: 'Library → Stats now has Listening and Reading: time spent reading ebooks, your reading streak, when you read, your most-read books and the ebooks you finished.',
+    tip: 'Counted while the reader is open and in use, or reading aloud — not a book left open.',
+  },
+  {
     icon: 'ai',
     title: 'Ask AI reads the book',
     text: 'With the ebook attached, Ask AI answers from the book’s own text (never past where you are, with No spoilers on), or from what you’ve heard. Answers say where they came from, and you can share, copy, listen or save them.',

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import { TopBar, Cover } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
 import { useStore, progress } from '../lib/store.js';
-import { listenLog, summary, flush } from '../lib/stats.js';
+import { listenLog, readLog, summary, flush } from '../lib/stats.js';
 import { nav } from '../lib/nav.js';
 
 const hm = (s) => {
@@ -23,15 +23,27 @@ const PARTS = [
 export function Stats() {
   flush(); // include what's been heard in the last few seconds
   const log = useStore(listenLog);
+  const rlog = useStore(readLog);
   const prog = useStore(progress);
-  const s = useMemo(summary, [log, prog]);
+  // Listening (audiobooks, podcasts) or reading (ebooks).
+  const [kind, setKind] = useState('listen');
+  const reading = kind === 'read';
+  const s = useMemo(() => summary(kind), [log, rlog, prog, kind]);
   const since = s.since ? new Date(s.since).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
   const peak = s.hours.indexOf(Math.max(...s.hours));
   const part = PARTS.find(([a, b]) => (peak >= a && peak < b) || (peak + 24 >= a && peak + 24 < b))?.[2];
   const avg30 = s.last30.reduce((a, d) => a + d.s, 0) / 30;
   return (
     <div class="screen stats-screen">
-      <TopBar title="Listening stats" ask={false} />
+      <TopBar title={reading ? 'Reading stats' : 'Listening stats'} ask={false} />
+      <div class="segmented st-kind">
+        <button class={!reading ? 'on' : ''} onClick={() => setKind('listen')}>
+          <Icon name="headphones" size={15} /> Listening
+        </button>
+        <button class={reading ? 'on' : ''} onClick={() => setKind('read')}>
+          <Icon name="book" size={15} /> Reading
+        </button>
+      </div>
 
       <div class="st-tiles">
         <Tile label="Today" value={hm(s.today)} />
@@ -51,13 +63,13 @@ export function Stats() {
         </div>
         <div>
           <b>{s.activeDays}</b>
-          <span>days listened</span>
+          <span>{reading ? 'days read' : 'days listened'}</span>
         </div>
       </div>
 
       <section class="st-card">
         <h3>Last 30 days</h3>
-        <p class="st-note">{avg30 > 0 ? `About ${hm(avg30)} a day on average` : 'Your daily listening shows here'}</p>
+        <p class="st-note">{avg30 > 0 ? `About ${hm(avg30)} a day on average` : (reading ? 'Your daily reading shows here' : 'Your daily listening shows here')}</p>
         <Bars
           values={s.last30.map((d) => d.s)}
           labels={s.last30.map((d, i) => (i % 7 === 2 || i === 29 ? new Date(d.day + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''))}
@@ -68,7 +80,7 @@ export function Stats() {
 
       <section class="st-card">
         <h3>Time of day</h3>
-        <p class="st-note">{s.total > 0 && part ? `You listen most ${part}` : 'When you listen, by hour'}</p>
+        <p class="st-note">{s.total > 0 && part ? `You ${reading ? 'read' : 'listen'} most ${part}` : `When you ${reading ? 'read' : 'listen'}, by hour`}</p>
         <Bars values={s.hours} labels={s.hours.map((_, h) => (h % 6 === 0 ? hourLabel(h) : ''))} tips={s.hours.map((v, h) => `${hourLabel(h)}–${hourLabel((h + 1) % 24)} · ${hm(v)}`)} highlight={s.total ? peak : -1} />
       </section>
 
@@ -78,15 +90,15 @@ export function Stats() {
       </section>
 
       <div class="st-tiles">
-        <Tile label="Average speed" value={`${s.avgSpeed.toFixed(2).replace(/0$/, '')}×`} />
-        <Tile label="Time saved by speed" value={hm(s.saved)} />
+        {!reading && <Tile label="Average speed" value={`${s.avgSpeed.toFixed(2).replace(/0$/, '')}×`} />}
+        {!reading && <Tile label="Time saved by speed" value={hm(s.saved)} />}
         <Tile label="Finished this year" value={String(s.finishedThisYear)} />
         <Tile label="Books started" value={String(s.started)} />
       </div>
 
       {s.topBooks.length > 0 && (
         <section class="st-card">
-          <h3>Most listened</h3>
+          <h3>{reading ? 'Most read' : 'Most listened'}</h3>
           {s.topBooks.map(({ book, s: secs }) => (
             <button class="st-row" onClick={() => nav.push('book', { book })}>
               <Cover book={book} />
@@ -135,7 +147,7 @@ export function Stats() {
       )}
 
       <p class="st-foot">
-        <Icon name="info" size={14} /> Listening time is counted on this phone{since ? ` since ${since}` : ' from now on'}. Books started and finished include everything before.
+        <Icon name="info" size={14} /> {reading ? 'Reading time (the reader open and in use, or reading aloud)' : 'Listening time'} is counted on this phone{since ? ` since ${since}` : ' from now on'}. Books started and finished include everything before.
       </p>
       <div class="footer-space" />
     </div>

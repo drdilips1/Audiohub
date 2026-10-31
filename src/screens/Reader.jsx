@@ -71,6 +71,26 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
   const [pct, setPct] = useState(0);
   const scroller = useRef();
   const [aloud, setAloud] = useState(null); // { playing, index }
+  // Reading stats: time with the book open and in use (a touch or scroll in the last two
+  // minutes), or being read aloud — not a book left open on the table.
+  const aloudOn = useRef(false);
+  aloudOn.current = !!aloud?.playing;
+  useEffect(() => {
+    let lastUse = Date.now();
+    const used = () => (lastUse = Date.now());
+    const el = scroller.current;
+    el?.addEventListener('scroll', used, { passive: true });
+    el?.addEventListener('touchstart', used, { passive: true });
+    const iv = setInterval(() => {
+      if (document.hidden) return;
+      if (aloudOn.current || Date.now() - lastUse < 120e3) import('../lib/stats.js').then((m) => m.readTick(book, 10));
+    }, 10e3);
+    return () => {
+      clearInterval(iv);
+      el?.removeEventListener('scroll', used);
+      el?.removeEventListener('touchstart', used);
+    };
+  }, [book.uid, !!doc]);
   const ctl = useRef(null);
   const [aiBusy, setAiBusy] = useState('');
   // Selected words (long-press) → the action bar; sheet = AI answer or a highlight's note.
