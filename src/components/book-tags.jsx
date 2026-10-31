@@ -23,7 +23,7 @@ function setTags(uid, list) {
 }
 
 /** Book page: this book's tags, tap × to remove, "+ Tag" to add (with your other tags offered). */
-export function BookTags({ book }) {
+export function BookTags({ book, inline = false }) {
   const all = useStore(bookTags);
   const mine = all[book.uid] || [];
   const [adding, setAdding] = useState(false);
@@ -34,6 +34,54 @@ export function BookTags({ book }) {
     setText('');
   };
   const others = allTags(all).filter((t) => !mine.includes(t) && (!text || t.toLowerCase().includes(text.toLowerCase())));
+  const chips = (
+    <>
+      {mine.map((t) => (
+        <button class="pill small tag-chip" onClick={() => setTags(book.uid, mine.filter((x) => x !== t))} aria-label={`Remove tag ${t}`}>
+          {t} <Icon name="close" size={12} />
+        </button>
+      ))}
+      {!adding && (
+        <button class="pill small ghost tag-add" onClick={() => setAdding(true)}>
+          <Icon name="plus" size={13} /> Tag
+        </button>
+      )}
+    </>
+  );
+  const form = adding && (
+    <form
+      class="book-tags-add"
+      onSubmit={(e) => {
+        e.preventDefault();
+        add(text);
+      }}
+    >
+      <input autoFocus value={text} maxLength={30} placeholder="e.g. Psychology" onInput={(e) => setText(e.currentTarget.value)} />
+      <button class="btn primary" disabled={!clean(text)}>
+        Add
+      </button>
+      <button type="button" class="btn secondary" onClick={() => (setAdding(false), setText(''))}>
+        Done
+      </button>
+      {others.length > 0 && (
+        <div class="chips">
+          {others.slice(0, 12).map((t) => (
+            <button type="button" class="pill small" onClick={() => add(t)}>
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+    </form>
+  );
+  // In a line with other things (the book page's verdict row): just the chips, the form below.
+  if (inline)
+    return (
+      <>
+        {chips}
+        {form}
+      </>
+    );
   return (
     <section class="pad book-tags">
       <div class="chips">

@@ -5,7 +5,7 @@
 import { getJson, sendJson } from '../lib/http.js';
 import { addons, persisted } from '../lib/store.js';
 import { logError, redact } from '../lib/report.js';
-import { words, matches, mainTitle, otherBook } from '../lib/match.js';
+import { words, matches, mainTitle, otherBook, searchTitle } from '../lib/match.js';
 import { infoHash, torboxCached } from './debrid.js';
 
 export const isSourceManifest = (m) => !!(m && typeof m === 'object' && m.id && m.name && m.adapters?.source?.request?.url);
@@ -273,7 +273,7 @@ const NOISE = /^(\d+|\d+kbps|kbps|mp3|m4b|m4a|aac|flac|opus|epub|pdf|mobi|azw3|a
  * Anything else is marked loose: hidden behind "Show loose matches", never lost.
  */
 function sameBook(list, title, author) {
-  const t = mainTitle(title);
+  const t = searchTitle(title);
   const tw = new Set(words(t));
   const { last, first } = names(author);
   const long = tw.size >= 3;
@@ -284,7 +284,8 @@ function sameBook(list, title, author) {
     let ok = false;
     if (matches(t, text)) {
       const hay = new Set(words(text));
-      if (last.some((n) => hay.has(n))) ok = true;
+      // The surname, or near it ("Dawkin" in a file name for "Dawkins").
+      if (last.some((n) => hay.has(n) || (n.length >= 4 && [...hay].some((h) => h.startsWith(n) && h.length - n.length <= 2)))) ok = true;
       else if (long && r.score >= 0.6) ok = true;
       else if (first.some((n) => hay.has(n))) {
         const rest = words(r.title).filter((w) => !tw.has(w) && !first.includes(w) && !NOISE.test(w));

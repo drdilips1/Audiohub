@@ -16,6 +16,26 @@ export function words(s) {
 // Main title only: drop subtitles ("Dune: Deluxe Edition") and series tags ("(Dune #1)").
 export const mainTitle = (t) => String(t || '').replace(/\s*[:(\[].*$/, '').trim() || String(t || '');
 
+/**
+ * A title fit to search with, from a file or folder name: "The Selfish Gene Unabridged 2_005"
+ * → "The Selfish Gene". Drops release words, part / disc numbers and numbered-file endings,
+ * but keeps numbers that are the title ("Catch-22", "1984", "11.22.63").
+ */
+export function searchTitle(t) {
+  const raw = String(t || '');
+  const out = raw
+    .replace(/\.(m4b|m4a|mp3|flac|aac|ogg|opus|epub|pdf|mobi|azw3?)$/i, '')
+    .replace(/[\[{][^\]}]*[\]}]/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\b(part|pt|disc|disk|cd|track|file)\s*\d+\b.*$/i, ' ')
+    .replace(/\b(unabridged|abridged|audiobook|audio ?book|retail|\d{2,3} ?kbps|mp3|m4b|aac|flac)\b/gi, ' ')
+    .replace(/(\s\d+)?\s0\d+\s*$/, ' ') // "… 2 005", "… 01"
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s\-–]+|[\s\-–,]+$/g, '')
+    .trim();
+  return mainTitle(out || raw);
+}
+
 /** true when every significant word of `query` appears in `text`. */
 export function matches(query, text) {
   const q = words(query);

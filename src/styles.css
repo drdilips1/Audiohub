@@ -11128,3 +11128,55 @@ button.notes-book-head {
   color: var(--muted);
   line-height: 1.25;
 }
+
+/* Book page: verdict faces and your tags in one line, above the source results */
+.myrate-line .myrate-verdicts {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 8px;
+}
+.myrate-line .myrate-v {
+  padding: 5px 8px;
+}
+.myrate-line .myrate-emoji {
+  font-size: 16px;
+}
+.myrate-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--border);
+}
+.myrate-line .tag-chip,
+.myrate-line .tag-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.myrate-line .book-tags-add {
+  flex-basis: 100%;
+  margin-top: 2px;
+}
+/* One line: it scrolls sideways when there are many tags; it opens up while adding one. */
+.myrate-line .myrate-verdicts {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -20px;
+  padding: 0 20px;
+}
+.myrate-line .myrate-verdicts::-webkit-scrollbar {
+  display: none;
+}
+.myrate-line .myrate-verdicts > * {
+  flex: 0 0 auto;
+}
+.myrate-line .myrate-verdicts:has(.book-tags-add) {
+  flex-wrap: wrap;
+}
+.myrate-line .myrate-verdicts > .book-tags-add {
+  flex: 1 1 100%;
+}
+.book .myrate.myrate-line {
+  margin-top: 16px;
+}
