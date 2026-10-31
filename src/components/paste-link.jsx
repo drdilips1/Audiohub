@@ -1,6 +1,7 @@
 // Paste any link in Discover's search box: a direct audio file (MP3, M4B…) plays and can be
 // kept in your Library; an EPUB / PDF opens in the reader; an Internet Archive page opens
 // that item; a podcast feed goes to Podcasts.
+import { parseQuoteLink, openSharedQuote } from '../lib/quoteshare.js';
 import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
 import { nav } from '../lib/nav.js';
@@ -20,6 +21,15 @@ const nameOf = (u) => {
 export function PasteLink({ q }) {
   const lib = useStore(library);
   const url = q.trim();
+  const shared = parseQuoteLink(url);
+  if (shared)
+    return (
+      <div class="paste-link pad">
+        <button class="btn primary" onClick={() => openSharedQuote(shared)}>
+          <Icon name="book" size={16} /> Open this shared quote
+        </button>
+      </div>
+    );
   const ia = url.match(/archive\.org\/(?:details|download)\/([^/?#]+)/i);
   const ebook = /\.(epub|pdf)(\?|#|$)/i.exec(url);
   const feed = /\.(rss|xml)(\?|#|$)|\/feed\/?$|\/rss\/?$/i.test(url);

@@ -18,6 +18,11 @@ const STEPS = [
     tip: 'Other colours are in Settings → Appearance. In Text, tap the cover at the bottom to get back to the player.',
   },
   {
+    icon: 'upload',
+    title: 'Share a quote',
+    text: 'Share any highlight, bookmark or transcript line as a quote card with a short link. Whoever has Audiohub opens it straight at that passage (or that moment of the audiobook); everyone else sees the quote on a web page.',
+  },
+  {
     icon: 'list',
     title: 'Chapters in single-file books',
     text: 'M4B and MP3 books that are one long file now show their chapters — the kinds most converters write — and, when a file has none, the book’s published chapter list, fitted to its length.',

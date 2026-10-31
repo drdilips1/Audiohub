@@ -278,4 +278,45 @@ public class InkwellWebPlugin extends Plugin {
             return false;
         }
     }
+
+    /** Share a picture made in the app (a quote card) with text, through the share sheet. */
+    @PluginMethod
+    public void shareImage(PluginCall call) {
+        String data = call.getString("data");
+        String name = call.getString("name", "audiohub-quote.jpg").replaceAll("[\\\\/:*?\"<>|]", " ").trim();
+        String text = call.getString("text", "");
+        String title = call.getString("title", "Share");
+        if (data == null || data.isEmpty()) {
+            call.reject("Missing picture");
+            return;
+        }
+        try {
+            File dir = new File(getContext().getCacheDir(), "share");
+            //noinspection ResultOfMethodCallIgnored
+            dir.mkdirs();
+            File f = new File(dir, name);
+            try (FileOutputStream out = new FileOutputStream(f)) {
+                out.write(android.util.Base64.decode(data, android.util.Base64.DEFAULT));
+            }
+            Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+            Intent send = new Intent(Intent.ACTION_SEND);
+            send.setType(call.getString("mime", "image/jpeg"));
+            send.putExtra(Intent.EXTRA_STREAM, uri);
+            send.putExtra(Intent.EXTRA_TEXT, text);
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(send, title);
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getActivity().runOnUiThread(() -> {
+                try {
+                    getActivity().startActivity(chooser);
+                    call.resolve();
+                } catch (Throwable t) {
+                    call.reject("Couldn't open the share menu: " + t.getMessage());
+                }
+            });
+        } catch (Throwable e) {
+            call.reject("Couldn't share it: " + e.getMessage());
+        }
+    }
+
 }

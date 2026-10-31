@@ -39,7 +39,9 @@ import { cloud, hc, gr } from './sources/index.js';
 import { toast } from './components/common.jsx';
 import { KindleChooser } from './components/kindle-chooser.jsx';
 import { WhatsNew } from './components/whats-new.jsx';
+import { SharedQuoteSheet, ShareQuoteSheet } from './components/shared-quote.jsx';
 import { BookActionsSheet } from './components/book-actions.jsx';
+import { parseQuoteLink, openSharedQuote } from './lib/quoteshare.js';
 
 const TABS = [
   ['home', 'Home', 'home'],
@@ -59,6 +61,9 @@ player.subscribe((s) => {
 // App shortcuts (long-press the icon, Google Assistant) and the home-screen widget:
 // app.inkwell.books://drive, ://ask, ://scene (Play a scene, listening) and ://drivescene.
 function openShortcut(url) {
+  // A shared quote (audiohub://q/… or its web link): show it.
+  const quote = parseQuoteLink(url);
+  if (quote) return setTimeout(() => openSharedQuote(quote), 300);
   const m = /^app\.inkwell\.books:\/\/(drivescene|drive|ask|scene)/.exec(url || '');
   if (!m) return;
   if (m[1] === 'scene') return setTimeout(() => openScene(true), 400);
@@ -174,6 +179,8 @@ export function App() {
       <StoryShotsSheet />
       <KindleChooser />
       <WhatsNew />
+      <SharedQuoteSheet />
+      <ShareQuoteSheet />
       <BookActionsSheet />
       <Toaster />
     </div>

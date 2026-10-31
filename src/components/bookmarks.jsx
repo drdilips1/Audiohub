@@ -7,6 +7,7 @@ import { nav } from '../lib/nav.js';
 import { fmtTime } from '../lib/format.js';
 import * as player from '../lib/player.js';
 import { getDetails } from '../sources/index.js';
+import { shareQuote } from '../lib/quoteshare.js';
 
 /** The book a bookmark belongs to (from what you've played or saved). */
 export const bookOf = (uid) => (player.getState().book?.uid === uid && player.getState().book) || progress.get()[uid]?.book || library.get()[uid] || null;
@@ -28,6 +29,16 @@ export function noteBookmark(uid, bm) {
 const remove = (uid, bm) => bookmarks.set((all) => ({ ...all, [uid]: (all[uid] || []).filter((b) => b.createdAt !== bm.createdAt) }));
 
 /** Bookmark rows: tap to play from there, ✎ to add a note, bin to delete. */
+// Share a bookmark / transcript quote as a quote card + link another Audiohub user can open.
+async function shareBookmark(book, bm) {
+  try {
+    const r = await shareQuote({ kind: 'audio', title: book?.title || 'A book', author: book?.author || '', cover: book?.cover || '', quote: bm.label, note: bm.note || '', global: bm.global ?? bm.time });
+    if (r === 'copied') toast('Copied — paste it anywhere');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 export function Rows({ uid, book, list, onPlay }) {
   return (
     <ol class="chapter-list bm-list">
@@ -42,6 +53,9 @@ export function Rows({ uid, book, list, onPlay }) {
               {bm.note && <small class="bm-note">{bm.note}</small>}
             </span>
             <span class="ch-time">{fmtTime(bm.global ?? bm.time)}</span>
+          </button>
+          <button class="icon-btn" aria-label="Share" onClick={() => shareBookmark(book, bm)}>
+            <Icon name="upload" size={16} />
           </button>
           <button class="icon-btn" aria-label={bm.note ? 'Edit note' : 'Add a note'} onClick={() => noteBookmark(uid, bm)}>
             <Icon name="edit" size={16} />

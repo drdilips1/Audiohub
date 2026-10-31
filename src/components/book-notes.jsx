@@ -7,10 +7,16 @@ import { bookmarks, highlights, useStore } from '../lib/store.js';
 import { forWork, removeHighlight, updateHighlight } from '../lib/highlights.js';
 import { sameWork } from '../lib/works.js';
 import { nav } from '../lib/nav.js';
+import { shareQuote } from '../lib/quoteshare.js';
 import { Rows, bookOf } from './bookmarks.jsx';
 
 const short = (t, n) => (t.length > n ? t.slice(0, n) + '…' : t);
 
+function shareHighlight(h) {
+  shareQuote({ kind: 'text', title: h.book?.title || 'A book', author: h.book?.author || '', cover: h.book?.cover || '', quote: h.text, note: h.note || '' })
+    .then((r) => r === 'copied' && toast('Copied — paste it anywhere'))
+    .catch((e) => toast(e.message));
+}
 
 /** Ebook highlights of this book (any copy). `onOpen(h)` goes to one; else opens the reader there. */
 export function HighlightCards({ book, onOpen, title }) {
@@ -29,6 +35,9 @@ export function HighlightCards({ book, onOpen, title }) {
         <div class="note-foot">
           <small>{new Date(h.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</small>
           <span>
+            <button class="icon-btn" aria-label="Share" onClick={() => shareHighlight(h)}>
+              <Icon name="upload" size={15} />
+            </button>
             <button
               class="icon-btn"
               aria-label={h.note ? 'Edit note' : 'Add a note'}

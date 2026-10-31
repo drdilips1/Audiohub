@@ -6,6 +6,7 @@ import { nav } from '../lib/nav.js';
 import { highlights, allHighlights, removeHighlight, toMarkdown } from '../lib/highlights.js';
 import { Native as Files, available as files, saveTextFile } from '../sources/local.js';
 import { AllBookmarks } from '../components/bookmarks.jsx';
+import { shareQuote } from '../lib/quoteshare.js';
 
 /** Every highlight and note from your ebooks: search, open at its place, export. */
 export function Notes() {
@@ -113,6 +114,17 @@ export function Notes() {
                   {h.note && <p class="note-text">{h.note}</p>}
                   <div class="note-foot">
                     <small>{new Date(h.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</small>
+                    <button
+                      class="icon-btn"
+                      aria-label="Share"
+                      onClick={() =>
+                        shareQuote({ kind: 'text', title: h.book?.title || 'A book', author: h.book?.author || '', cover: h.book?.cover || '', quote: h.text, note: h.note || '' })
+                          .then((r) => r === 'copied' && toast('Copied — paste it anywhere'))
+                          .catch((e) => toast(e.message))
+                      }
+                    >
+                      <Icon name="upload" size={15} />
+                    </button>
                     <button
                       class="icon-btn"
                       aria-label="Delete highlight"

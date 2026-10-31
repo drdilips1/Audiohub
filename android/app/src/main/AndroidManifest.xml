@@ -45,6 +45,13 @@
                 <data android:scheme="app.inkwell.books" android:host="ask" />
                 <data android:scheme="app.inkwell.books" android:host="scene" />
             </intent-filter>
+            <!-- Shared quotes: audiohub://q/… (from the link page's "Open in Audiohub") -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="audiohub" android:host="q" />
+            </intent-filter>
             <!-- Open with / Share: EPUB and PDF files open in the reader -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

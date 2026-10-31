@@ -1,3 +1,4 @@
+import { pendingFor, clearPending, findQuoteBlock } from '../lib/quoteshare.js';
 import { sameWork } from '../lib/works.js';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../components/icons.jsx';
@@ -378,7 +379,14 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
     const saved = progress.get()[book.uid];
     const el = scroller.current;
     requestAnimationFrame(() => {
-      const target = at != null ? blocks()[at] : saved?.anchor >= 0 ? blocks()[saved.anchor] : null;
+      // A shared quote waiting for this book: open at its paragraph (any edition: found by its words).
+      const shared = at == null ? pendingFor(book) : null;
+      const sharedAt = shared?.kind === 'text' ? findQuoteBlock(blocks(), shared.quote) : -1;
+      if (shared) {
+        clearPending();
+        toast(sharedAt >= 0 ? 'Opened at the shared quote' : "Couldn't find the shared quote in this edition");
+      }
+      const target = sharedAt >= 0 ? blocks()[sharedAt] : at != null ? blocks()[at] : saved?.anchor >= 0 ? blocks()[saved.anchor] : null;
       if (target) {
         target.scrollIntoView({ block: 'start' });
         el.scrollTop -= 70;
