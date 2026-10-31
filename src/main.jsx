@@ -4,6 +4,7 @@ import './styles.css';
 import { settings, library, progress, cleanLibrary, cleanProgress } from './lib/store.js';
 import { ttsCfg, nativeReader } from './lib/tts.js';
 import './lib/keep.js';
+import './lib/history.js';
 
 // Studio look (v4): everyone moves onto the orange-on-black/white Studio theme once;
 // later choices (Settings → Appearance) stick.
@@ -14,11 +15,16 @@ try {
   if ((s.themeV || 0) < 5) settings.set((x) => ({ ...x, ...(x.palette === 'studio' && x.accent === 'studio' ? { palette: 'atelier', accent: 'brass' } : {}), themeV: 5 }));
   // Paper & Ink (v6): the signature look, following the phone's light / dark setting.
   if ((settings.get().themeV || 0) < 6) settings.set((x) => ({ ...x, palette: 'paperink', mode: 'system', themeV: 6 }));
+  // Ivory & Gold (v7): light, warm ivory with an antique-gold accent — the look from now on.
+  const ivory = () => (settings.get().themeV || 0) < 7 && settings.set((x) => ({ ...x, palette: 'ivory', paletteLight: 'ivory', paletteDark: 'ivory', mode: 'light', themeV: 7 }));
+  ivory();
+  // Settings synced in from another device (saved before this look) don't bring the old one back.
+  settings.subscribe(() => setTimeout(ivory, 0));
 } catch {}
 
 // Libby was removed: forget its saved sign-in and library links.
 try {
-  ['inkwell:libby', 'inkwell:libbyAccount'].forEach((k) => localStorage.removeItem(k));
+  ['inkwell:libby', 'inkwell:libbyAccount', 'inkwell:m4bChapters'].forEach((k) => localStorage.removeItem(k));
 } catch {}
 
 // Gemini and Mistral were replaced by Groq / OpenRouter: drop their old keys.

@@ -7,10 +7,43 @@ import { persisted, useStore } from '../lib/store.js';
 import { useBackClose } from '../lib/nav.js';
 
 // Change the id for the next update's notes: everyone sees them once.
-const EDITION = 'nov-2026';
+const EDITION = 'nov-2026b';
 const seen = persisted('whatsNewSeen', '');
 
 const STEPS = [
+  {
+    icon: 'palette',
+    title: 'A new look: Ivory & Gold',
+    text: 'Warm ivory, ink text and an antique-gold accent. A new player — the cover in the middle, chapter and X-Ray as pills, an Ask · Explain · Find · X-Ray row and labelled buttons — and a full-screen Text view with a slim strip.',
+    tip: 'Other colours are in Settings → Appearance. In Text, tap the cover at the bottom to get back to the player.',
+  },
+  {
+    icon: 'list',
+    title: 'Chapters in single-file books',
+    text: 'M4B and MP3 books that are one long file now show their chapters — the kinds most converters write — and, when a file has none, the book’s published chapter list, fitted to its length.',
+  },
+  {
+    icon: 'server',
+    title: 'In step with Audiobookshelf',
+    text: 'Listened further in Absorb or the web player? Audiohub carries on from there — when you open the book and when you press play after a break, even if you play it here from TorBox or a download. Your place here goes back to your server too.',
+    tip: 'Server not answering? Play uses your copy on the phone or in TorBox / Real-Debrid instead.',
+  },
+  {
+    icon: 'replay',
+    title: 'Playback history',
+    text: 'Player → More → History: every play, pause, skip, jump and sleep-timer stop, with the time and where you were. Fell asleep or bumped skip? Tap an entry to go back there.',
+  },
+  {
+    icon: 'ai',
+    title: 'Ask AI reads the book',
+    text: 'With the ebook attached, Ask AI answers from the book’s own text (never past where you are, with No spoilers on), or from what you’ve heard. Answers say where they came from, and you can share, copy, listen or save them.',
+  },
+  {
+    icon: 'headphones',
+    title: 'Read along, and more',
+    text: 'Open the ebook while its audiobook plays and tap “Follow the audio”: the paragraph being read lights up. Press and hold any cover for Play, Download, tags, finished, reset and more. Whole covers, not cut-off ones.',
+    tip: 'Addon torrents now play through TorBox / Real-Debrid, and sources say “seeds ?” instead of hiding results they don’t know.',
+  },
   {
     icon: 'book',
     title: 'Select by sliding',

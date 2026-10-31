@@ -75,7 +75,8 @@ export function SceneButton({ chip = false }) {
     <>
       {chip ? (
         <button class="chip-btn" {...press} aria-label="Voice: speak a command, a book or a question (hold to type)">
-          <Icon name="mic" size={16} /> Voice
+          <Icon name="mic" size={16} />
+          <small>Voice</small>
         </button>
       ) : (
         <button class="icon-btn glass" {...press} aria-label="Voice: speak a command, a book or a question (hold to type)">

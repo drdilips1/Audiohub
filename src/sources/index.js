@@ -13,7 +13,7 @@ import * as pods from './podcasts.js';
 import * as ttsb from './ttsbooks.js';
 import { audible, googleBooks } from './catalogs.js';
 import { settings } from '../lib/store.js';
-import { matches, mainTitle } from '../lib/match.js';
+import { matches, mainTitle, words, otherBook } from '../lib/match.js';
 import { lookup, wantsMeta, fixFor, metaNow } from '../lib/meta.js';
 import { applyLocal, isDownloaded } from '../lib/downloads.js';
 import { translit, hasDevanagari } from '../lib/translit.js';
@@ -153,7 +153,19 @@ export async function findEditions(book) {
   const author = translit((book.author || '').split(',')[0].trim());
   const surname = author.split(' ').pop();
   const safe = (p) => p.catch(() => []);
-  const byTitle = (list) => list.filter((b) => matches(t, `${b.title} ${b.rawName || ''}`));
+  // A short title ("Civilization", "Dune") is in many other books' names too: then the
+  // author has to match as well — or, for a copy with no author given, the title exactly.
+  const tw = words(t);
+  const sn = words(String(book.author || '').split(/,|&|\band\b/)[0]).slice(-1)[0] || '';
+  const sameTitle = (b) => words(mainTitle(b.title || '')).join(' ') === tw.join(' ');
+  const byTitle = (list) =>
+    list.filter((b) => {
+      if (!matches(t, `${b.title} ${b.rawName || ''}`)) return false;
+      if (otherBook(b.rawName || b.title, t, book.author || '')) return false; // "The Greatest Secret" for "The Secret"
+      if (tw.length >= 3 || !sn) return true;
+      const text = words(`${b.author || ''} ${b.narrator || ''} ${b.title} ${b.rawName || ''}`);
+      return text.includes(sn) || (!b.author && sameTitle(b));
+    });
   const plain = t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
   const [audio, text, server, cloudHits, addonHits, addonHits2] = await Promise.all([
     enabled('ia') ? safe(ia.query(`title:(${plain})${surname ? ` AND creator:(${surname})` : ''}`, { rows: 8 })) : [],
@@ -192,7 +204,19 @@ export async function findOwned(book) {
   const plain = t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
   if (!plain) return { server: [], cloud: [] };
   const safe = (p) => p.catch(() => []);
-  const byTitle = (list) => list.filter((b) => matches(t, `${b.title} ${b.rawName || ''}`));
+  // A short title ("Civilization", "Dune") is in many other books' names too: then the
+  // author has to match as well — or, for a copy with no author given, the title exactly.
+  const tw = words(t);
+  const sn = words(String(book.author || '').split(/,|&|\band\b/)[0]).slice(-1)[0] || '';
+  const sameTitle = (b) => words(mainTitle(b.title || '')).join(' ') === tw.join(' ');
+  const byTitle = (list) =>
+    list.filter((b) => {
+      if (!matches(t, `${b.title} ${b.rawName || ''}`)) return false;
+      if (otherBook(b.rawName || b.title, t, book.author || '')) return false; // "The Greatest Secret" for "The Secret"
+      if (tw.length >= 3 || !sn) return true;
+      const text = words(`${b.author || ''} ${b.narrator || ''} ${b.title} ${b.rawName || ''}`);
+      return text.includes(sn) || (!b.author && sameTitle(b));
+    });
   const [server, cloudHits] = await Promise.all([
     enabled('abs') && absSrc.connected() ? safe(absSrc.search(plain)) : [],
     (enabled('tb') && cloud.tbConnected()) || (enabled('rd') && cloud.rdConnected()) ? safe(cloud.search(plain)) : [],

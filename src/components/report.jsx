@@ -9,7 +9,8 @@ import * as sync from '../lib/sync.js';
 import * as cloud from '../sources/debrid.js';
 import * as qb from '../sources/qbit.js';
 import { sourceAddons, recentSearches } from '../sources/sourceaddons.js';
-import { buildReport, shareReport, githubIssueUrl, recentErrors, clearErrors, copyText } from '../lib/report.js';
+import { buildReport, shareReport, githubIssueUrl, recentErrors, clearErrors, copyText, ISSUES_URL, featureUrl, detailedLog, setDetailedLog } from '../lib/report.js';
+import { Icon } from './icons.jsx';
 
 // What's set up — names and hosts only, never keys or passwords.
 const host = (u) => {
@@ -91,6 +92,36 @@ export function ReportCard() {
         )}
       </div>
       {show && <pre class="report-text">{text()}</pre>}
+    </div>
+  );
+}
+
+/** Settings → Issues & support: known issues, ideas, and a detailed log for hard-to-catch problems. */
+export function SupportLinks() {
+  const [detail, setDetail] = useState(detailedLog());
+  return (
+    <div class="support-links">
+      <a class="set-link" href={ISSUES_URL} target="_blank" rel="noopener">
+        <Icon name="list" size={18} /> Known issues and fixes (GitHub)
+      </a>
+      <a class="set-link" href={featureUrl()} target="_blank" rel="noopener">
+        <Icon name="plus" size={18} /> Suggest a feature
+      </a>
+      <label class="set-row">
+        <div>
+          <b>Detailed logging</b>
+          <small>Also keeps the app's warnings in the report, for a problem that's hard to catch. Turn it on, make it happen again, then send the report below.</small>
+        </div>
+        <input
+          type="checkbox"
+          class="switch"
+          checked={detail}
+          onChange={(e) => {
+            setDetailedLog(e.currentTarget.checked);
+            setDetail(e.currentTarget.checked);
+          }}
+        />
+      </label>
     </div>
   );
 }

@@ -736,3 +736,26 @@ export async function accountStatus() {
   await Promise.all(jobs);
   return out;
 }
+
+/**
+ * Seeders of torrents whose source didn't say (AudiobookBay): TorBox looks the hash up on
+ * the BitTorrent network. hash -> number (missing when it couldn't tell). A few at a time.
+ */
+const seedCache = new Map();
+export async function torrentSeeds(hashes) {
+  const out = {};
+  if (!tbConnected()) return out;
+  const todo = [...new Set(hashes.map((h) => String(h || '').toLowerCase()).filter(Boolean))].slice(0, 12);
+  await Promise.all(
+    todo.map(async (h) => {
+      if (seedCache.has(h)) return (out[h] = seedCache.get(h));
+      try {
+        const r = await getJson(`${TB}/torrents/torrentinfo?` + qs({ hash: h, timeout: 8 }), { headers: tbHeaders(), timeout: 12000, fresh: true });
+        const n = Number(r?.data?.seeds ?? r?.data?.seeders);
+        // 0 can just mean TorBox couldn't reach the swarm in time: only a real count is used.
+        if (Number.isFinite(n) && n > 0) seedCache.set(h, n), (out[h] = n);
+      } catch {}
+    })
+  );
+  return out;
+}

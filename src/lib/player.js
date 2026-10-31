@@ -4,10 +4,10 @@
 import * as stats from './stats.js';
 import { createEngine } from './engine.js';
 import { progress, bookmarks, settings, summarize, persisted } from './store.js';
-import { syncProgress, switchTracks } from '../sources/audiobookshelf.js';
+import { syncProgress, switchTracks, closeSession, serverPlace, mirrorPlace, connected as absConnected } from '../sources/audiobookshelf.js';
 import { fetchStatus } from '../sources/debrid.js';
 import { applyLocal, isDownloaded, downloads } from './downloads.js';
-import { otherCopyProgress } from './works.js';
+import { otherCopyProgress, sameWork } from './works.js';
 
 // ---- safety net: a part that won't play --------------------------------------
 // First a fresh link and one more try; then another copy of the same book you
@@ -373,7 +373,7 @@ async function loadTrack(i, startAt = 0, autoplay = true) {
     if (state.tracks.length === 1 && !b.chaptersMeta?.length) {
       const uid = b.uid;
       import('./m4bchapters.js')
-        .then((m) => m.m4bChapters(uid, url, t.headers, t.duration || state.duration))
+        .then((m) => m.m4bChapters(uid, url, t.headers, () => (state.book?.uid === uid ? state.tracks[0]?.duration || state.duration : 0) || 0, b))
         .then((list) => list.length && state.book?.uid === uid && patchBook(uid, { chaptersMeta: list }))
         .catch(() => {});
     }
@@ -525,12 +525,55 @@ export async function openAndPlay(book, getDetails, opts) {
     const details = early?.details && Date.now() - early.t < 15 * 60e3 ? early.details : await getDetails(book, { fast: true });
     return playBook(details, opts);
   } catch (e) {
+    if (await playOtherCopy(book, e, opts)) return;
     set({ loading: false, phase: '', error: e.message || String(e) });
+  }
+}
+
+/**
+ * Your Audiobookshelf server (or the place the book is from) can't be reached: play
+ * another copy of the same book — on the phone, downloaded, or in TorBox / Real-Debrid —
+ * from the same place, instead of stopping at an error.
+ */
+async function playOtherCopy(book, err, opts = {}) {
+  const msg = String(err?.message || err || '');
+  if (!book?.uid || !(book.source === 'abs' || /timed out|time out|reach|network|failed to fetch|offline|ECONN|50[234]/i.test(msg))) return false;
+  try {
+    const { localCfg } = await import('../sources/local.js');
+    const { findOwned, getDetails } = await import('../sources/index.js');
+    const near = [
+      ...(localCfg.get().books || []).filter((b) => b.kind !== 'text'),
+      ...Object.values(downloads.get())
+        .filter((d) => d?.status === 'done')
+        .map((d) => d.book),
+    ];
+    let copy = near.find((c) => c && c.uid !== book.uid && sameWork(c, book) && !rescueTried.has(c.uid));
+    if (!copy) {
+      const o = await findOwned({ title: book.title, author: book.author || '' }).catch(() => null);
+      copy = (o?.cloud || []).find((c) => c.kind !== 'text' && c.uid !== book.uid && sameWork(c, book) && !rescueTried.has(c.uid));
+    }
+    if (!copy) return false;
+    rescueTried.add(copy.uid);
+    const where = { loc: 'on this phone', tb: 'in TorBox', rd: 'in Real-Debrid' }[copy.source] || (downloads.get()[copy.uid] ? 'downloaded' : 'another copy');
+    set({ loading: true, error: null, phase: `${book.source === 'abs' ? 'Your server isn’t answering' : 'That copy isn’t available'} — playing your copy ${where}…` });
+    const d = await getDetails(copy);
+    const g = opts.globalStart ?? (opts.index == null && opts.time == null ? progress.get()[book.uid]?.global : undefined);
+    rescuing = true;
+    await playBook(d, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g } : opts);
+    return true;
+  } catch {
+    rescuing = false;
+    return false;
   }
 }
 
 export async function playBook(details, { index, time, globalStart, autoplay = true } = {}) {
   stopWaiting();
+  // Another book (or the same one again): the previous server session is done.
+  if (state.book) {
+    saveProgress(true);
+    endAbsSession();
+  }
   // A book you chose (not a switch by the safety net): start its list of tried copies afresh.
   if (!rescuing) rescueTried.clear();
   rescuing = false;
@@ -539,24 +582,40 @@ export async function playBook(details, { index, time, globalStart, autoplay = t
   try {
     let tracks = details.tracks;
     let serverStart = 0;
+    let server = null;
     if (!tracks?.length && details.resolveTracks) {
       set({ phase: 'Starting a session on your server…' });
       const r = await details.resolveTracks();
       tracks = r.tracks;
       serverStart = r.startTime || 0;
+      server = r.server || null;
     }
     if (!tracks?.length) throw new Error('No audio tracks found for this title');
     set({ book: details, tracks, playing: false });
+    // Played from another copy (TorBox, a download…): your server's place for this book
+    // counts too — Absorb or the web player may have gone further since.
+    if (!server && absConnected() && !details.uid.startsWith('abs:') && details.source !== 'pod') {
+      set({ phase: 'Checking your server’s place…' });
+      const place = await Promise.race([serverPlace(details).catch(() => null), new Promise((r) => setTimeout(() => r(null), 4000))]);
+      const g = place && fitted(place, totalDuration());
+      if (g != null) server = { time: g, updatedAt: place.updatedAt, finished: place.finished };
+    }
     let saved = progress.get()[details.uid];
     // One place per book, whatever the copy: if you listened further on in another copy
     // (another source, a download, your server) more recently, carry on from there.
     const other = index == null && time == null && globalStart == null ? otherCopyProgress(details) : null;
     const useOther = other && (!saved || saved.finished || other.updatedAt > (saved.updatedAt || 0) + 60e3);
     if (useOther) saved = null;
+    // Your server's place is newer (another app listened further, or went back): use it,
+    // instead of sending this phone's older place back over it.
+    const serverNewer =
+      index == null && time == null && globalStart == null && server && !server.finished && server.time > 0 &&
+      (!saved || server.updatedAt > (saved.updatedAt || 0) + 30e3) && (!useOther || server.updatedAt > other.updatedAt);
+    if (serverNewer) saved = null;
     const resume = saved && !saved.finished;
     let i = index ?? (resume ? saved.track : 0) ?? 0;
     let t = time ?? (resume ? saved.time : 0);
-    const g = globalStart ?? (useOther ? other.global : null) ?? (index == null && time == null && !resume && serverStart ? serverStart : null);
+    const g = globalStart ?? (serverNewer ? server.time : null) ?? (useOther ? other.global : null) ?? (index == null && time == null && !resume && serverStart ? serverStart : null);
     if (g != null) ({ i, t } = locate(g));
     // Gentle rewind when resuming after a break.
     if (resume && index == null && time == null && Date.now() - saved.updatedAt > 5 * 60e3) t = Math.max(0, t - 10);
@@ -573,8 +632,18 @@ export async function playBook(details, { index, time, globalStart, autoplay = t
     // autoplay false: ready but quiet (e.g. a scene is looked up first, then it plays from there).
     await loadTrack(Math.min(i, tracks.length - 1), t, autoplay);
   } catch (e) {
+    if (await playOtherCopy(details, e, { index, time, globalStart, autoplay })) return;
     set({ loading: false, phase: '', error: e.message || String(e) });
   }
+}
+
+/** The server's place in this copy's time: the same when the lengths match, scaled when
+ *  they're close (a few seconds of intro), null for another edition (too different). */
+function fitted(place, total) {
+  if (!place || !(place.time >= 0)) return null;
+  if (!place.duration || !total) return place.time;
+  const k = total / place.duration;
+  return Math.abs(1 - k) > 0.06 ? null : place.time * k;
 }
 
 function locate(g) {
@@ -585,6 +654,15 @@ function locate(g) {
   return { i: 0, t: 0 };
 }
 
+// --- playback history (lib/history.js listens) -----------------------------------
+let historyHook = null;
+export const setHistoryHook = (f) => (historyHook = f);
+const hist = (type, g = globalTime(), to) => {
+  try {
+    historyHook?.(type, g, to);
+  } catch {}
+};
+
 // --- controls ---------------------------------------------------------------
 let resumeTimer = null;
 
@@ -592,6 +670,30 @@ export function toggle() {
   if (state.preparing) return; // starts by itself when the download finishes
   if (state.error) return loadTrack(state.index, state.time); // retry after a failure
   if (state.playing) return engine.pause();
+  // Back after a break: another app may have moved on (Absorb, the web player). Your
+  // server's place, when it's newer than this phone's, is where this carries on.
+  const saved = state.book && progress.get()[state.book.uid];
+  if (state.book && absConnected() && state.book.source !== 'pod' && !resumeChecked && Date.now() - (saved?.updatedAt || 0) > 45e3) {
+    resumeChecked = true;
+    const book = state.book;
+    set({ loading: true, phase: 'Checking your server’s place…' });
+    Promise.race([serverPlace(book).catch(() => null), new Promise((r) => setTimeout(() => r(null), 3500))]).then((place) => {
+      if (state.book !== book) return;
+      const g = place && !place.finished && place.updatedAt > (saved?.updatedAt || 0) + 30e3 ? fitted(place, totalDuration()) : null;
+      if (g != null && Math.abs(g - globalTime()) > 15) {
+        hist('seek', globalTime(), g);
+        const at = locate(g);
+        set({ loading: true, phase: 'Carrying on from your server’s place…' });
+        resumeChecked = false;
+        return loadTrack(at.i, at.t, true);
+      }
+      set({ loading: false, phase: '' });
+      toggle(); // plays (the check is skipped this once)
+      resumeChecked = false;
+    });
+    return;
+  }
+  resumeChecked = false;
   // Resuming: show it, and if nothing plays within 12s (dead connection or an
   // expired link after a long pause or a call), reload this part at the same spot.
   set({ loading: true, phase: state.interrupted ? 'Taking the audio back from the call…' : 'Resuming…', interrupted: false });
@@ -607,7 +709,13 @@ export function toggle() {
 }
 
 export const pause = () => engine.pause();
+/** Move within this part — a jump you made (noted in the playback history). */
 export function seek(t) {
+  if (!isFinite(t)) return;
+  hist('seek', globalTime(), trackOffset(state.index) + t);
+  seekTo(t);
+}
+function seekTo(t) {
   if (!isFinite(t)) return;
   const d = state.duration || engine.duration;
   const clamped = Math.max(0, d ? Math.min(t, d - 0.25) : t);
@@ -616,11 +724,13 @@ export function seek(t) {
   set({ time: clamped });
 }
 export function seekGlobal(g) {
+  hist('seek', globalTime(), g);
   const { i, t } = locate(g);
-  if (i === state.index) seek(t);
+  if (i === state.index) seekTo(t);
   else loadTrack(i, t, state.playing);
 }
 export function skip(delta) {
+  hist(delta < 0 ? 'back' : 'forward', globalTime(), globalTime() + delta);
   const t = state.time + delta;
   if (t < 0 && state.index > 0) {
     const prevTrack = state.tracks[state.index - 1];
@@ -628,16 +738,18 @@ export function skip(delta) {
   }
   const d = state.duration || engine.duration;
   if (d && t > d && state.index < state.tracks.length - 1) return loadTrack(state.index + 1, 0, state.playing);
-  seek(t);
+  seekTo(t);
 }
 export function next() {
-  if (state.index < state.tracks.length - 1) loadTrack(state.index + 1, 0);
+  if (state.index < state.tracks.length - 1) hist('chapter', globalTime(), trackOffset(state.index + 1)), loadTrack(state.index + 1, 0);
 }
 export function prev() {
-  if (state.time > 5 || state.index === 0) seek(0);
+  hist('chapter', globalTime(), state.time > 5 || state.index === 0 ? trackOffset(state.index) : trackOffset(state.index - 1));
+  if (state.time > 5 || state.index === 0) seekTo(0);
   else loadTrack(state.index - 1, 0);
 }
 export function jumpTo(i, t = 0) {
+  hist('chapter', globalTime(), trackOffset(i) + t);
   loadTrack(i, t);
 }
 export function setRate(r) {
@@ -671,6 +783,7 @@ export function patchBook(uid, patch) {
 /** Stop playback and dismiss the player completely. */
 export function stop() {
   saveProgress(true);
+  endAbsSession();
   loadToken++;
   Promise.resolve(engine.stop()).catch(() => {});
   stopWaiting();
@@ -685,18 +798,20 @@ export function renameBookmark(uid, createdAt, label) {
 
 /** Play from a moment in the book (seconds from its start), whether playing or paused. */
 export function playAt(g) {
+  hist('seek', globalTime(), Math.max(0, g));
   const at = locate(Math.max(0, g));
-  if (at.i === state.index && state.playing) seek(at.t);
+  if (at.i === state.index && state.playing) seekTo(at.t);
   else loadTrack(at.i, at.t, true);
 }
 
 /** Bookmarks play from a little before the marked moment, to catch the start of it. */
-export const BOOKMARK_LEAD = 15;
+export const BOOKMARK_LEAD = 30;
 export function playBookmark(bm) {
   const t = bm.time - BOOKMARK_LEAD;
   // Near the start of a part: the end of the part before it.
   const at = t >= 0 || !bm.track ? { i: bm.track, t: Math.max(0, t) } : locate(trackOffset(bm.track) + t);
-  if (at.i === state.index && state.playing) seek(at.t);
+  hist('bookmark', globalTime(), trackOffset(at.i) + at.t);
+  if (at.i === state.index && state.playing) seekTo(at.t);
   else loadTrack(at.i, at.t, true);
 }
 
@@ -708,15 +823,41 @@ export function addBookmark(label) {
   return bm;
 }
 
+/**
+ * Highlight a transcript line: a bookmark at that moment, labelled with the line's words
+ * (shown in Notes as a quote; tapping it plays from there). Highlighting it again removes it.
+ * Returns true when added, false when removed.
+ */
+export function toggleQuote(time, text) {
+  if (!state.book) return null;
+  const uid = state.book.uid;
+  const label = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+  const list = bookmarks.get()[uid] || [];
+  const same = list.find((b) => b.quote && b.track === state.index && (Math.abs(b.time - time) < 1.5 || b.label === label));
+  if (same) {
+    bookmarks.set((all) => ({ ...all, [uid]: (all[uid] || []).filter((b) => b !== same) }));
+    return false;
+  }
+  const bm = { track: state.index, time, global: trackOffset(state.index) + time, label, quote: true, createdAt: Date.now() };
+  bookmarks.set((all) => ({ ...all, [uid]: [...(all[uid] || []), bm].sort((a, b) => a.global - b.global) }));
+  return true;
+}
+
 // --- progress ---------------------------------------------------------------
 let lastSave = 0;
+let lastSaved = { uid: '', g: -1 }; // the place last saved (to skip saving an unmoved, paused one)
 function saveProgress(force = false) {
   if (!state.book || !state.tracks.length) return;
   const now = Date.now();
   if (!force && now - lastSave < 4000) return;
-  lastSave = now;
   const total = totalDuration();
   const g = globalTime();
+  // Paused and not moved: nothing new to save. (Saving it again would stamp an old place as
+  // "just now" — switching to Absorb and back then sent chapter 28 over Absorb's chapter 29.)
+  const same = lastSaved.uid === state.book.uid && Math.abs(g - lastSaved.g) < 1.5;
+  if (same && !state.playing) return;
+  lastSaved = { uid: state.book.uid, g };
+  lastSave = now;
   const d = state.duration;
   const finished = state.index === state.tracks.length - 1 && ((d > 0 && state.time >= d - 2) || outroAt > 0);
   const uid = state.book.uid;
@@ -734,10 +875,33 @@ function saveProgress(force = false) {
       book: summarize(state.book),
     },
   }));
-  if (uid.startsWith('abs:')) syncProgress(uid, g, total, !!finished);
+  if (!uid.startsWith('abs:') && absConnected() && state.book.source !== 'pod' && (force || finished || now - lastAbsSync >= 30000)) {
+    // Another copy of a book that's also on your server: keep the server's place with it.
+    lastAbsSync = now;
+    mirrorPlace(state.book, g, total, !!finished);
+  }
+  if (uid.startsWith('abs:')) {
+    // Real listening time since the last sync (for the server's history and stats).
+    const listened = state.playing && lastAbsSync ? Math.min(60, (now - lastAbsSync) / 1000) * (state.rate || 1) : 0;
+    if (force || finished || now - lastAbsSync >= 15000) {
+      lastAbsSync = now;
+      syncProgress(uid, g, total, !!finished, listened);
+    }
+  }
+}
+let lastAbsSync = 0;
+let resumeChecked = false;
+/** The book is put away: close its server session (with the last place). */
+function endAbsSession() {
+  if (!state.book?.uid?.startsWith('abs:')) return;
+  lastAbsSync = 0;
+  // Only send the place if this phone moved it; else the server's (maybe newer) place stays.
+  const moved = !(lastSaved.uid === state.book.uid && Math.abs(globalTime() - lastSaved.g) < 1.5) || state.playing;
+  closeSession(moved ? globalTime() : null, totalDuration());
 }
 
 function fadeOutAndPause() {
+  hist('sleep');
   set({ sleepUntil: null });
   let step = 0;
   const iv = setInterval(() => {

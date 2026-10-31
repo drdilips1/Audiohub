@@ -1,10 +1,11 @@
-// Your own notes — highlights, bookmarks (with their notes and quotes) and ratings —
+// Your own notes — highlights, bookmarks (with their notes and quotes), tags, ratings and
+// your Kindle addresses —
 // are also kept as small files in the app's own storage. The web storage the app normally
 // uses has a hard limit of about 5 MB for everything; when it's full a new save fails and
 // the note is gone after a restart. The files don't have that limit. On start, whichever
 // copy was saved last wins.
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { bookmarks } from './store.js';
+import { bookmarks, bookTags, kindle } from './store.js';
 import { myRatings } from './taste.js';
 import { highlights } from './highlights.js';
 import { logError } from './report.js';
@@ -13,7 +14,7 @@ const Web = registerPlugin('InkwellWeb');
 const native = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('InkwellWeb');
 const STAMPS = 'inkwell:keepStamps'; // key -> when its web-storage copy last saved for sure
 
-const KEPT = { highlights, bookmarks, myRatings };
+const KEPT = { highlights, bookmarks, bookTags, myRatings, kindle };
 
 const readStamps = () => {
   try {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
-import { searchSources, sourceAddons, fmtSize } from '../sources/sourceaddons.js';
+import { searchSources, sourceAddons, fmtSize, sourceLabel } from '../sources/sourceaddons.js';
 import { cloud, getDetails } from '../sources/index.js';
 import { settings, useStore, debrid, library, toggleLibrary } from '../lib/store.js';
 import { nav } from '../lib/nav.js';
@@ -27,7 +27,18 @@ const trackerWords = (name, book) => {
   return mainTitle(parts.slice(0, 2).join(' ')).split(/\s+/).slice(0, 8).join(' ');
 };
 import { openExternal } from '../sources/summaries.js';
-import { directEbookFile, directReaderBook, loadCloudEbook, savedEbooks, cloudReaderBook } from '../lib/epub.js';
+import { directEbookFile, directReaderBook, loadCloudEbook, savedEbooks, cloudReaderBook, probeEbook } from '../lib/epub.js';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+
+const WebPlugin = registerPlugin('InkwellWeb');
+const canSaveFiles = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('InkwellWeb');
+const MIMES = { EPUB: 'application/epub+zip', PDF: 'application/pdf', MOBI: 'application/x-mobipocket-ebook', AZW3: 'application/vnd.amazon.ebook', DJVU: 'image/vnd.djvu' };
+/** Any ebook file into the phone's Downloads folder (open it with any reader app). */
+async function saveToDownloads(link, name, format) {
+  if (!canSaveFiles) return window.open(link, '_blank');
+  await WebPlugin.saveToDownloads({ url: link, name, mime: MIMES[format] || 'application/octet-stream' });
+  toast(`Saving “${name}” to Downloads — see the notification`);
+}
 import { shareEbook } from '../lib/kindle.js';
 
 const LABEL = { torbox: 'TorBox', realdebrid: 'Real-Debrid' };
@@ -65,6 +76,20 @@ export const readerBookFor = (r, book) => {
 };
 const SHORT = { torbox: 'TorBox', realdebrid: 'RD' };
 
+// A readable name for a release: "A.Tale.of.Two.Cities.Charles.Dickens.Audiobook.MP3-JD07"
+// becomes "A Tale of Two Cities Charles Dickens" (the full name stays in small type below).
+const prettyName = (t) => {
+  const raw = String(t || '');
+  let s = cleanTitle(raw);
+  if (!/\s/.test(raw)) s = s.replace(/\s-\s?[A-Za-z0-9]{2,10}$/, '');
+  return s.replace(/\b\d{2,3} ?kb(ps)?\b/gi, ' ').replace(/\s+/g, ' ').trim() || raw;
+};
+const FORMAT = /\b(m4b|m4a|mp3|flac|aac|opus|ogg|epub|pdf|mobi|azw3?|cbz)\b/i;
+const formatOf = (r) => (String(r.format || '').match(FORMAT) || String(r.title || '').replace(/[._]+/g, ' ').match(FORMAT) || [])[1]?.toUpperCase() || '';
+const isEbookResult = (r) => r.contentType === 'ebook' || sourceLabel(r.addon) === 'Ebook' || /^(EPUB|PDF|MOBI|AZW3?|CBZ)$/.test(formatOf(r)) || qb.isEbookName(`${r.title} ${r.format || ''}`);
+// Rows shown per section before "Show more".
+const TOP = 3;
+
 /** Results from installed source addons, with Add-to-debrid and Play actions. */
 export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', query: rawQuery = '', book = null, heading = true }) {
   // Source sites list Hindi books in Latin letters.
@@ -77,8 +102,10 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   const [pending, setPending] = useState(false);
   const [account, setAccount] = useState(new Map());
   const [showDead, setShowDead] = useState(false);
+  const [showMobi, setShowMobi] = useState(false);
   const [showLoose, setShowLoose] = useState(false);
-  const [showLinks, setShowLinks] = useState(false);
+  const [moreAudio, setMoreAudio] = useState(false);
+  const [moreEbooks, setMoreEbooks] = useState(false);
   // Already on your Audiobookshelf server? Say so before anything is added or downloaded again.
   const [onServer, setOnServer] = useState(null);
   useEffect(() => {
@@ -102,6 +129,18 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
       { title, author, query },
       (name, results, error, slow) => {
         if (mounted.current && lastQuery.current === q) setGroups((g) => ({ ...g, [name]: { results, error, slow } }));
+        // Seeders the source didn't give: asked from TorBox, filled in when they come.
+        const unknown = (results || []).filter((r) => r.seeders == null && r.hash);
+        if (unknown.length)
+          cloud.torrentSeeds(unknown.map((r) => r.hash)).then((seeds) => {
+            if (!Object.keys(seeds).length || !mounted.current || lastQuery.current !== q) return;
+            setGroups((g) => {
+              const cur = g[name];
+              if (!cur) return g;
+              const fill = (r) => (r.seeders == null && seeds[r.hash] != null ? { ...r, seeders: seeds[r.hash] } : r);
+              return { ...g, [name]: { ...cur, results: cur.results.map(fill) } };
+            });
+          });
       },
       only
     ).then(() => mounted.current && lastQuery.current === q && setPending(false));
@@ -133,8 +172,12 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   const everything = entries.flatMap(([, g]) => g.results);
   const looseCount = everything.filter((r) => r.loose).length;
   const all = everything.filter((r) => showLoose || !r.loose).sort((a, b) => Number(!(a.magnet || a.hash)) - Number(!(b.magnet || b.hash)));
-  const alive = (r) => r.seeders > 0 || !(r.magnet || r.hash) || r.cache?.any || account.has(r.hash);
-  const visible = showDead ? all : all.filter(alive);
+  const alive = (r) => r.seeders > 0 || r.seeders == null || !(r.magnet || r.hash) || r.cache?.any || account.has(r.hash);
+  // MOBI / AZW3: the app's reader can't open them and Amazon no longer takes them by
+  // e-mail — kept out of the way unless you ask (other reader apps do open them).
+  const kindleOnly = (r) => /^(MOBI|AZW3?)$/.test(formatOf(r) || directEbookFile(r)?.format || '');
+  const hiddenMobi = all.filter((r) => kindleOnly(r) && (showDead || alive(r))).length;
+  const visible = (showDead ? all : all.filter(alive)).filter((r) => showMobi || !kindleOnly(r));
   const hiddenDead = all.length - all.filter(alive).length;
   // Torrents (audiobooks) first; plain download links (mostly ebooks) fold away under a button.
   // Only real ebooks fold away; an audiobook page link (no magnet) stays in the main list with an Open button.
@@ -142,16 +185,47 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   const isLink = (g) => g.items.every(ebookLink);
   const allGroups = groupResults(visible);
   const linkGroups = allGroups.filter(isLink);
-  // Audiobooks first, then ebook torrents; within each, ready to play first, then the best-seeded.
-  const isEbookGroup = (g) => g.items.every((r) => r.contentType === 'ebook' || qb.isEbookName(`${r.title} ${r.format || ''}`));
-  const readyFor = (g) =>
-    g.items.some((r) => (r.magnet || r.hash) && providers.some((p) => r.cache?.[p] || (p === 'realdebrid' && r.cache?.any && !r.cache?.torbox) || account.get(r.hash)?.ready));
-  const seedsOf = (g) => Math.max(...g.items.map((r) => r.seeders || 0));
-  const shownGroups = allGroups
-    .filter((g) => !isLink(g))
-    .sort((a, b) => Number(isEbookGroup(a)) - Number(isEbookGroup(b)) || Number(readyFor(b)) - Number(readyFor(a)) || seedsOf(b) - seedsOf(a));
-  // The heading counts what's listed under it (audiobook results), not the folded-away links.
-  const audioCount = shownGroups.length;
+  const shownGroups = allGroups.filter((g) => !isLink(g));
+  // On screen: audiobooks first, then ebooks (torrents and direct links alike), top few of each as full cards.
+  const ebookGroups = allGroups.filter((g) => g.items.every((r) => ebookLink(r) || isEbookResult(r)));
+  const readyNow = (r) =>
+    (r.magnet || r.hash) && providers.find((p) => r.cache?.[p] || (p === 'realdebrid' && r.cache?.any && !r.cache?.torbox) || account.get(r.hash)?.ready);
+  // Across all sources: ready to play first, then the best-seeded.
+  const best = (a, b) =>
+    Number(!!readyNow(b.items[0])) - Number(!!readyNow(a.items[0])) || Math.max(...b.items.map((r) => r.seeders || 0)) - Math.max(...a.items.map((r) => r.seeders || 0));
+  ebookGroups.sort(best);
+  const audioGroups = allGroups.filter((g) => !ebookGroups.includes(g)).sort(best);
+  const item = (g) =>
+    g.items.length > 1 && !g.key.startsWith('h:') ? (
+      <SourceFolder key={g.key} g={g} provider={provider} providers={providers} book={book} account={account} onChanged={refreshAccount} />
+    ) : (
+      <SourceRow key={g.items[0].key} r={withAlso(g)} provider={provider} providers={providers} book={book} inAccount={account.get(g.items[0].hash)} onChanged={refreshAccount} />
+    );
+  const section = (name, groups, more, setMore) =>
+    groups.length > 0 && (
+      <div class="src-sec">
+        <div class="src-sec-head">
+          <span>{name}</span>
+          <small>{groups.length}</small>
+        </div>
+        <div class="src-list">{(more ? groups : topOf(groups)).map(item)}</div>
+        {groups.length > topOf(groups).length && (
+          <button class="src-more" onClick={() => setMore(!more)}>
+            {more ? (
+              'Show fewer'
+            ) : (
+              <span class="src-more-text">
+                <b>
+                  Show {groups.length - topOf(groups).length} more {name.toLowerCase()}
+                </b>
+                <small>{moreFrom(groups)}</small>
+              </span>
+            )}
+            <Icon name={more ? 'up' : 'down'} size={14} />
+          </button>
+        )}
+      </div>
+    );
 
   // Tell the Available row what plays at once and which ebook links open in the reader.
   const readyVia = (r) =>
@@ -167,7 +241,8 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
   const fetchable = provider
     ? shownGroups
         .map((g) => g.items[0])
-        .filter((r) => (r.magnet || r.hash) && !readyVia(r) && r.seeders > 0 && r.contentType !== 'ebook' && !qb.isEbookName(`${r.title} ${r.format || ''}`))
+        
+        .filter((r) => (r.magnet || r.hash) && !readyVia(r) && (r.seeders == null || r.seeders > 0) && r.contentType !== 'ebook' && !qb.isEbookName(`${r.title} ${r.format || ''}`))
         .map((r) => ({ r, via: provider }))
     : [];
   const quickKey = `${instant.map((x) => x.r.key + x.via).join()}|${readable.map((r) => r.key).join()}|${fetchable.map((x) => x.r.key).join()}`;
@@ -183,7 +258,12 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
         <div class="src-head">
           {heading ? (
             <h3 class="section-label">
-              <Icon name="puzzle" size={16} /> Sources {audioCount > 0 && <small>{audioCount}</small>}
+              Sources
+              {audioGroups.length + ebookGroups.length > 0 && (
+                <small class="src-counts">
+                  {[audioGroups.length && `${audioGroups.length} audio`, ebookGroups.length && `${ebookGroups.length} ebook`].filter(Boolean).join(' · ')}
+                </small>
+              )}
             </h3>
           ) : (
             <span />
@@ -207,7 +287,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
       )}
       {pending && !total && !looseCount && (
         <p class="muted pad-s">
-          <span class="spinner small" /> Searching {sourceAddons().map((a) => a.manifest.name).join(', ')}…
+          <span class="spinner small" /> Searching {sourceAddons().map((a) => a.manifest.name).join(', ') || 'your addons'}…
         </p>
       )}
       {entries.some(([, g]) => g.slow) && (
@@ -215,7 +295,8 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
           <span class="spinner small" />{' '}
           {entries
             .filter(([, g]) => g.slow)
-            .map(([name]) => name)
+            .map(([name]) => sourceLabel(name))
+            .filter((n, i, all) => all.indexOf(n) === i)
             .join(', ')}{' '}
           slow to answer — still trying…
         </p>
@@ -224,7 +305,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
         <p class="src-errors">
           {entries
             .filter(([, g]) => g.error)
-            .map(([name, g]) => `${name} ${friendlyError(g.error)}`)
+            .map(([name, g]) => `${sourceLabel(name)} ${friendlyError(g.error)}`)
             .join(' · ')}{' '}
           <button
             class="link-btn src-retry"
@@ -238,42 +319,17 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
           </button>
         </p>
       )}
-      {!pending && total > 0 && !shownGroups.length && linkGroups.length > 0 && <p class="muted pad-s">No audiobook results — only ebooks (below).</p>}
       {!pending && !total && entries.length > 0 && <p class="muted pad-s">{looseCount ? 'No results that are clearly this book.' : 'No source results.'}</p>}
-      <div class="src-list">
-        {shownGroups.map((g) =>
-          g.items.length === 1 || g.key.startsWith('h:') ? (
-            <SourceRow key={g.items[0].key} r={g.items[0]} provider={provider} providers={providers} book={book} inAccount={account.get(g.items[0].hash)} onChanged={refreshAccount} />
-          ) : (
-            <SourceFolder key={g.key} g={g} provider={provider} providers={providers} book={book} account={account} onChanged={refreshAccount} />
-          )
-        )}
-      </div>
-      {linkGroups.length > 0 && (
-        <>
-          <button class={'links-toggle' + (showLinks ? ' open' : '')} onClick={() => setShowLinks(!showLinks)}>
-            <Icon name="book" size={16} />
-            <span>
-              Ebooks <small>{linkGroups.length}</small>
-            </span>
-            <Icon name="down" size={16} />
-          </button>
-          {showLinks && (
-            <div class="src-list">
-              {linkGroups.map((g) =>
-                g.items.length === 1 ? (
-                  <SourceRow key={g.items[0].key} r={g.items[0]} provider={provider} providers={providers} book={book} inAccount={account.get(g.items[0].hash)} onChanged={refreshAccount} />
-                ) : (
-                  <SourceFolder key={g.key} g={g} provider={provider} providers={providers} book={book} account={account} onChanged={refreshAccount} />
-                )
-              )}
-            </div>
-          )}
-        </>
-      )}
+      {section('Audiobooks', audioGroups, moreAudio, setMoreAudio)}
+      {section('Ebooks', ebookGroups, moreEbooks, setMoreEbooks)}
       {looseCount > 0 && (
         <button class="btn ghost-wide" onClick={() => setShowLoose(!showLoose)}>
           {showLoose ? 'Hide' : 'Show'} {looseCount} loose match{looseCount === 1 ? '' : 'es'} (may be other books)
+        </button>
+      )}
+      {hiddenMobi > 0 && (
+        <button class="btn ghost-wide" onClick={() => setShowMobi(!showMobi)}>
+          {showMobi ? 'Hide' : 'Show'} {hiddenMobi} MOBI / AZW3 ebook{hiddenMobi === 1 ? '' : 's'} (only other reader apps open these)
         </button>
       )}
       {hiddenDead > 0 && (
@@ -290,6 +346,7 @@ function seedClass(n) {
 }
 
 function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) {
+  const [extra, setExtra] = useState(false); // RD, links and tracker search, behind ⋯
   const [busy, setBusy] = useState(null); // 'add:<provider>' | 'play'
   const [status, setStatus] = useState(null); // { text, pct (0..1) | null }
   const [links, setLinks] = useState(null); // { provider, name, files: [{ name, size, url?, err? }], zip, zipUrl? }
@@ -314,6 +371,7 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
 
   // Auto-send (Settings > Home server): what you add here goes to qBittorrent too.
   const autoSend = () =>
+    book?.source !== 'abs' && // this book page is your Audiobookshelf's own copy: it's there already
     qb
       .autoSendAdded({ hash: cloud.infoHash(r.magnet, r.hash), magnet: r.magnet, title: book?.title || r.title, author: book?.author || r.author || '', rawName: r.title, format: r.format })
       .then((m) => m && toast(m));
@@ -339,13 +397,22 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
   // (or keep it on the phone with Save).
   const readTorrent = async (via, keep = false) => {
     if (!need()) return;
-    setBusy(keep ? 'save' : via === playVia ? 'play' : 'play:' + via);
+    setBusy(keep === 'kindle' ? 'kindle' : keep ? 'save' : via === playVia ? 'play' : 'play:' + via);
     setStatus({ text: readyOn(via) ? `Getting it from your ${LABEL[via]}…` : 'Contacting ' + LABEL[via] + '…', pct: null });
     try {
       const stub = await cloud.prepareMagnet(via, r, (text, pct) => setStatus({ text, pct }), { ebook: true });
       autoSend();
       const details = await getDetails({ ...stub, title: book?.title || stub.title, author: book?.author || r.author || stub.author, cover: book?.cover || stub.cover });
       const files = details.ebooks || [];
+      if (keep === 'kindle') {
+        // Send to Kindle / another app: EPUB first (Amazon takes it by e-mail), then PDF, then anything.
+        const any = files.find((f) => f.format === 'EPUB') || files.find((f) => f.format === 'PDF') || files[0];
+        if (!any) throw new Error('No ebook files in this one');
+        setStatus({ text: 'Downloading the ebook…', pct: null });
+        await shareEbook(any, { title: book?.title || details.title || r.title });
+        setStatus(null);
+        return;
+      }
       const file = files.find((f) => f.format === 'EPUB') || files.find((f) => f.format === 'PDF');
       if (!file) throw new Error(files.length ? `Only ${[...new Set(files.map((f) => f.format))].join(' / ')} in this one — the reader opens EPUB and PDF` : 'No ebook files in this one');
       const rb = cloudReaderBook(details, file);
@@ -507,6 +574,31 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
   const rb = readable ? directReaderBook(r, ebook, book) : null;
   const kept = useStore(savedEbooks);
   const saved = !!(rb && kept[rb.uid]);
+  // A file whose type the source didn't give: fetch it and see what it is. EPUB / PDF
+  // open in the reader (or are kept in the app); anything else goes to Downloads.
+  const unknownEbook = !hasMagnet && !ebook && /^https?:/i.test(r.link || '') && isEbookResult(r);
+  const probe = async (then) => {
+    setBusy(then);
+    setStatus({ text: 'Looking at the file…', pct: null });
+    try {
+      const file = await probeEbook(r);
+      const fmt = file?.format || '';
+      const name = file?.name || `${String(r.title || 'Book').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 90)}`;
+      if (fmt === 'EPUB' || fmt === 'PDF') {
+        const rb2 = directReaderBook(r, file, book);
+        if (then === 'probe-read') return nav.push('reader', { book: rb2 });
+        await loadCloudEbook(rb2);
+        return toast(`It's ${fmt === 'EPUB' ? 'an EPUB' : 'a PDF'} — saved on this phone (Library → Ebooks → Downloaded)`);
+      }
+      if (then === 'probe-read') toast(fmt ? `It's a ${fmt} file — the app can't read those, so it's going to Downloads` : "Couldn't tell what file this is — it's going to Downloads");
+      await saveToDownloads(r.link, name, fmt);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      setStatus(null);
+      setBusy(null);
+    }
+  };
   const saveEbook = async () => {
     setBusy('save-ebook');
     setStatus({ text: 'Downloading the ebook…', pct: null });
@@ -526,7 +618,9 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
   const homeHash = home ? cloud.infoHash(r.magnet, r.hash) : '';
   const sentHome = !!homeHash && qb.wasSent(homeHash);
   const sendHome = async () => {
-    const have = await qb.onServer({ title: book?.title || r.title, author: book?.author || r.author || '', rawName: r.title }).catch(() => 'down');
+    // This book page is your Audiobookshelf's own copy: it's there already.
+    if (book?.source === 'abs' && !confirm(`“${book.title}” is already on your Audiobookshelf. Send it home again anyway?`)) return;
+    const have = book?.source === 'abs' ? null : await qb.onServer({ title: book?.title || r.title, author: book?.author || r.author || '', rawName: r.title }).catch(() => 'down');
     if (have === 'down' && !confirm("Couldn't reach your Audiobookshelf to check whether you already have this. Send it home anyway?")) return;
     if (have && have !== 'down' && !confirm(`Your Audiobookshelf already has “${have.title}”. Send it home again anyway?`)) return;
     setBusy('home');
@@ -540,30 +634,25 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
   };
 
   return (
-    <div class={'src-row' + (ready ? ' is-ready' : '') + (dead ? ' is-dead' : '')}>
-      <div class="src-title">{r.title}</div>
-      {(r.author || r.narrator) && (
-        <div class="src-sub">
-          {r.author}
-          {r.narrator ? ` · read by ${r.narrator}` : ''}
+    <div class={'src-row' + (ready ? ' is-ready' : '') + (dead ? ' is-dead' : '') + (isEbookResult(r) || ebook ? ' is-ebook' : '')}>
+      <div class="src-top">
+        <span class="src-fmt">{formatOf(r) || <Icon name={isEbookResult(r) || ebook ? 'book' : 'headphones'} size={18} />}</span>
+        <div class="src-names">
+          <div class="src-title">{prettyName(r.title)}</div>
+          {(r.author || r.narrator) && (
+            <div class="src-sub">
+              {r.author}
+              {r.narrator ? ` · read by ${r.narrator}` : ''}
+            </div>
+          )}
+          {prettyName(r.title) !== r.title && <div class="src-raw">{r.title}</div>}
         </div>
-      )}
-      <div class="src-chips">
-        {r.format && <span class="chip">{String(r.format).toUpperCase()}</span>}
-        {r.size > 0 && <span class="chip">{fmtSize(r.size)}</span>}
-        {hasMagnet && <span class={'chip seeds ' + seedClass(r.seeders)}>{r.seeders} seed{r.seeders === 1 ? '' : 's'}</span>}
-        {r.language && <span class="chip">{r.language}</span>}
-        <span class="chip ghost">{r.addon}</span>
-        {trackerSite && trackerFilter && (
-          <button class="chip tracker-chip" onClick={() => qb.openTracker(trackerWords(r.title, book), true, qb.isEbookName(`${r.title} ${r.format || ''}`)).catch((e) => toast(e.message))} aria-label={`Search ${trackerSite} (${trackerFilter}) for this`}>
-            <Icon name="search" size={12} /> {trackerFilter}
-          </button>
-        )}
-        {trackerSite && (
-          <button class="chip tracker-chip" onClick={() => qb.openTracker(trackerWords(r.title, book)).catch((e) => toast(e.message))} aria-label={`Search ${trackerSite} for this`}>
-            <Icon name="search" size={12} /> {trackerFilter ? 'All' : trackerSite}
-          </button>
-        )}
+      </div>
+      <div class="src-meta">
+        {r.size > 0 && <span>{fmtSize(r.size)}</span>}
+        {hasMagnet && (r.seeders == null ? <span class="seeds">seeds ?</span> : <span class={'seeds ' + seedClass(r.seeders)}>{r.seeders} seed{r.seeders === 1 ? '' : 's'}</span>)}
+        {r.language && <span>{r.language}</span>}
+        <span>{sourceLabel(r.addon)}</span>
       </div>
       {hasMagnet && (providers.length > 0 || home) && (
         <div class="src-services">
@@ -583,9 +672,9 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
             );
           })}
           {home && (
-            <div class={'svc' + (sentHome ? ' ok' : '')}>
+            <div class={'svc' + (sentHome || book?.source === 'abs' ? ' ok' : '')}>
               <b>Home</b>
-              <span>{sentHome ? 'sent' : 'qBittorrent'}</span>
+              <span>{sentHome ? 'sent' : book?.source === 'abs' ? 'on your server' : 'qBittorrent'}</span>
               <button class="pill small" disabled={!!busy} onClick={sendHome} aria-label="Send to your home server">
                 {busy === 'home' ? <span class="spinner small" /> : <Icon name={sentHome ? 'check' : 'plus'} size={14} />}
               </button>
@@ -626,6 +715,28 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
               {busy === 'share' ? <span class="spinner" /> : <Icon name="upload" size={readable ? 14 : 16} />}{' '}
               {readable ? 'Kindle' : 'Kindle / open in app'}
             </button>
+            {!readable && (
+              <button
+                class="btn secondary play-alt"
+                disabled={!!busy}
+                onClick={() => saveToDownloads(r.link, ebook.name, ebook.format).catch((e) => toast(e.message))}
+                aria-label="Save to this phone's Downloads"
+              >
+                <Icon name="download" size={14} /> Save
+              </button>
+            )}
+            <a class="btn secondary play-alt src-web" href={r.link} target="_blank" rel="noopener" aria-label="Open in browser">
+              <Icon name="external" size={14} />
+            </a>
+          </>
+        ) : unknownEbook ? (
+          <>
+            <button class="btn primary" disabled={!!busy} onClick={() => probe('probe-read')}>
+              {busy === 'probe-read' ? <span class="spinner" /> : <Icon name="book" size={16} />} Read
+            </button>
+            <button class="btn secondary play-alt" disabled={!!busy} onClick={() => probe('probe-save')} aria-label="Save to this phone">
+              {busy === 'probe-save' ? <span class="spinner" /> : <Icon name="download" size={14} />} Save
+            </button>
             <a class="btn secondary play-alt src-web" href={r.link} target="_blank" rel="noopener" aria-label="Open in browser">
               <Icon name="external" size={14} />
             </a>
@@ -640,7 +751,7 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
               {busy === 'play' ? <span class="spinner" /> : <Icon name={ebookTorrent ? 'book' : 'play'} size={16} />} {ebookTorrent ? 'Read' : 'Play'}
               {providers.length > 1 && playVia ? ` · ${LABEL[playVia]}` : ''}
             </button>
-            {providers
+            {extra && providers
               .filter((p) => p !== playVia)
               .map((p) => (
                 <button class="btn secondary play-alt" disabled={!!busy} onClick={() => (ebookTorrent ? readTorrent(p) : play(p))} aria-label={`${ebookTorrent ? 'Read' : 'Play'} through ${LABEL[p]}`}>
@@ -652,14 +763,36 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
                 {busy === 'save' ? <span class="spinner" /> : <Icon name="download" size={14} />} Save
               </button>
             )}
-            {provider && (
+            {ebookTorrent && (
+              <button class="btn secondary play-alt" disabled={!!busy} onClick={() => readTorrent(playVia, 'kindle')} aria-label="Send to Kindle or open in another app">
+                {busy === 'kindle' ? <span class="spinner" /> : <Icon name="upload" size={14} />} Kindle
+              </button>
+            )}
+            {extra && provider && (
               <button class="btn secondary play-alt" disabled={!!busy} onClick={() => (links ? setLinks(null) : getLinks(playVia))} aria-label="Download links">
                 {busy === 'links' ? <span class="spinner" /> : <Icon name="link" size={14} />}
+              </button>
+            )}
+            {(providers.length > 1 || provider || trackerSite) && (
+              <button class={'btn secondary play-alt src-dots' + (extra ? ' on' : '')} onClick={() => setExtra(!extra)} aria-label="More options">
+                <Icon name={extra ? 'close' : 'more'} size={16} />
               </button>
             )}
           </>
         )}
       </div>
+      {extra && trackerSite && (
+        <div class="src-chips">
+          <button
+            class="chip tracker-chip"
+            onClick={() => qb.openTracker(trackerWords(r.title, book), !!trackerFilter, qb.isEbookName(`${r.title} ${r.format || ''}`)).catch((e) => toast(e.message))}
+            onContextMenu={(e) => (e.preventDefault(), trackerFilter && qb.openTracker(trackerWords(r.title, book)).catch((er) => toast(er.message)))}
+            aria-label={`Search ${trackerSite} for this`}
+          >
+            <Icon name="search" size={12} /> {trackerSite.replace(/^www\./, '')[0].toUpperCase()}
+          </button>
+        </div>
+      )}
       {links && (
         <LinksPanel
           links={links}
@@ -802,6 +935,34 @@ const baseName = (t) =>
 // Torrents are grouped only by info-hash (the same torrent listed twice shows as one card;
 // different torrents with the same name stay separate). Direct files of one book — part 1,
 // part 2… — fold into one card.
+/** The same torrent found by several sources: one row, naming them all ("EXTto + AudiobookBay"). */
+const withAlso = (g) => {
+  const names = [...new Set(g.items.map((r) => r.addon).filter(Boolean))];
+  return names.length > 1 ? { ...g.items[0], addon: names.join(' + ') } : g.items[0];
+};
+
+/** The first few results, plus the best of each source not among them (so every source that
+ *  found something shows at least once, not only under "Show more"). */
+function topOf(groups) {
+  const top = groups.slice(0, TOP);
+  const seen = new Set(top.flatMap((g) => g.items.map((r) => r.addon)));
+  for (const g of groups.slice(TOP)) {
+    if (top.length >= TOP + 3) break;
+    if (g.items.some((r) => !seen.has(r.addon))) {
+      top.push(g);
+      g.items.forEach((r) => seen.add(r.addon));
+    }
+  }
+  return top;
+}
+
+/** Which sources the hidden results come from ("from AudiobookBay, Knaben AudioBooks"). */
+function moreFrom(groups) {
+  const shown = new Set(topOf(groups));
+  const names = [...new Set(groups.filter((g) => !shown.has(g)).flatMap((g) => g.items.map((r) => r.addon)))].filter(Boolean);
+  return names.length ? `from ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` +${names.length - 3}` : ''}` : '';
+}
+
 function groupResults(list) {
   const groups = [];
   const byKey = new Map();
@@ -834,7 +995,7 @@ function SourceFolder({ g, provider, providers, book, account, onChanged }) {
           <b>{first.title.replace(/\.(mp3|m4a|m4b|aac|flac|ogg|opus)$/i, '').replace(/[\s._-]*(part|pt|chapter|ch|track|cd)?\s*\d{1,3}\s*$/i, '') || first.title}</b>
           <small>
             {g.items.length} files{size ? ` · ${fmtSize(size)}` : ''}
-            {seeds ? ` · ${seeds} seeds` : ''} · {first.addon}
+            {seeds ? ` · ${seeds} seeds` : ''} · {sourceLabel(first.addon)}
           </small>
         </span>
         <Icon name={open ? 'up' : 'down'} size={18} />
@@ -866,19 +1027,18 @@ function friendlyError(e) {
 function TrackerMini({ site, filter, words, ebook }) {
   const name = site.replace(/^www\./, '');
   const open = (filtered) => qb.openTracker(words, filtered, ebook).catch((e) => toast(e.message));
+  // One button: tap searches with your filter (FL / VIP); press and hold searches everything.
   return (
-    <div class="tracker-mini" title={`Search ${name} for "${words}"`}>
-      <button class="tracker-dot" onClick={() => open(!!filter)} aria-label={`Search ${name}`}>
+    <div class="tracker-mini" title={`Search ${name} for "${words}"${filter ? ` (${filter}; hold for all)` : ''}`}>
+      <button
+        class="tracker-dot"
+        onClick={() => open(!!filter)}
+        onContextMenu={(e) => (e.preventDefault(), filter && open(false))}
+        aria-label={`Search ${name}${filter ? ` (${filter})` : ''}`}
+      >
         {name[0].toUpperCase()}
-      </button>
-      {filter && (
-        <button class="tracker-pill" onClick={() => open(true)}>
-          {filter}
-        </button>
-      )}
-      <button class="tracker-pill" onClick={() => open(false)}>
-        All
       </button>
     </div>
   );
 }
+

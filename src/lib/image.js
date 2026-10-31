@@ -156,9 +156,15 @@ function findFrame(img) {
   return { x: l / W, y: t / H, w, h };
 }
 
+/** The real cover inside the padding isn't square (a tall book cover)? */
+export const frameTall = (f) => !!f && (f.w / f.h < 0.85 || f.w / f.h > 1.18);
+
 /** CSS that zooms the picture so its real cover fills the (square) box. */
 export function frameStyle(f) {
   if (!f) return undefined;
+  // A tall book cover inside a square picture: zooming it to fill would cut off its top and
+  // bottom — show the picture as it is.
+  if (frameTall(f)) return { objectViewBox: `inset(${f.y * 100}% ${(1 - f.x - f.w) * 100}% ${(1 - f.y - f.h) * 100}% ${f.x * 100}%)`, objectFit: 'contain' };
   const s = Math.min(3, 1 / Math.min(f.w, f.h));
   const cx = f.x + f.w / 2;
   const cy = f.y + f.h / 2;

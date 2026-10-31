@@ -83,10 +83,13 @@ function bookTextFor(book, again = false) {
   const run = ++btRun;
   for (const s of state.segments) delete s.at, delete s.book, delete s.fill;
   set({ segments: state.segments.slice(), bookText: { state: 'loading' } });
+  // Looking everywhere (phone, sources, TorBox…) can take long: give up after a minute.
+  const limit = new Promise((ok) => setTimeout(() => ok('timeout'), 60000));
   import('./booktext.js')
-    .then((m) => m.loadBookText(book))
+    .then((m) => Promise.race([m.loadBookText(book), limit]))
     .then((x) => {
       if (run !== btRun) return;
+      if (x === 'timeout') return set({ bookText: { state: 'none', why: 'timeout' } });
       if (!x) return set({ bookText: { state: 'none' } });
       bt = x;
       set({ bookText: { state: 'on', title: x.title || '' } });
@@ -96,19 +99,19 @@ function bookTextFor(book, again = false) {
 }
 
 /** Search your sources for this audiobook's ebook: [{ r, file, source, book }]. */
-export async function findEbook() {
+export async function findEbook(query = '') {
   const ps = player.getState();
   if (!ps.book) return [];
   const { findEbookInSources } = await import('./booktext.js');
-  return findEbookInSources(ps.book);
+  return findEbookInSources(ps.book, query);
 }
 
 /** Ebooks already on the phone to choose from (this book's first). */
-export async function ebooksOnPhone() {
+export async function ebooksOnPhone(query = '') {
   const ps = player.getState();
   if (!ps.book) return [];
   const { ebooksOnHand } = await import('./booktext.js');
-  return ebooksOnHand(ps.book);
+  return ebooksOnHand(ps.book, query);
 }
 
 /** Use an ebook already on the phone for this audiobook's transcript. */
@@ -133,7 +136,7 @@ export async function takeEbook(hit) {
   const ps = player.getState();
   if (!ps.book) return;
   const { keepFoundEbook } = await import('./booktext.js');
-  await keepFoundEbook(ps.book.uid, hit);
+  await keepFoundEbook(ps.book.uid, hit, ps.book);
   bookTextFor(ps.book, true);
 }
 let locate = null;
@@ -152,6 +155,31 @@ function align() {
       if (r) s.at = [r.from, r.to];
     }
     if (s.at) near = s.at[1];
+  }
+  // 1b. Lines run forwards through the book: a line placed far before the ones around it (or
+  //     far after) was matched to a repeated phrase elsewhere — drop it (it's filled in below).
+  //     Keeps the longest run of lines in book order.
+  {
+    const found = segs.map((s, i) => (s.at ? i : -1)).filter((i) => i >= 0);
+    const best = [];
+    const prev = [];
+    const ends = []; // ends[k]: index (into found) of the smallest tail of a run of length k+1
+    for (let j = 0; j < found.length; j++) {
+      const v = segs[found[j]].at[0];
+      let lo = 0;
+      let hi = ends.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (segs[found[ends[mid]]].at[0] <= v + 3) lo = mid + 1;
+        else hi = mid;
+      }
+      prev[j] = lo > 0 ? ends[lo - 1] : -1;
+      ends[lo] = j;
+    }
+    for (let j = ends.length ? ends[ends.length - 1] : -1; j >= 0; j = prev[j]) best.push(found[j]);
+    const keep = new Set(best);
+    // Only when most lines agree (a short, jumpy stretch is left as it is).
+    if (found.length >= 4 && keep.size >= found.length * 0.6) for (const i of found) if (!keep.has(i)) delete segs[i].at;
   }
   // 2. Between two lines that were found: the book's words in between go to the lines that
   //    weren't (too short to find, or misheard), shared by how many words each had; with no
@@ -410,6 +438,29 @@ export function follow(ps) {
   T.position({ pos: ps.time }).catch(() => {});
 }
 
+// The ebook reader following the audiobook: recognise the speech while it's open too.
+let readerFollow = false;
+export function followInReader(on) {
+  readerFollow = !!on;
+  const ps = player.getState();
+  if (on && ps.book && transcriptAvailable) follow(ps);
+  else if (!on && !transcriptCfg.get().open) stopTranscript();
+}
+
+/** What's being said right now (the line at the player's position and the one before), or ''. */
+export function heardNow() {
+  const ps = player.getState();
+  if (!ps.book || state.key !== `${ps.book.uid}#${ps.index}`) return '';
+  const segs = state.segments;
+  let i = segs.findIndex((x) => x.start <= ps.time + 0.5 && x.end >= ps.time - 0.5);
+  if (i < 0) {
+    // Between lines: the last one heard, if it was just now.
+    for (let k = segs.length - 1; k >= 0; k--) if (segs[k].end <= ps.time && ps.time - segs[k].end < 6) (i = k), (k = -1);
+  }
+  if (i < 0) return '';
+  return [segs[i - 1]?.text, segs[i].text].filter(Boolean).join(' ');
+}
+
 export function stopTranscript() {
   if (!transcriptAvailable) return;
   job = '';
@@ -436,7 +487,7 @@ export function restartTranscript() {
     // The publisher's transcript is one small download: fetch it for every such
     // episode (Ask AI uses it too). Speech recognition only runs with Text open.
     if (ps.book.transcript?.url && !failedTranscripts.has(ps.book.transcript.url)) return followPublished(ps);
-    if (!transcriptCfg.get().open || !transcriptAvailable) return;
+    if (!(transcriptCfg.get().open || readerFollow) || !transcriptAvailable) return;
     const now = Date.now();
     if (now - last < 1000 && ps.index === player.getState().index && `${ps.book.uid}#${ps.index}` === state.key) return;
     last = now;
@@ -500,4 +551,76 @@ export function heardLines(bookUid) {
     for (const s of segs) if (s.start != null) out.push({ track, start: s.start, text: s.book || s.text });
   }
   return out.sort((a, b) => a.track - b.track || a.start - b.start);
+}
+
+// ---- names the recogniser mishears ("snake" for Snape) ------------------------------
+// A heard word one letter off a character's name (two for long names), with the same
+// first letter, is shown as the name. With the ebook on hand, only when the book uses the
+// name far more often than the word (so a real snake stays a snake).
+const lev = (a, b) => {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+};
+let counts = null;
+let countsOf = null;
+const bookCount = (w) => {
+  if (!bt) return null;
+  if (countsOf !== bt) {
+    counts = new Map();
+    for (const t of bt.tokens) {
+      const k = t.toLowerCase().replace(/[^\p{L}']/gu, '');
+      if (k) counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    countsOf = bt;
+  }
+  return counts.get(w) || 0;
+};
+// Names that are everyday words too: changed only when the ebook shows it's the name.
+const COMMON = new Set('will hope grace rose mark bill faith dawn june april summer rich frank jack page brown white black green young king wood stone hill field ford hunter baker cook miller smith carter mason fisher bishop cole lane long hall bell gray grey north west east south lord lady sage river storm star wolf fox bear hawk crow swift may sunny holly ivy lily daisy violet ruby pearl amber jade autumn winter'.split(' '));
+const fixCache = new Map();
+/** `text` with misheard character names put right. `names`: the book's people and places. */
+export function fixHeard(text, names) {
+  if (!text || !names?.length) return text;
+  const single = [...new Set(names.flatMap((n) => n.split(/\s+/)).filter((n) => n.length >= 4 && /^\p{Lu}/u.test(n)))];
+  const key = single.join('|');
+  if (fixCache.get('k') !== key) fixCache.clear(), fixCache.set('k', key);
+  return text.replace(/\p{L}[\p{L}']{3,}/gu, (w) => {
+    const lw = w.toLowerCase();
+    if (fixCache.has(lw)) return fixCache.get(lw) || w;
+    let best = null;
+    for (const n of single) {
+      const ln = n.toLowerCase();
+      if (ln === lw) {
+        best = w === n ? null : { n, d: 0 }; // "harry" → "Harry"
+        break;
+      }
+      if (ln[0] !== lw[0]) continue;
+      const d = lev(lw, ln);
+      if (d <= (ln.length >= 7 ? 2 : 1) && (!best || d < best.d)) best = { n, d };
+    }
+    let out = '';
+    if (best) {
+      const asWord = bookCount(lw);
+      if (COMMON.has(lw) && (asWord == null || bookCount(best.n.toLowerCase()) <= asWord * 3)) best = null;
+    }
+    if (best) {
+      const asWord = bookCount(lw);
+      const asName = bookCount(best.n.toLowerCase());
+      if (best.d === 0 || asWord == null || asName > Math.max(3, asWord * 3)) out = best.n;
+    }
+    fixCache.set(lw, out);
+    return out || w;
+  });
+}
+
+/** Stop looking for this book's ebook (the lines stay as heard; Get the ebook to choose one). */
+export function stopLooking() {
+  btRun++;
+  set({ bookText: { state: 'none' } });
 }

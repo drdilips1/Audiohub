@@ -5,10 +5,16 @@
 import { getJson, sendJson } from '../lib/http.js';
 import { addons, persisted } from '../lib/store.js';
 import { logError, redact } from '../lib/report.js';
-import { words, matches, mainTitle } from '../lib/match.js';
+import { words, matches, mainTitle, otherBook } from '../lib/match.js';
 import { infoHash, torboxCached } from './debrid.js';
 
 export const isSourceManifest = (m) => !!(m && typeof m === 'object' && m.id && m.name && m.adapters?.source?.request?.url);
+
+// No sources come with the app: every source is an addon you add (Settings → Addons),
+// shown by its own name.
+export const sourceLabel = (name) => name;
+// Leading tags some sources put on titles: "[EPUB] …", "M4B • Standard • ABB • …".
+const cleanTitle = (t) => String(t).replace(/^\s*\[[^\]]{1,24}\]\s*/, '').replace(/^(?:[A-Za-z0-9+]{2,10}\s*•\s*){2,4}/, '').trim() || String(t);
 
 export const sourceAddons = () => addons.get().filter((a) => a.kind === 'source');
 
@@ -119,7 +125,8 @@ async function run(addon, params, onSlow) {
     for (let retry = 0; retry < 2; retry++) {
       try {
         const r = await runOnce(addon, p, retry);
-        if (r.length) return r;
+        // A wider search (title only) still has to be this book: same check as the precise one.
+        if (r.length) return title && author && !p.author ? sameBook(r, title, author) : r;
         break;
       } catch (e) {
         lastErr = e;
@@ -136,7 +143,7 @@ async function run(addon, params, onSlow) {
   }
   if (lastErr) {
     const old = fallback(addon, attempts);
-    if (old) return old;
+    if (old) return title && author ? Object.assign(sameBook(old, title, author), { older: old.older }) : old;
     throw lastErr;
   }
   return [];
@@ -195,7 +202,8 @@ async function searchOnce(addon, vars, key, { title = '', author = '', query = '
         magnet: get(row, 'magnetUrl') || get(row, 'magnet') || '',
         hash: '',
         size: Number(get(row, 'sizeBytes')) || 0,
-        seeders: Number(get(row, 'seeders')) || 0,
+        // Not given by the source (AudiobookBay's own pages don't show it): unknown, not 0.
+        seeders: get(row, 'seeders') == null || get(row, 'seeders') === '' ? null : Number(get(row, 'seeders')) || 0,
         format: get(row, 'format') || '',
         language: get(row, 'language') || '',
         date: get(row, 'date') || '',
@@ -214,7 +222,10 @@ async function searchOnce(addon, vars, key, { title = '', author = '', query = '
   // From a book page (title and author known), keep only results for that book.
   if (title && author) results = sameBook(results, title, author);
 
-  results.sort((a, b) => Number(b.cache.any) - Number(a.cache.any) || Number(b.seeders > 0) - Number(a.seeders > 0) || b.score - a.score || b.seeders - a.seeders);
+  // A source that says 0 seeders for every result doesn't know them (AudiobookBay's pages
+  // don't show seeders): unknown, not dead — else they all sit behind "no seeders".
+  if (results.length && results.every((r) => r.seeders === 0 || r.seeders == null)) for (const r of results) r.seeders = null;
+  results.sort((a, b) => Number(b.cache.any) - Number(a.cache.any) || Number(b.seeders !== 0) - Number(a.seeders !== 0) || b.score - a.score || (b.seeders || 0) - (a.seeders || 0));
   // For "Report a problem": what was asked and how many came back / were kept.
   noteSearch(addon, url, {
     reply: data == null ? 'empty reply' : Array.isArray(list) ? `${list.length} results` : 'no result list',
@@ -268,6 +279,8 @@ function sameBook(list, title, author) {
   const long = tw.size >= 3;
   return list.map((r) => {
     const text = `${r.title} ${r.author || ''} ${r.narrator || ''}`;
+    // Clearly another book (of the same author or series): never this one, however it matches.
+    if (otherBook(r.title, t, author)) return { ...r, loose: true };
     let ok = false;
     if (matches(t, text)) {
       const hay = new Set(words(text));
@@ -312,5 +325,5 @@ async function markInstant(results) {
   const instant = await Promise.race([torboxCached(results.map((r) => r.hash)), new Promise((r) => setTimeout(() => r(new Set()), 8000))]);
   if (!instant.size) return null;
   const out = results.map((r) => (instant.has(r.hash) ? { ...r, cache: { ...r.cache, torbox: true, any: true } } : r));
-  return out.sort((a, b) => Number(b.cache.any) - Number(a.cache.any) || Number(b.seeders > 0) - Number(a.seeders > 0) || b.score - a.score || b.seeders - a.seeders);
+  return out.sort((a, b) => Number(b.cache.any) - Number(a.cache.any) || Number(b.seeders !== 0) - Number(a.seeders !== 0) || b.score - a.score || (b.seeders || 0) - (a.seeders || 0));
 }

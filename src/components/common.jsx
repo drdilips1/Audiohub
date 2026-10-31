@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { Component } from 'preact';
-import { hashHue, fmtDuration } from '../lib/format.js';
+import { hashHue, fmtDuration, cardCover } from '../lib/format.js';
 import { SOURCES, sourceOf } from '../sources/index.js';
 import { Icon } from './icons.jsx';
 import { nav } from '../lib/nav.js';
 import { progress as progressStore, useStoreKey, persisted, useStore, settings } from '../lib/store.js';
-import { useImage, coverFrame, frameStyle } from '../lib/image.js';
-import { activePalette } from '../lib/theme.js';
+import { useImage, coverFrame, frameStyle, frameTall } from '../lib/image.js';
+import { longPress } from './book-actions.jsx';
+import { useSquareCover, squareNow } from '../lib/meta.js';
+import { activePalette, isInk } from '../lib/theme.js';
 import { useMeta } from '../lib/meta.js';
 import { useTileRating } from '../lib/ratings.js';
 import { openExternal } from '../sources/summaries.js';
@@ -17,7 +19,12 @@ import { audioFormat } from '../sources/debrid.js';
 import { markNotInterested, notInterested, isNotInterested } from '../lib/taste.js';
 
 export function Cover({ book, class: cls = '', eager }) {
-  const { src, failed: proxyFailed } = useImage(book?.cover || '');
+  // A tall print cover: the square audiobook cover (Apple Books / Audible) instead, once found.
+  const [tall, setTall] = useState(false);
+  const square = useSquareCover(book?.kind === 'text' ? null : book, tall);
+  const { src, failed: proxyFailed } = useImage(square || cardCover(book?.cover || ''));
+  // A tall (or wide) cover is shown whole — not cropped to the square — on a blur of itself.
+  const [ratio, setRatio] = useState(0);
   const [failed, setFailed] = useState(!book?.cover);
   useEffect(() => setFailed(!book?.cover || proxyFailed), [book?.cover, proxyFailed]);
   const hue = hashHue(book?.title || '');
@@ -29,8 +36,12 @@ export function Cover({ book, class: cls = '', eager }) {
     coverFrame(src).then((f) => alive && setFrame(f));
     return () => (alive = false);
   }, [src]);
+  const whole = frame ? frameTall(frame) : ratio > 0 && (ratio < 0.88 || ratio > 1.14);
+  useEffect(() => {
+    if (whole && !square) setTall(true);
+  }, [whole, square]);
   return (
-    <div class={'cover ' + cls} style={{ '--h': hue }}>
+    <div class={'cover ' + cls + (whole ? ' whole' : '')} style={{ '--h': hue, ...(whole && src ? { '--cover-img': `url("${src}")` } : {}) }}>
       <div class="cover-fallback">
         <span class="cover-title">{String(book?.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</span>
         <span class="cover-author">{book?.author}</span>
@@ -45,8 +56,10 @@ export function Cover({ book, class: cls = '', eager }) {
           onError={() => setFailed(true)}
           onLoad={(e) => {
             // Open Library returns a 1x1 gif for missing covers.
-            if (e.currentTarget.naturalWidth < 10) setFailed(true);
-            else e.currentTarget.classList.add('loaded');
+            const im = e.currentTarget;
+            if (im.naturalWidth < 10) return setFailed(true);
+            setRatio(im.naturalWidth / im.naturalHeight);
+            im.classList.add('loaded');
           }}
         />
       )}
@@ -66,7 +79,7 @@ const PLAIN = { abs: 'Server', tb: 'Cloud', rd: 'Cloud', loc: 'Local' };
 
 export function SourceBadge({ uid, book }) {
   const key = sourceOf(uid || '');
-  const plain = activePalette(useStore(settings)) === 'paperink' && PLAIN[key];
+  const plain = isInk(activePalette(useStore(settings))) && PLAIN[key];
   if (plain) return <span class="badge">{plain}</span>;
   // Books from places without a source entry (e.g. direct ebook links) get a plain badge.
   const s = SOURCES[key] || { short: book?.addon || (book?.kind === 'text' ? 'Ebook' : 'Book'), hue: 210 };
@@ -169,8 +182,12 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
   const rt = useTileRating(book);
   const ss = useStoryShots(book);
   const pct = prog ? Math.round((prog.percent || 0) * 100) : 0;
+  // Press and hold: the book's actions (play, download, tag, finished…).
+  const hold = useMemo(() => longPress(() => bookRef.current), []);
+  const bookRef = useRef(book);
+  bookRef.current = book;
   return (
-    <button class={'book-card' + (wide ? ' wide' : '')} onClick={() => (isReaderEbook(book) ? nav.push('reader', { book }) : nav.push('book', { book }))}>
+    <button class={'book-card' + (wide ? ' wide' : '')} {...hold} onClick={() => (isReaderEbook(book) ? nav.push('reader', { book }) : nav.push('book', { book }))}>
       <div class="book-card-cover">
         <Cover book={book} />
         {/* Recommendations: the ✕ (Not interested) takes the corner, off the match %. */}
@@ -288,6 +305,8 @@ export function Row({ title, subtitle, load, items: given, icon, onMore, deps = 
         <div>
           <h2>
             {icon && <Icon name={icon} size={18} />} {title}
+            {/* How many books this source / shelf has (with "See all"). */}
+            {onMore && items?.length > 0 && <span class="row-count">{items.length}</span>}
           </h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
@@ -311,7 +330,7 @@ export function Row({ title, subtitle, load, items: given, icon, onMore, deps = 
         )}
         {onMore && (
           <span class="link-btn see-all">
-            See all{items ? ` ${items.length}` : ''} ›
+            See all ›
           </span>
         )}
       </header>
@@ -363,7 +382,7 @@ export function AskButton({ book = null, cls = 'icon-btn ask-btn glass' }) {
       aria-label={book ? 'Ask AI about this book' : 'Ask AI about your books'}
       onClick={() => nav.push('ask', book ? { book, description: book.description || '' } : {})}
     >
-      <Icon name="sparkle" size={cls.includes('hdr-btn') ? 18 : 20} />
+      <Icon name="ai" size={cls.includes('hdr-btn') ? 18 : 20} />
     </button>
   );
 }

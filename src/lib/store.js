@@ -106,7 +106,7 @@ export function useStoreKey(store, key) {
 export const settings = persisted('settings', {
   mode: 'system', // system | light | dark | amoled
   accent: 'brass',
-  palette: 'paperink', // colour theme (see PALETTES in theme.js)
+  palette: 'ivory', // colour theme (see PALETTES in theme.js)
   playerBg: 'cover', // cover | living | plain | photo | wall:<name>
   playerDim: 0.45, // how much the player background is darkened (0–0.8)
   dynamicColor: true,
@@ -286,8 +286,10 @@ export function importBackup(text) {
 }
 
 export const debrid = persisted('debrid', { torbox: '', realdebrid: '' });
-export const hardcover = persisted('hardcover', { token: '', username: '' });
-export const goodreads = persisted('goodreads', { books: [], importedAt: 0 });
+// Send to Kindle: Kindle addresses ([{ name, email }]) and Gmail senders ([{ email, password }] — an app password).
+export const kindle = persisted('kindle', { targets: [], senders: [] });
+// Your own tags per book: uid -> ['Psychology', …]
+export const bookTags = persisted('bookTags', {});
 // Ebook highlights and notes: uid -> [{ id, parts: [{ a, t }], text, note, at, book }] (see highlights.js)
 export const highlights = persisted('highlights', {});
 // Ids of highlights you removed (id -> when), so a backup or another device doesn't bring them back.
@@ -305,3 +307,5 @@ export function mergeHighlights(local, remote) {
   }
   return out;
 }
+export const hardcover = persisted('hardcover', { token: '', username: '' });
+export const goodreads = persisted('goodreads', { books: [], importedAt: 0 });

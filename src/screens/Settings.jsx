@@ -3,17 +3,17 @@ import { Native as Files, available as files, saveTextFile } from '../sources/lo
 import { ssBadges } from '../sources/storyshots.js';
 import { Icon } from '../components/icons.jsx';
 import { toast, AskButton } from '../components/common.jsx';
-import { settings, addons, abs, debrid, hardcover, goodreads, useStore, exportBackup, importBackup } from '../lib/store.js';
+import { settings, addons, abs, debrid, hardcover, goodreads, useStore, exportBackup, importBackup, kindle } from '../lib/store.js';
 import { notInterested } from '../lib/taste.js';
 import { SOURCES, absSrc, addonSrc, cloud, hc, gr, sourceOrder } from '../sources/index.js';
 import { clearHttpCache, isWeb, relayUrl, setRelayUrl, probeRelay, defaultRelayUrl } from '../lib/http.js';
 import { searchSources, sourceAddons } from '../sources/sourceaddons.js';
 import { ai, PROVIDERS as AI_PROVIDERS, testProvider } from '../lib/ai.js';
 import relayCode from '../../relay/index.ts?raw';
-import { ACCENTS, PALETTES, resolvedMode, activePalette } from '../lib/theme.js';
+import { ACCENTS, PALETTES, resolvedMode, activePalette, isInk } from '../lib/theme.js';
 import { WALLPAPERS, wallpaperUrl, saveCustom, useCustomWallpaper } from '../lib/wallpaper.js';
 import { APP_VERSION } from '../components/update.jsx';
-import { ReportCard } from '../components/report.jsx';
+import { ReportCard, SupportLinks } from '../components/report.jsx';
 import { PROVIDERS, clearMetaCache } from '../lib/meta.js';
 import { AccountCard, NameRow, VoicesCard, DownloadsCard, FindOrderCard } from './settings-extra.jsx';
 import { UpdateCard } from '../components/update.jsx';
@@ -1000,13 +1000,14 @@ function AddonLogo({ m }) {
 
 function AddonsCard() {
   const list = useStore(addons);
+  const [badLogo, setBadLogo] = useState({}); // addon id -> its picture doesn't load
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [raw, setRaw] = useState(null);
   return (
     <>
       <p class="muted pad-s">
-        Paste an addon link: InkShelf-style source addons (JSON on jsonkeeper etc.), Stremio-style manifests, or addon collections. Only install addons you trust.
+        Paste an addon link: a source addon (a JSON link), a Stremio-style manifest, or an addon collection. Only install addons you trust.
       </p>
       {list.map((a) => (
         <div class="set-row addon-row">
@@ -1017,6 +1018,18 @@ function AddonsCard() {
               v{a.manifest.version} · {a.kind === 'source' ? 'source addon · results in Search & book pages' : `${(a.manifest.catalogs || []).length} catalogs`}
             </small>
           </div>
+          <button
+            class="icon-btn"
+            aria-label="Copy the addon's JSON"
+            title="Copy the addon's JSON (to share it, or host it on your own worker)"
+            onClick={async () => {
+              const text = JSON.stringify(a.manifest, null, 2);
+              const { copyText } = await import('../lib/report.js');
+              toast((await copyText(text)) ? `Copied ${a.manifest.name}'s JSON` : 'Could not copy');
+            }}
+          >
+            <Icon name="link" size={18} />
+          </button>
           <button class="icon-btn" aria-label="Remove addon" onClick={() => addonSrc.uninstall(a.manifest.id)}>
             <Icon name="trash" size={18} />
           </button>
@@ -1244,7 +1257,7 @@ export function Settings() {
                   class={'palette' + (activePalette(st, light ? 'light' : 'dark') === p.id && !(st.mode === 'amoled' && !light) ? ' active' : '')}
                   style={{ background: `linear-gradient(160deg, ${p.swatch[0]} 45%, ${p.swatch[1]})`, color: p.light ? '#1b1b1f' : '#f1eef8' }}
                   // Shown at once (switches to that mode), and kept for that mode when you go back to "Like phone".
-                  onClick={() => settings.patch({ palette: p.id, [light ? 'paletteLight' : 'paletteDark']: p.id, mode: light ? 'light' : 'dark' })}
+                  onClick={() => settings.patch({ palette: p.id, [light ? 'paletteLight' : 'paletteDark']: p.id, mode: light ? 'light' : 'dark', ...(p.accent ? { accent: p.accent } : {}) })}
                 >
                   <span class="palette-dot" />
                   {p.name}
@@ -1259,7 +1272,7 @@ export function Settings() {
             </div>
           </div>
         ))}
-        {activePalette(st) !== 'paperink' && <div class="set-row column">
+        {!isInk(activePalette(st)) && <div class="set-row column">
           <b>Accent</b>
           <div class="accent-grid">
             {Object.entries(ACCENTS).map(([k, a]) => (
@@ -1284,7 +1297,7 @@ export function Settings() {
         <Stepper label="Skip forward" value={st.skipForward} options={[10, 15, 30, 45, 60]} fmt={(v) => v + 's'} onChange={(v) => settings.patch({ skipForward: v })} />
       </Section>
 
-      <Section icon="sparkle" title="AI (bookseller & story helper)">
+      <Section icon="ai" title="AI (bookseller & story helper)">
         <AiCard />
       </Section>
 
@@ -1311,7 +1324,12 @@ export function Settings() {
       </Section>
 
       <p class="set-group">Help</p>
-      <Section icon="alert" title="Report a problem">
+      <button class="set-link" onClick={() => import('../components/whats-new.jsx').then((m) => m.showWhatsNew())}>
+        <Icon name="sparkle" size={18} /> What’s new in this version
+      </button>
+      <Section icon="alert" title="Issues & support">
+        <SupportLinks />
+        <b class="set-sub">Report a problem</b>
         <ReportCard />
       </Section>
 
@@ -1355,35 +1373,88 @@ function AutoSendStatus() {
   );
 }
 
-/** Your Kindle's e-mail address: Kindle buttons then open your e-mail app, addressed and with the book attached. */
+/** Send to Kindle: your Kindles (name + @kindle.com address) and the Gmail account(s) that send to them. */
 function KindleCard() {
-  const st = useStore(settings);
-  const [v, setV] = useState(st.kindleEmail || '');
-  const ok = !v.trim() || /^[^\s@]+@(free\.)?kindle\.(com|cn)$/i.test(v.trim());
+  const k = useStore(kindle);
+  const [t, setT] = useState({ name: '', email: '' });
+  const [g, setG] = useState({ email: '', password: '' });
+  const okKindle = /^[^\s@]+@(free\.)?kindle\.(com|cn)$/i.test(t.email.trim());
+  const okGmail = /^[^\s@]+@(gmail|googlemail)\.com$/i.test(g.email.trim()) || /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(g.email.trim());
+  const okPass = g.password.replace(/\s/g, '').length === 16;
+  const remove = (key, i) => kindle.set((x) => ({ ...x, [key]: x[key].filter((_, j) => j !== i) }));
   return (
     <>
       <p class="muted">
-        Enter your Kindle's e-mail address. Kindle buttons then open your e-mail app with the book attached and the address filled in — just tap Send. Without it, they open the share menu
-        (pick the Kindle app there).
+        With a Kindle and a Gmail account below, Kindle buttons e-mail the book <b>straight to the Kindle</b> — no e-mail app. With several Kindles, you pick one (or all) each
+        time. Without a Gmail account, Kindle buttons open your e-mail app instead.
       </p>
-      <p class="muted small">
-        Find the address and allow your own e-mail: <b>amazon.com → Manage Your Content and Devices → Preferences → Personal Document Settings</b>. Add the e-mail you send from to the
-        "Approved Personal Document E-mail List". EPUB and PDF work.
-      </p>
+
+      <b class="set-sub">Kindles</b>
+      {k.targets.map((x, i) => (
+        <div class="set-row">
+          <div>
+            <b>{x.name}</b>
+            <small>{x.email}</small>
+          </div>
+          <button class="icon-btn" aria-label={`Remove ${x.name}`} onClick={() => remove('targets', i)}>
+            <Icon name="trash" size={18} />
+          </button>
+        </div>
+      ))}
       <form
-        class="set-form inline"
+        class="set-form kindle-form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!ok) return toast('That doesn\'t look like a Kindle address (…@kindle.com)');
-          settings.patch({ kindleEmail: v.trim() });
-          toast(v.trim() ? 'Saved — Kindle buttons will e-mail books there' : 'Removed');
+          if (!okKindle) return toast("That doesn't look like a Kindle address (…@kindle.com)");
+          kindle.set((x) => ({ ...x, targets: [...x.targets.filter((y) => y.email.toLowerCase() !== t.email.trim().toLowerCase()), { name: t.name.trim() || `Kindle ${x.targets.length + 1}`, email: t.email.trim() }] }));
+          setT({ name: '', email: '' });
+          toast('Kindle added');
         }}
       >
-        <input type="email" value={v} placeholder="yourname@kindle.com" autocapitalize="off" autocorrect="off" spellcheck={false} onInput={(e) => setV(e.currentTarget.value)} />
-        <button class="btn primary" disabled={v.trim() === (st.kindleEmail || '')}>
-          Save
+        <input value={t.name} placeholder="Name, e.g. Pooja's Kindle" onInput={(e) => setT({ ...t, name: e.currentTarget.value })} />
+        <input type="email" value={t.email} placeholder="name_abc123@kindle.com" autocapitalize="off" autocorrect="off" spellcheck={false} onInput={(e) => setT({ ...t, email: e.currentTarget.value })} />
+        <button class="btn primary" disabled={!t.email.trim()}>
+          <Icon name="plus" size={16} /> Add Kindle
         </button>
       </form>
+      <p class="muted small">
+        Find a Kindle's address: <b>amazon.com → Manage Your Content and Devices → Preferences → Personal Document Settings</b>.
+      </p>
+
+      <b class="set-sub">Send from (Gmail)</b>
+      {k.senders.map((x, i) => (
+        <div class="set-row">
+          <div>
+            <b>{x.email}</b>
+            <small>App password saved on this phone</small>
+          </div>
+          <button class="icon-btn" aria-label={`Remove ${x.email}`} onClick={() => remove('senders', i)}>
+            <Icon name="trash" size={18} />
+          </button>
+        </div>
+      ))}
+      <form
+        class="set-form kindle-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!okGmail) return toast('Enter the Gmail address to send from');
+          if (!okPass) return toast('An app password is 16 letters (Google shows it as 4 groups of 4)');
+          kindle.set((x) => ({ ...x, senders: [...x.senders.filter((y) => y.email.toLowerCase() !== g.email.trim().toLowerCase()), { email: g.email.trim(), password: g.password.replace(/\s/g, '') }] }));
+          setG({ email: '', password: '' });
+          toast('Gmail added — Kindle buttons now send directly');
+        }}
+      >
+        <input type="email" value={g.email} placeholder="you@gmail.com" autocapitalize="off" autocorrect="off" spellcheck={false} onInput={(e) => setG({ ...g, email: e.currentTarget.value })} />
+        <input type="password" value={g.password} placeholder="App password (16 letters)" autocapitalize="off" autocorrect="off" spellcheck={false} onInput={(e) => setG({ ...g, password: e.currentTarget.value })} />
+        <button class="btn primary" disabled={!g.email.trim() || !g.password.trim()}>
+          <Icon name="plus" size={16} /> Add Gmail
+        </button>
+      </form>
+      <p class="muted small">
+        <b>App password</b> (not your normal password): turn on 2-Step Verification in your Google account, then <b>myaccount.google.com/apppasswords</b> → create one named
+        "Audiohub" → copy the 16 letters here. Then add this Gmail address to each Kindle's <b>Approved Personal Document E-mail List</b> (same Amazon page as above). EPUB and PDF
+        work; Gmail sends books up to about 18 MB.
+      </p>
     </>
   );
 }

@@ -29,7 +29,7 @@ async function understand(said) {
     `Someone said to their audiobook app: "${said}"${playing}
 It comes from speech recognition, so it may be misheard: Indian-accented English, Hindi or Hinglish, names written as they sounded ("dumble door" = Dumbledore, "harry potter ki pehli train" = Harry boarding the Hogwarts Express). Work out what they meant.
 Work out which book they mean and where in it the moment they describe happens. The JSON is always in English, with names spelled as in the book.
-First decide the action: "scene" (play a moment of a book), "play_book" (play a book itself), "find" (find or recommend books — "find a book on consciousness", "something short and funny"), "question" (they ask about a book or books — what, why, explain, summarise, "what are the 12 rules in 12 Rules for Life" — instead of asking to play; title: the book it's about, "" if it's about books in general), or a control of what's playing: "pause", "resume", "rewind", "forward" (with "seconds"), "next_chapter", "previous_chapter", "go_chapter" (with "chapter"), "speed" (with "speed", e.g. 1.25), "sleep" (with "minutes", or 0 to cancel, -1 for the end of the chapter), "bookmark"; else "unknown".
+First decide the action: "scene" (play a moment of a book), "play_book" (play a book itself), "find" (find or recommend books — "find a book on consciousness", "something short and funny"), "question" (they ask about a book or books — what, why, explain, summarise, "what are the 12 rules in 12 Rules for Life" — instead of asking to play; title: the book it's about, "" if it's about books in general), or a control of what's playing: "pause", "resume", "rewind", "forward" (with "seconds"), "next_chapter", "previous_chapter", "go_chapter" (with "chapter"), "speed" (with "speed", e.g. 1.25), "sleep" (with "minutes", or 0 to cancel, -1 for the end of the chapter), "bookmark"; else "unknown". "Play <a title>" is always "play_book" (even while another book is playing or paused); "resume" / "pause" only when no book is named. Questions (what, why, who, explain, summarise, the meaning of…) are always "question", never a control.
 Return JSON: {"action":"scene","seconds":0,"speed":0,"minutes":0,"title":"the book's title","book":"","author":"","moment":true,"wholeChapter":false,"scene":"the moment, in under 12 words","chapter":0,"chapterTitle":"","at":0.0,"quote":"","keywords":[""]}
 - wholeChapter: true when they ask for the chapter a moment is in ("play the chapter where Harry finds the mirror"), not the moment itself.
 - moment: false when they only ask to play the book itself ("play The Secret by Rhonda Byrne") — then leave scene, chapter, quote and keywords empty.
@@ -90,6 +90,40 @@ async function findCopies(want, onHand = false) {
     return (loose ? 100 : 0) + order.indexOf(place) * 2 + (place === 'debrid' && src(b) !== first ? 1 : 0);
   };
   return out.sort((x, y) => rank(x) - rank(y)).map((x) => x.b);
+}
+
+/** Play the best audiobook torrent for this book from your source addons, or null. */
+async function fromSources(want, step) {
+  const cloud = await import('../sources/debrid.js');
+  const provider = cloud.preferredProvider(settings.get().debridPreferred);
+  if (!provider) return null;
+  const { searchSources } = await import('../sources/sourceaddons.js');
+  step(`Searching your sources for ${want.title}…`);
+  const found = new Map();
+  await Promise.race([
+    searchSources({ title: want.title, author: want.author || '' }, (name, list) => found.set(name, list || [])),
+    new Promise((r) => setTimeout(r, 25000)),
+  ]);
+  const ebookish = /\b(epub|pdf|mobi|azw3?|ebook)\b/i;
+  const list = [...found.values()]
+    .flat()
+    .filter((r) => r && !r.loose && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`));
+  if (!list.length) return null;
+  const ready = (r) => (provider === 'torbox' ? r.cache?.torbox : r.cache?.realdebrid) || false;
+  list.sort((x, y) => Number(ready(y)) - Number(ready(x)) || (y.seeders || 0) - (x.seeders || 0));
+  for (const r of list.slice(0, 3)) {
+    try {
+      step(`Getting ${want.title} from your ${provider === 'torbox' ? 'TorBox' : 'Real-Debrid'}…`);
+      const stub = await cloud.prepareMagnet(provider, r, (text) => step(text));
+      const details = await getDetails({ ...stub, title: want.title, author: want.author || r.author || stub.author });
+      if (!details?.tracks?.length && !details?.resolveTracks) continue;
+      player.playBook(details, { autoplay: true });
+      if (await loaded(false)) return details;
+    } catch (e) {
+      if (e.pending) throw Object.assign(new Error(`${want.title} is downloading in your ${provider === 'torbox' ? 'TorBox' : 'Real-Debrid'} — play it from Search when it's ready`), { want });
+    }
+  }
+  return null;
 }
 
 /** Asked for the chapter a moment is in, not the moment ("play the chapter where …")? */
@@ -230,6 +264,9 @@ export async function playScene(said, step = () => {}, preset = null) {
     } catch {}
     details = null;
   }
+  // Not yours yet: just play it — the best torrent from your sources (instant in TorBox /
+  // Real-Debrid first, then the most seeds), through your debrid service.
+  if (!details && justBook) details = await fromSources(want, step).catch(() => null);
   if (!details) {
     const e = new Error(copies.length ? `Couldn't open your copy of ${want.title} — showing it in Search` : `${want.title} isn't in your library — showing it in Search`);
     e.want = want;
@@ -405,7 +442,10 @@ export async function runCommand(said, step = () => {}, withAi = true) {
   if (action === 'unknown' || !want?.title) return { question: true, ...questionBook(want || {}) };
   // Jumping to a scene ("play when…", "the chapter where…") is switched off for now — it wasn't
   // reliable enough. Such a request goes to Ask AI as a question instead.
-  const sceneish = /\b(where|when|scene|story|moment|jab|jahan|jisme)\b/i.test(said);
+  // (Words of the title itself don't count: "play Where the Crawdads Sing" is a book.)
+  const titleWords = new Set(words(want.title || ''));
+  const rest = String(said).toLowerCase().split(/\s+/).filter((w) => !titleWords.has(w.replace(/[^\p{L}\p{N}']/gu, ''))).join(' ');
+  const sceneish = /\b(where|when|scene|moment|jab|jahan|jisme)\b/i.test(rest);
   if (action === 'scene' || (action === 'play_book' && sceneish)) return { question: true, ...questionBook(want) };
   want.moment = false;
   return playScene(said, step, want);
@@ -424,7 +464,8 @@ function questionBook(want) {
 /** "Play Sapiens", "resume The Secret by Rhonda Byrne": a book already on hand, by its title. */
 async function quickBook(said) {
   const m = String(said || '').trim().match(/^(?:play|resume|start|open|continue|listen to|sunao|chalao)\s+(?:the book\s+)?(.+?)(?:\s+by\s+(.+))?$/i);
-  if (!m || /\b(when|where|chapter|scene|part|jab|jahan)\b/i.test(m[1])) return null;
+  // "when / where" can be part of a title (Where the Crawdads Sing): a copy you have decides.
+  if (!m || /\b(chapter|scene|jab|jahan)\b/i.test(m[1])) return null;
   const want = { action: 'play_book', moment: false, title: m[1].trim(), author: (m[2] || '').trim() };
   const copies = await findCopies(want, true);
   return copies.length ? want : null;

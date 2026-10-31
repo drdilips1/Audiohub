@@ -2,6 +2,7 @@
 // and sync listening progress back to the server.
 import { isWeb, getJson, sendJson, qs, cleanUrl } from '../lib/http.js';
 import { abs } from '../lib/store.js';
+import { logError } from '../lib/report.js';
 
 const cfg = () => abs.get();
 const auth = () => ({ Authorization: `Bearer ${cfg().token}` });
@@ -241,7 +242,7 @@ function ebookOf(li) {
 
 async function startSession(id) {
   const s = await call(`/api/items/${id}/play`, { method: 'POST', body: {
-    deviceInfo: { clientName: 'Inkwell', deviceId: 'inkwell-android' },
+    deviceInfo: { clientName: 'Audiohub', deviceId: 'audiohub-android' },
     forceDirectPlay: true,
     mediaPlayer: 'html5',
     supportedMimeTypes: ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/webm', 'audio/x-m4b'],
@@ -257,8 +258,23 @@ async function startSession(id) {
     headers: { Authorization: `Bearer ${tok}` },
     index: i,
   }));
-  return { tracks, sessionId: s.id, startTime: s.currentTime || 0 };
+  // The server's own saved place and when it was saved (another app may be further on).
+  const mp = await call(`/api/me/progress/${id}`, { fresh: true }).catch(() => null);
+  const server = mp && mp.currentTime >= 0 ? { time: mp.currentTime || 0, updatedAt: mp.lastUpdate || 0, finished: !!mp.isFinished } : null;
+  session = { id: s.id, uid: 'abs:' + id, at: Date.now() };
+  return { tracks, sessionId: s.id, startTime: s.currentTime || 0, server };
 }
+
+// The playback session opened for the book playing: progress goes through it (the
+// official apps do the same), so the server works out the percentage and counts the
+// listening time. Without one (or once it's gone), progress is saved directly.
+let session = null;
+let lastError = '';
+const failed = (e) => {
+  const msg = e?.message || String(e);
+  if (msg !== lastError) logError('abs-sync', msg);
+  lastError = msg;
+};
 
 /**
  * Playback on one address failed or stalled: if the other address answers, point the
@@ -278,12 +294,91 @@ export async function switchTracks(tracks) {
   return moved ? now : '';
 }
 
-export async function syncProgress(uid, currentTime, duration, isFinished = false) {
+export async function syncProgress(uid, currentTime, duration, isFinished = false, timeListened = 0) {
   if (!connected() || !uid.startsWith('abs:')) return;
+  if (session?.uid === uid && !isFinished) {
+    try {
+      await call(`/api/session/${session.id}/sync`, { method: 'POST', body: { currentTime, timeListened: Math.max(0, Math.round(timeListened)), duration } });
+      lastError = '';
+      return;
+    } catch (e) {
+      // The session ended on the server (restarted, timed out): save directly from now on.
+      if (e?.status === 404) session = null;
+      else return failed(e);
+    }
+  }
   try {
     await call(`/api/me/progress/${uid.slice(4)}`, {
       method: 'PATCH',
       body: { currentTime, duration, progress: duration ? Math.min(1, currentTime / duration) : 0, isFinished },
     });
-  } catch {}
+    lastError = '';
+  } catch (e) {
+    failed(e);
+  }
+}
+
+/** Close the playback session (book stopped or another one started). */
+export async function closeSession(currentTime, duration, timeListened = 0) {
+  const s = session;
+  session = null;
+  if (!s || !connected()) return;
+  try {
+    // No place given: close without touching the server's saved place.
+    await call(`/api/session/${s.id}/close`, { method: 'POST', body: currentTime == null ? {} : { currentTime, timeListened: Math.max(0, Math.round(timeListened)), duration } });
+  } catch (e) {
+    if (e?.status !== 404) failed(e);
+  }
+}
+
+// ---- Your server's place for any copy of a book --------------------------------
+// Listening in another app (Absorb, the web player) moves the place on your server. A
+// book played here from another copy (TorBox, a download) follows it, and its place is
+// written back, so the two apps stay together.
+const absIds = new Map(); // book uid -> server item id ('' = none on the server)
+async function serverIdFor(book) {
+  if (!book?.uid) return '';
+  if (book.uid.startsWith('abs:')) return book.uid.slice(4);
+  if (absIds.has(book.uid)) return absIds.get(book.uid);
+  const [{ progress, library }, { sameWork }] = await Promise.all([import('../lib/store.js'), import('../lib/works.js')]);
+  const known = [...Object.values(progress.get()).map((p) => p?.book), ...Object.values(library.get())].find((b) => b?.uid?.startsWith('abs:') && sameWork(b, book));
+  let id = known ? known.uid.slice(4) : '';
+  if (!id) {
+    try {
+      const qb = await import('./qbit.js');
+      const hit = await qb.onServer({ title: book.title, author: book.author || '' });
+      if (hit?.uid?.startsWith('abs:')) id = hit.uid.slice(4);
+    } catch {}
+  }
+  absIds.set(book.uid, id);
+  return id;
+}
+
+/** Your server's place for this book (any copy): { id, time, updatedAt, finished, duration } or null. */
+export async function serverPlace(book) {
+  if (!connected()) return null;
+  const id = await serverIdFor(book).catch(() => '');
+  if (!id) return null;
+  const mp = await call(`/api/me/progress/${id}`, { fresh: true }).catch(() => null);
+  if (!mp || !(mp.currentTime >= 0)) return null;
+  if (mp.duration) absLen.set(id, mp.duration);
+  return { id, time: mp.currentTime || 0, updatedAt: mp.lastUpdate || 0, finished: !!mp.isFinished, duration: mp.duration || 0 };
+}
+const absLen = new Map(); // server item id -> its length (seconds)
+
+/** Write this phone's place for a book played from another copy to its server copy. */
+export async function mirrorPlace(book, currentTime, duration, isFinished = false) {
+  if (!connected() || book?.uid?.startsWith('abs:')) return;
+  const id = absIds.get(book?.uid);
+  if (!id) return;
+  // In the server copy's own time (lengths differ by a few seconds of intro); another
+  // edition (much longer or shorter) is left alone.
+  const len = absLen.get(id) || duration;
+  if (!len || !duration || Math.abs(1 - duration / len) > 0.06) return;
+  const t = currentTime * (len / duration);
+  try {
+    await call(`/api/me/progress/${id}`, { method: 'PATCH', body: { currentTime: t, duration: len, progress: Math.min(1, t / len), isFinished } });
+  } catch (e) {
+    failed(e);
+  }
 }

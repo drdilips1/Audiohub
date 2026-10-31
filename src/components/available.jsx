@@ -7,7 +7,7 @@ import * as player from '../lib/player.js';
 import { getDetails, findOwned, localSrc, absSrc } from '../sources/index.js';
 import * as qb from '../sources/qbit.js';
 import { downloads } from '../lib/downloads.js';
-import { savedEbooks, cloudReaderBook } from '../lib/epub.js';
+import { savedEbooks, cloudReaderBook, badEbooks, isBadEbook } from '../lib/epub.js';
 import { mainTitle, matches } from '../lib/match.js';
 import { useQuickSources, quickPlay, readerBookFor } from './source-results.jsx';
 import { wait } from '../lib/waitlist.js';
@@ -27,6 +27,7 @@ export function Available({ book, editions }) {
   const local = useStore(localSrc.localCfg);
   const dls = useStore(downloads);
   const kept = useStore(savedEbooks);
+  const bad = useStore(badEbooks);
   const quick = useQuickSources(book.uid);
   const [owned, setOwned] = useState(null);
   const [onAbs, setOnAbs] = useState(null);
@@ -59,7 +60,7 @@ export function Available({ book, editions }) {
     const sn = surname(book.author);
     const same = (b) => b && b.uid !== book.uid && matches(t, `${b.title || ''} ${b.rawName || ''}`) && (!sn || !b.author || surname(b.author) === sn || String(b.author).toLowerCase().includes(sn));
     const out = [];
-    const add = (c) => !out.some((x) => x.key === c.key) && out.push(c);
+    const add = (c) => !out.some((x) => x.key === c.key) && !isBadEbook(c.act?.book) && out.push(c);
     const listen = (b) => ({ kind: 'listen', book: b });
     const read = (b) => ({ kind: 'read', book: b });
 
@@ -85,13 +86,15 @@ export function Available({ book, editions }) {
     // Source results that play at once / open in the reader.
     for (const { r, via } of quick?.instant || []) add({ key: 'q:' + r.key, icon: 'play', label: 'Play now', sub: `instant · ${SVC[via]}`, act: { kind: 'quick', r, via } });
     // Not ready yet: fetched through TorBox / Real-Debrid, plays when it's there.
-    for (const { r, via } of quick?.fetch || []) add({ key: 'f:' + r.key, icon: 'download', label: 'Get & play', sub: `${SVC[via]} · ${r.seeders} seed${r.seeders === 1 ? '' : 's'}${r.size ? ` · ${fmtMb(r.size)}` : ''}`, act: { kind: 'fetch', r, via } });
+    for (const { r, via } of quick?.fetch || []) add({ key: 'f:' + r.key, icon: 'download', label: 'Get & play', sub: `${SVC[via]}${r.seeders == null ? '' : ` · ${r.seeders} seed${r.seeders === 1 ? '' : 's'}`}${r.size ? ` · ${fmtMb(r.size)}` : ''}`, act: { kind: 'fetch', r, via } });
     for (const r of quick?.readable || []) {
       const rb = readerBookFor(r, book);
       if (rb) add({ key: 'qr:' + r.key, icon: 'book', label: `Read ${rb.ebookFormat || ''}`.trim(), sub: 'from sources', act: read(rb) });
     }
-    return out.slice(0, 8);
-  }, [book, editions, owned, local, dls, kept, quick, onAbs]);
+    // An audiobook app: ways to listen first, then ebooks to read.
+    const reading = (c) => c.icon === 'book';
+    return [...out.filter((c) => !reading(c)), ...out.filter(reading)].slice(0, 8);
+  }, [book, editions, owned, local, dls, kept, quick, onAbs, bad]);
 
   const run = async (c) => {
     const a = c.act;

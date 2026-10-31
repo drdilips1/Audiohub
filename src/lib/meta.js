@@ -274,3 +274,57 @@ export async function findMissingCovers(books, onProgress = () => {}, onFound = 
   );
   return { found, total: todo.length };
 }
+
+// ---- Square audiobook covers ---------------------------------------------------
+// A book whose cover is a tall (print) cover gets the square audiobook cover from Apple
+// Books (then Audible) when one exists: it fills a square tile without being cut.
+const squares = persisted('squareCovers', {}, { delay: 3000 }); // key -> { t, u }
+const squarePending = new Map();
+const SQUARE_MISS = 7 * 24 * 3600e3;
+const squareKey = (book) => keyFor(`${mainTitle(book?.title || '')} ${String(book?.author || '').split(',')[0]}`);
+/** The square audiobook cover already found for this book ('' none / not looked up). */
+export const squareNow = (book) => squares.get()[squareKey(book)]?.u || '';
+export function squareCover(book) {
+  const key = squareKey(book);
+  if (!key || !book?.title) return Promise.resolve('');
+  const hit = squares.get()[key];
+  if (hit && (hit.u || Date.now() - hit.t < SQUARE_MISS)) return Promise.resolve(hit.u || '');
+  if (squarePending.has(key)) return squarePending.get(key);
+  const title = mainTitle(book.title);
+  const q = [title, String(book.author || '').split(',')[0]].filter(Boolean).join(' ');
+  const p = schedule(async () => {
+    let u = '';
+    try {
+      const d = await getJson('https://itunes.apple.com/search?' + qs({ term: q, media: 'audiobook', limit: 8 }), { timeout: 12000 });
+      const r = (d.results || []).find((x) => plausible(title, x.collectionName || x.trackName) && plausible(x.collectionName || x.trackName, title));
+      if (r?.artworkUrl100) u = r.artworkUrl100.replace(/^http:/, 'https:').replace(/\/\d+x\d+bb\./, '/600x600bb.');
+    } catch {}
+    if (!u) {
+      try {
+        const d = await getJson('https://api.audible.com/1.0/catalog/products?' + qs({ keywords: q, num_results: 5, products_sort_by: 'Relevance', response_groups: 'media', image_sizes: '500' }), { timeout: 12000 });
+        const r = (d.products || []).find((x) => plausible(title, x.title) && plausible(x.title, title));
+        u = r?.product_images?.['500'] || '';
+      } catch {}
+    }
+    squares.set((c) => {
+      const next = { ...c, [key]: { t: Date.now(), u } };
+      const keys = Object.keys(next);
+      if (keys.length > 600) keys.slice(0, keys.length - 500).forEach((k) => delete next[k]);
+      return next;
+    });
+    return u;
+  }, true).finally(() => squarePending.delete(key));
+  squarePending.set(key, p);
+  return p;
+}
+/** Hook: the square audiobook cover for a book with a tall cover (when `want`), else ''. */
+export function useSquareCover(book, want) {
+  const [u, setU] = useState(() => (book ? squareNow(book) : ''));
+  useEffect(() => {
+    if (!book || !want || settings.get().squareCovers === false) return;
+    let alive = true;
+    squareCover(book).then((x) => alive && x && setU(x));
+    return () => (alive = false);
+  }, [book?.title, want]);
+  return settings.get().squareCovers === false ? '' : u;
+}

@@ -15,6 +15,7 @@ import { Fragment } from 'preact';
 import { sameWork } from '../lib/works.js';
 import { progress, settings, addons, abs, debrid, hardcover, goodreads, useStore, persisted, library, toggleLibrary, hideFromContinue } from '../lib/store.js';
 import { greeting, firstName, fmtDuration, hiResCover } from '../lib/format.js';
+import { useSquareCover } from '../lib/meta.js';
 import { account } from '../lib/sync.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { GENRES } from './genres.js';
@@ -179,6 +180,9 @@ function FeatureSlide({ book: raw, active }) {
   const saved = !!useStore(library)[b.uid];
   const rt = useTileRating(active ? b : null);
   const playable = b.kind === 'audio';
+  // Audiobooks: the square audiobook cover (Apple Books / Audible), not a cropped print cover.
+  const square = useSquareCover(b.kind === 'text' ? null : b, true);
+  const heroCover = square || hiResCover(b.cover);
   const bits = [
     (meta?.genres || [])[0],
     b.year || meta?.year,
@@ -186,9 +190,9 @@ function FeatureSlide({ book: raw, active }) {
   ].filter(Boolean);
   return (
     <div class={'feature-slide' + (active ? ' on' : '')} aria-hidden={!active}>
-      <div class="feature-art">{b.cover ? <BgImage url={hiResCover(b.cover)} /> : <div class="feature-art-empty" />}</div>
+      <div class="feature-art">{b.cover ? <BgImage url={heroCover} /> : <div class="feature-art-empty" />}</div>
       <div class="feature-content">
-        <div class="feature-poster">{b.cover && <BgImage url={hiResCover(b.cover)} />}</div>
+        <div class="feature-poster">{b.cover && <BgImage url={heroCover} />}</div>
       {active && (
         <div class="feature-body">
           <div class="feature-badges">
@@ -591,17 +595,8 @@ export function Home() {
             <path d="M170 300 h26 l14 -34 l20 70 l22 -96 l22 112 l18 -52 h30 l14 22 h24" fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           <div class="home-hello">
-            {me ? (
-              <>
-                <small>{greeting()},</small>
-                <b>{me}</b>
-              </>
-            ) : (
-              <>
-                <b>{greeting()}</b>
-                <small>{today()}</small>
-              </>
-            )}
+            <b>{me ? `${greeting()}, ${me}` : greeting()}</b>
+            <small>{today()}</small>
           </div>
         </div>
         <div class="home-top-actions">

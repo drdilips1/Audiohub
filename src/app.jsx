@@ -9,7 +9,6 @@ import { onIncoming } from './sources/local.js';
 onIncoming((book, error) => (book ? setTimeout(() => nav.push('reader', { book }), 300) : error && toast(error)));
 import { DriveMode, openDrive } from './components/drive-mode.jsx';
 import { SceneHost, openScene } from './components/scene-cmd.jsx';
-import { WhatsNew } from './components/whats-new.jsx';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { App as CapApp } from '@capacitor/app';
@@ -38,11 +37,14 @@ import { PullToRefresh } from './components/pull-refresh.jsx';
 import { clearHttpCache } from './lib/http.js';
 import { cloud, hc, gr } from './sources/index.js';
 import { toast } from './components/common.jsx';
+import { KindleChooser } from './components/kindle-chooser.jsx';
+import { WhatsNew } from './components/whats-new.jsx';
+import { BookActionsSheet } from './components/book-actions.jsx';
 
 const TABS = [
   ['home', 'Home', 'home'],
   ['discover', 'Discover', 'search'],
-  ['podcasts', 'Podcasts', 'mic'],
+  ['podcasts', 'Podcasts', 'podcast'],
   ['library', 'Library', 'library'],
   ['settings', 'Settings', 'settings'],
 ];
@@ -168,9 +170,11 @@ export function App() {
       {route.overlay === 'player' && <FullPlayer />}
       {route.overlay === 'drive' && <DriveMode />}
       <SceneHost />
-      <WhatsNew />
       <UpdatePrompt />
       <StoryShotsSheet />
+      <KindleChooser />
+      <WhatsNew />
+      <BookActionsSheet />
       <Toaster />
     </div>
   );

@@ -58,7 +58,9 @@ export function hashHue(str = '') {
 /** First name for the greeting: the one you typed in Settings, else your sign-in's name or email. */
 export function firstName(typed, account = {}) {
   const pick = (s) => String(s || '').trim().split(/\s+/)[0] || '';
-  if (String(typed || '').trim()) return String(typed).trim().slice(0, 24);
+  const t = String(typed || '').trim();
+  // Something typed without letters (a lone "." or "-") means "no name": greet without one.
+  if (t) return /\p{L}/u.test(t) ? t.slice(0, 24) : '';
   if (account.name) return pick(account.name);
   // dilip.aiims@… → Dilip (only a plain word; skip addresses like x7f2k@…)
   const w = String(account.email || '').split('@')[0].split(/[._\-+\d]/)[0];
@@ -85,6 +87,17 @@ export function debounce(fn, ms) {
  * The largest version of a cover the host offers (Audible/Amazon, Apple,
  * Open Library, Google Books), so a big banner isn't a blown-up thumbnail.
  */
+/** A sharp but not huge cover for cards and rows (about 500 px): small thumbnails look blurry. */
+export function cardCover(url) {
+  if (!url) return url;
+  let u = String(url);
+  if (/media-amazon\.com|images-amazon\.com|ssl-images-amazon/.test(u)) u = u.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png)/i, '._SL500_.$1');
+  else if (/mzstatic\.com/.test(u)) u = u.replace(/\/\d+x\d+(bb|cc)?(-\d+)?\.(jpg|png|webp)$/i, '/600x600bb.$3');
+  else if (/covers\.openlibrary\.org/.test(u)) u = u.replace(/-S\.jpg/, '-M.jpg');
+  else if (/books\.google|googleusercontent/.test(u)) u = u.replace(/&edge=curl/, '');
+  return u;
+}
+
 export function hiResCover(url) {
   if (!url) return url;
   let u = String(url);

@@ -9,7 +9,7 @@ import { useStore } from '../lib/store.js';
 import { matches } from '../lib/match.js';
 import { localSrc, cloud } from '../sources/index.js';
 import { savedEbooks, loadCloudEbook, directEbookFile, directReaderBook } from '../lib/epub.js';
-import { searchSources } from '../sources/sourceaddons.js';
+import { searchSources, sourceLabel } from '../sources/sourceaddons.js';
 
 const READER = /#ebook$/;
 const fmtMb = (n) => (n ? ` · ${(n / 1048576).toFixed(1)} MB` : '');
@@ -144,7 +144,7 @@ export function EbookSearchResults({ q }) {
                 <b>{h.r.title || h.file.name}</b>
                 <small>
                   {h.file.format}
-                  {fmtMb(h.r.size)} · {h.source}
+                  {fmtMb(h.r.size)} · {sourceLabel(h.source)}
                 </small>
               </div>
               {readable && (

@@ -9,7 +9,7 @@ const Web = registerPlugin('InkwellWeb');
 const native = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('InkwellWeb');
 const REPO = 'https://github.com/drdilips1/audiohub';
 const KEY = 'inkwell:errorLog';
-const MAX = 40;
+const MAX = 80;
 
 // Addresses and messages with anything secret-looking blanked out.
 export const redact = (s) =>
@@ -48,6 +48,37 @@ export function clearErrors() {
   save();
 }
 
+// Detailed logging (Settings → Issues & support): also keeps the app's warnings and
+// console errors, for a hard-to-catch problem. Off by default.
+const DETAIL = 'inkwell:detailLog';
+export const detailedLog = () => {
+  try {
+    return localStorage.getItem(DETAIL) === '1';
+  } catch {
+    return false;
+  }
+};
+export function setDetailedLog(on) {
+  try {
+    localStorage.setItem(DETAIL, on ? '1' : '0');
+  } catch {}
+}
+if (typeof console !== 'undefined') {
+  for (const level of ['warn', 'error']) {
+    const orig = console[level].bind(console);
+    console[level] = (...args) => {
+      orig(...args);
+      if (!detailedLog()) return;
+      try {
+        logError(`console.${level}`, args.map((x) => (x?.message ? x.message : typeof x === 'string' ? x : String(JSON.stringify(x)).slice(0, 200))).join(' '));
+      } catch {}
+    };
+  }
+}
+
+export const ISSUES_URL = `${REPO}/issues`;
+export const featureUrl = () => `${REPO}/issues/new?title=${encodeURIComponent('Idea: ')}&labels=enhancement`;
+
 // Catch what the app doesn't handle itself.
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (e) => logError('crash', e.message || e.error));
@@ -58,6 +89,23 @@ const when = (t) => {
   const d = new Date(t);
   return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 };
+
+// How full the web storage is (about 5 MB for everything): total and the biggest parts.
+function storageLine() {
+  const sizes = [];
+  let total = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const n = k.length + (localStorage.getItem(k) || '').length;
+      total += n;
+      sizes.push([k.replace(/^inkwell:/, ''), n]);
+    }
+  } catch {}
+  const kb = (n) => `${Math.round(n / 1024)} KB`;
+  const top = sizes.sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k} ${kb(n)}`).join(', ');
+  return `Storage: ${kb(total)} used${top ? ` (${top})` : ''}`;
+}
 
 /** The report text. `setup` = short lines describing what's configured (no secrets). */
 export function buildReport({ note = '', version = '', setup = [] } = {}) {
@@ -73,6 +121,7 @@ export function buildReport({ note = '', version = '', setup = [] } = {}) {
     `Device: ${navigator.userAgent.replace(/\s*\(KHTML.*$/, '').slice(0, 140)}`,
     `Screen: ${screen}`,
     `Time: ${when(Date.now())} · Online: ${navigator.onLine ? 'yes' : 'no'}`,
+    storageLine(),
     '',
     'Set up:',
     ...(setup.length ? setup.map((l) => `- ${l}`) : ['- (nothing)']),

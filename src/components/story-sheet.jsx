@@ -19,7 +19,7 @@ export function StorySheet({ close, start = '' }) {
     return (
       <div class="story">
         <h3>
-          <Icon name="sparkle" size={18} /> Story helper
+          <Icon name="ai" size={18} /> Story helper
         </h3>
         <p class="muted">Recaps and the spoiler-free character guide use a free AI service (Groq or OpenRouter). Add a free key once in Settings → AI.</p>
         <button

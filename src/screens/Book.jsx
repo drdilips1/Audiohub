@@ -19,6 +19,7 @@ import {
   localSrc,
 } from "../sources/index.js";
 import { library, progress, toggleLibrary, useStore } from "../lib/store.js";
+import { BookTags } from "../components/book-tags.jsx";
 import { fmtDuration, fmtTime } from "../lib/format.js";
 import { nav, useBackClose } from "../lib/nav.js";
 import * as qb from "../sources/qbit.js";
@@ -148,10 +149,10 @@ export function Book({ book: initial }) {
             {book.source !== "pod" && <AskButton book={book} glass />}
             <button
               class={"icon-btn glass" + (saved ? " liked" : "")}
-              aria-label={saved ? "Remove from library" : "Save to library"}
+              aria-label={saved ? "Remove from library" : "Add to library"}
               onClick={() => {
                 toggleLibrary(book);
-                toast(saved ? "Removed from library" : "Saved to library");
+                toast(saved ? "Removed from your library" : "Added to your library (not downloaded — use Download for that)");
               }}
             >
               <Icon name="heart" fill={saved} />
@@ -319,13 +320,13 @@ export function Book({ book: initial }) {
                   <Icon name="download" size={18} />
                 </span>
                 <span class="tool-text">
-                  <b>{dl?.status === "error" ? "Retry download" : dl?.status === "paused" ? "Resume download" : "Offline"}</b>
+                  <b>{dl?.status === "error" ? "Retry download" : dl?.status === "paused" ? "Resume download" : "Download"}</b>
                   <small>
                     {dl?.status === "error"
                       ? dl.error || "Download failed"
                       : dl?.status === "paused"
                         ? `${dl.done || 0} of ${dl.total || "?"} parts saved`
-                        : "Save to this phone"}
+                        : "Plays without internet"}
                   </small>
                 </span>
               </button>
@@ -445,7 +446,12 @@ export function Book({ book: initial }) {
         </div>
       )}
 
-      {error && <p class="err pad">Couldn't load details: {error}</p>}
+      {error &&
+        (book.source === 'abs' ? (
+          <p class="err pad">Your Audiobookshelf server isn't answering ({error}). Play still works: it uses your copy on the phone or in TorBox / Real-Debrid when there is one.</p>
+        ) : (
+          <p class="err pad">Couldn't load details: {error}</p>
+        ))}
 
       <Description
         text={bestDescription(book.description, gr?.description)}
@@ -513,14 +519,10 @@ export function Book({ book: initial }) {
         sourceAddons().length > 0 &&
         !loading && (
           <section class="pad">
-            <h3 class="section-label">
-              <Icon name="puzzle" size={16} /> Sources
-            </h3>
             <SourceResults
               title={mainTitle(book.title)}
               author={(book.author || "").split(",")[0].trim()}
               book={book}
-              heading={false}
             />
           </section>
         )}
@@ -605,6 +607,7 @@ export function Book({ book: initial }) {
       {!loading && book.source !== "sum" && book.source !== "pod" && (
         <MyRating book={book} />
       )}
+      {!loading && book.source !== "sum" && book.source !== "pod" && <BookTags book={book} />}
       {!loading && <RelatedRows book={book} />}
       <div class="footer-space" />
       </div>
@@ -709,7 +712,7 @@ function Summaries({ book, description }) {
               {busy ? (
                 <span class="spinner" />
               ) : (
-                <Icon name="sparkle" size={16} />
+                <Icon name="ai" size={16} />
               )}{" "}
               {busy ? "Writing the blinks…" : "Get blinks"}
             </button>
@@ -1192,7 +1195,7 @@ function AskCard({ book, description, genres }) {
     <div class="ask-chips pad">
       {QUICK.map(([label, q]) => (
         <button class="pill small" onClick={() => open({ question: q, askId: `${Date.now()}` })}>
-          {label === QUICK[0][0] && <Icon name="sparkle" size={14} />} {label}
+          {label === QUICK[0][0] && <Icon name="ai" size={14} />} {label}
         </button>
       ))}
       <button class="pill small" onClick={() => open()}>

@@ -1,7 +1,7 @@
 // Community catalog addons speaking the Stremio addon protocol
 // (manifest.json + /catalog, /meta, /stream). Install any addon by URL.
 import { getJson, cleanUrl } from '../lib/http.js';
-import { addons } from '../lib/store.js';
+import { addons, settings } from '../lib/store.js';
 import { isSourceManifest } from './sourceaddons.js';
 
 // Addons that no longer work (their server blocks every search) are removed on update.
@@ -76,7 +76,7 @@ export async function install(rawUrl) {
       if (installed.length) return { name: `${installed.length} addon${installed.length > 1 ? 's' : ''}`, id: installed[0].id };
     }
     const keys = data && typeof data === 'object' ? Object.keys(data).slice(0, 6).join(', ') : typeof data;
-    lastErr = new Error(`This addon uses a format Inkwell doesn't support yet (it has: ${keys || 'nothing'}).`);
+    lastErr = new Error(`This addon uses a format Audiohub doesn't support yet (it has: ${keys || 'nothing'}).`);
     lastErr.raw = data;
     break;
   }
@@ -153,7 +153,27 @@ function parseUid(uid) {
 
 async function streams(addon, type, id) {
   const data = await getJson(`${baseOf(addon)}/stream/${enc(type)}/${enc(id)}.json`, { fresh: true, timeout: 45000 });
-  return (data.streams || []).filter((s) => s.url);
+  // Direct links, and torrents (info-hash) that play through TorBox / Real-Debrid.
+  return (data.streams || []).filter((s) => s.url || s.infoHash);
+}
+
+// A torrent stream (no direct link): fetched through your TorBox / Real-Debrid.
+async function viaDebrid(s, title) {
+  const cloud = await import('./debrid.js');
+  const provider = cloud.preferredProvider(settings.get().debridPreferred);
+  if (!provider) throw new Error('This addon only offers this as a torrent — connect TorBox or Real-Debrid in Settings to play it');
+  const got = await cloud.downloadLinks(provider, { hash: s.infoHash, title });
+  return (got.files || []).filter((f) => AUDIO.test(f.name));
+}
+
+/** A playable link for one stream: its URL, or the right audio file of its torrent. */
+async function linkOf(s, title) {
+  if (s.url) return s.url;
+  const files = await viaDebrid(s, title);
+  const want = String(s.behaviorHints?.filename || '').toLowerCase();
+  const f = (want && files.find((x) => x.name.toLowerCase() === want)) || (Number.isInteger(s.fileIdx) && files[s.fileIdx]) || files[0];
+  if (!f) throw new Error('No audio files in this torrent');
+  return f.resolve();
 }
 
 export async function details(book) {
@@ -174,7 +194,11 @@ export async function details(book) {
       tracks: videos.map((v, i) => ({
         title: v.title || v.name || `Part ${i + 1}`,
         index: i,
-        resolve: async () => (await streams(addon, type, v.id))[0]?.url,
+        resolve: async () => {
+          const [first] = await streams(addon, type, v.id);
+          if (!first) throw new Error('The addon has no stream for this part');
+          return linkOf(first, v.title || b.title);
+        },
       })),
     };
   }
@@ -185,7 +209,12 @@ export async function details(book) {
     resolveTracks: async () => {
       const list = await streams(addon, type, id);
       if (!list.length) throw new Error('The addon returned no playable streams');
-      return { tracks: list.map((s, i) => ({ title: s.title || s.name || `Stream ${i + 1}`, url: s.url, index: i })) };
+      const direct = list.filter((s) => s.url);
+      if (direct.length) return { tracks: direct.map((s, i) => ({ title: s.title || s.name || `Stream ${i + 1}`, url: s.url, index: i })) };
+      // Only torrents: the first one, through your debrid service — each audio file a part.
+      const files = await viaDebrid(list[0], b.title);
+      if (!files.length) throw new Error('No audio files in this torrent');
+      return { tracks: files.map((f, i) => ({ title: f.name.replace(AUDIO, ''), index: i, size: f.size || 0, resolve: f.resolve })) };
     },
   };
 }

@@ -3,7 +3,20 @@ import { TopBar, Cover, toast } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
 import { nav } from '../lib/nav.js';
 import { aiReady } from '../lib/ai.js';
-import { MODES, STARTERS, LIBRARY_ASKS, ask, quiz, threadFor, clearThread, hearing, ideas, forgetIdea, spoilerLimit } from '../lib/askbook.js';
+import { MODES, STARTERS, LIBRARY_ASKS, ask, quiz, threadFor, clearThread, hearing, ideas, forgetIdea, spoilerLimit, answerSource, hasBookText, keepAnswer } from '../lib/askbook.js';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { copyText } from '../lib/report.js';
+
+const Web = registerPlugin('InkwellWeb');
+const nativeShare = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('InkwellWeb');
+// An answer as plain text (no ** or ### marks), for sharing and copying.
+const plain = (t) => String(t || '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/^#{1,4}\s+/gm, '').replace(/^[*•]\s+/gm, '• ').trim();
+async function shareAnswer(book, q, a) {
+  const text = `${q ? `Q: ${q.replace(/^[🎧🎙]\s*/u, '')}\n\n` : ''}${plain(a)}${book ? `\n\n— Asked about “${mainTitle(book.title)}”${book.author ? ` by ${book.author}` : ''} in Audiohub` : ''}`;
+  if (nativeShare) return Web.shareText({ text, title: 'Share answer' });
+  if (navigator.share) return navigator.share({ text }).catch(() => {});
+  if (await copyText(text)) toast('Copied — paste it anywhere');
+}
 import { keyIdeas, summaryBook } from '../sources/summaries.js';
 import { mainTitle } from '../lib/match.js';
 import { usePlayer } from '../components/player-ui.jsx';
@@ -39,6 +52,14 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
   useEffect(() => () => stopAnswer(), []);
   const where = hearing(book);
   const opts = { description, genres, mode };
+  // Answers from the book's own text when its ebook is on hand: say so up top.
+  const [using, setUsing] = useState('');
+  useEffect(() => {
+    hasBookText(book).then((y) => y && setUsing('ebook')).catch(() => {});
+  }, [book?.uid]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showStarters, setShowStarters] = useState(false);
+  const lim = book ? spoilerLimit(book) : null;
 
   const scrollEnd = () => setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 60);
   const run = async (q, extra = {}) => {
@@ -55,7 +76,8 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
     scrollEnd();
     try {
       const a = await ask(book, q, { ...opts, ...extra, msgs: before });
-      setMsgs([...before, { role: 'user', text: shown }, { role: 'ai', text: a }]);
+      setMsgs([...before, { role: 'user', text: shown }, { role: 'ai', text: a, from: answerSource() }]);
+      if (answerSource() === 'ebook') setUsing('ebook');
       // Answers are read aloud (always for spoken questions); the audiobook pauses meanwhile.
       if (extra.voice || autoRead.get()) {
         if (player.getState().playing) player.pause();
@@ -146,21 +168,29 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
           <div class="ask-book">
             <Cover book={book} class="ask-cover" />
             <div>
-              <small>✨ ASK AI</small>
-              <b>{title}</b>
-              {book.author && <span>{book.author}</span>}
+              <b>Ask about {title}</b>
+              <span>
+                {[lim ? `up to ${where?.chapter || `${lim.pct}%`} · no spoilers` : '', using === 'ebook' ? 'using your ebook' : 'from what the AI knows'].filter(Boolean).join(' · ')}
+              </span>
             </div>
+            <button class={'icon-btn ask-set' + (settingsOpen ? ' on' : '')} aria-label="Answer settings" onClick={() => setSettingsOpen(!settingsOpen)}>
+              <Icon name="settings" size={18} />
+            </button>
           </div>
         ) : (
           <div class="ask-book">
             <div class="ask-cover lib">📚</div>
             <div>
-              <small>✨ ASK MY BOOKS</small>
-              <b>Your whole library</b>
+              <b>Ask my books</b>
               <span>Themes, contradictions, what to read next</span>
             </div>
+            <button class={'icon-btn ask-set' + (settingsOpen ? ' on' : '')} aria-label="Answer settings" onClick={() => setSettingsOpen(!settingsOpen)}>
+              <Icon name="settings" size={18} />
+            </button>
           </div>
         )}
+        {settingsOpen && (
+          <div class="ask-settings">
         {canPickVoice && (
           <label class="ask-voice">
             🔊 Answer voice
@@ -186,14 +216,18 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
           🔊 Read answers aloud
           <input type="checkbox" class="switch" checked={readAloud} onChange={(e) => (autoRead.set(e.currentTarget.checked), e.currentTarget.checked || (stopAnswer(), setSpeaking(-1)))} />
         </label>
-        {book && spoilerLimit(book) && (
-          <button class="ask-spoiler" onClick={() => (settings.patch({ aiNoSpoilers: false }), toast('Spoilers allowed — switch back in Settings → AI'))}>
-            🙈 No spoilers past {spoilerLimit(book).pct}% · tap to allow
-          </button>
+            {lim && (
+              <button class="ask-spoiler" onClick={() => (settings.patch({ aiNoSpoilers: false }), toast('Spoilers allowed — switch back in Settings → AI'))}>
+                🙈 No spoilers past {lim.pct}% · tap to allow
+              </button>
+            )}
+            <p class="muted small ask-note">
+              {using === 'ebook'
+                ? 'Answers come from your ebook’s own text first (the passages that fit the question), then what the AI knows.'
+                : 'No ebook attached: answers use what the AI knows about the book, its description and what you’ve heard (live transcript). Attach the ebook (Text → Change) for answers from the book itself.'}
+            </p>
+          </div>
         )}
-        <p class="muted small ask-note">
-          Answers use what the AI knows about {book ? 'the book' : 'your books'} and {book ? 'its description' : 'your listening history'} — it doesn't have the audio or text itself, and will say when it isn't sure.
-        </p>
       </div>
 
       {book && where && (
@@ -204,7 +238,15 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
         </div>
       )}
 
-      {book && (
+      {/* Ready-made questions: up front for a new conversation; tucked away once it's going. */}
+      {msgs.length > 0 && !showStarters && (
+        <div class="pad">
+          <button class="link-btn ask-more-q" onClick={() => setShowStarters(true)}>
+            💡 More questions to ask
+          </button>
+        </div>
+      )}
+      {(showStarters || !msgs.length) && book && (
         <div class="ask-modes">
           {MODES.map((m) => (
             <button class={'ask-mode' + (mode === m.id ? ' on' : '')} onClick={() => setMode(mode === m.id ? '' : m.id)}>
@@ -214,7 +256,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
         </div>
       )}
 
-      <div class="ask-suggest pad">
+      {(showStarters || !msgs.length) && <div class="ask-suggest pad">
         {(book ? current?.asks || STARTERS : LIBRARY_ASKS).map((q) => (
           <button class="ask-q" disabled={!!busy} onClick={() => pick(q)}>
             💡 {q}
@@ -225,20 +267,47 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
             {busy === 'blinks' ? <span class="spinner small" /> : '📚'} Blinks — key ideas to read or listen to
           </button>
         )}
-      </div>
+      </div>}
 
       {!book && <SavedIdeas />}
 
       <div class="ask-thread pad">
         {msgs.map((m, i) => (
-          <div class={'ask-msg ' + m.role + (m.error ? ' err' : '')}>
-            {m.quiz ? <Quiz questions={m.quiz} /> : m.role === 'ai' ? <Answer text={m.text} /> : m.text}
+          <>
+            <div class={'ask-msg ' + m.role + (m.error ? ' err' : '')}>
+              {m.quiz ? <Quiz questions={m.quiz} /> : m.role === 'ai' ? <Answer text={m.text} /> : m.text}
+              {m.role === 'ai' && !m.quiz && !m.error && m.text && (
+                <div class="ask-from">
+                  <span>{m.from === 'ebook' ? '📖 From your ebook' : m.from === 'heard' ? '🎧 From what you’ve heard' : '✳︎ From what the AI knows'}</span>
+                </div>
+              )}
+            </div>
             {m.role === 'ai' && !m.quiz && !m.error && m.text && (
-              <button class={'ask-speak' + (speaking === i ? ' on' : '')} onClick={() => say(i, m.text)} aria-label={speaking === i ? 'Stop reading' : 'Read aloud'}>
-                {speaking === i ? '■ Stop' : '🔊 Listen'}
-              </button>
+              <div class="ask-acts">
+                <button onClick={() => shareAnswer(book, msgs[i - 1]?.text, m.text)}>
+                  <Icon name="upload" size={14} /> Share
+                </button>
+                <button onClick={async () => toast((await copyText(plain(m.text))) ? 'Copied' : 'Could not copy')}>
+                  <Icon name="link" size={14} /> Copy
+                </button>
+                <button class={speaking === i ? 'on' : ''} onClick={() => say(i, m.text)}>
+                  {speaking === i ? '■ Stop' : '🔊 Listen'}
+                </button>
+                <button onClick={() => (keepAnswer(book, plain(m.text)), toast('Saved to your ideas'))}>
+                  <Icon name="bookmark" size={14} /> Save
+                </button>
+              </div>
             )}
-          </div>
+            {i === msgs.length - 1 && m.role === 'ai' && !m.error && !busy && book && (
+              <div class="ask-next">
+                {['Explain that more simply', 'Give me a real-life example', 'Quiz me'].map((q) => (
+                  <button class="ask-q" onClick={() => pick(q)}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         ))}
         {busy && busy !== 'blinks' && (
           <div class="ask-msg ai typing">

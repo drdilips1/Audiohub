@@ -60,7 +60,7 @@ export function BooksellerAnswer({ q }) {
   if (asked !== t)
     return (
       <button class="bookseller-bar" onClick={() => askNow(t)}>
-        <Icon name="sparkle" size={18} />
+        <Icon name="ai" size={18} />
         <span>
           <b>Ask the bookseller</b> “{t}”
         </span>
@@ -69,7 +69,7 @@ export function BooksellerAnswer({ q }) {
   return (
     <section class="bookseller">
       <div class="bookseller-head">
-        <Icon name="sparkle" size={18} />
+        <Icon name="ai" size={18} />
         <b>The bookseller</b>
       </div>
       {!aiReady() && !res && (

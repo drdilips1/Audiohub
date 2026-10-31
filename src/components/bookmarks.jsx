@@ -32,13 +32,13 @@ export function Rows({ uid, book, list, onPlay }) {
   return (
     <ol class="chapter-list bm-list">
       {list.map((bm) => (
-        <li>
+        <li class={bm.quote ? 'bm-quote' : ''}>
           <button onClick={() => (playBookmark(book, bm), onPlay?.())}>
             <span class="ch-num">
-              <Icon name="bookmark" size={14} />
+              <Icon name={bm.quote ? 'edit' : 'bookmark'} size={14} />
             </span>
             <span class="ch-title">
-              {bm.label}
+              {bm.quote ? `“${bm.label}”` : bm.label}
               {bm.note && <small class="bm-note">{bm.note}</small>}
             </span>
             <span class="ch-time">{fmtTime(bm.global ?? bm.time)}</span>
@@ -82,7 +82,7 @@ export function AllBookmarks({ q = '' }) {
     .filter((g) => g.items.length)
     .sort((a, b) => b.last - a.last);
   if (!groups.length)
-    return <p class="muted pad">{words ? `Nothing matches “${q}”.` : 'While listening, tap 🔖 in the player to bookmark a moment. Your bookmarks collect here, named after what was happening.'}</p>;
+    return <p class="muted pad">{words ? `Nothing matches “${q}”.` : 'While listening, tap 🔖 in the player to bookmark a moment, or long-press a transcript line to highlight it. They collect here.'}</p>;
   return groups.map(({ uid, book, items }) => (
     <section class="notes-book">
       <button class="notes-book-head" onClick={() => book && nav.push('book', { book })}>
@@ -108,7 +108,7 @@ export function bookmarksMarkdown() {
     const b = bookOf(uid);
     out.push(`## ${b?.title || 'Book'}${b?.author ? ` — ${b.author}` : ''}`, '');
     for (const bm of list) {
-      out.push(`- **${fmtTime(bm.global ?? bm.time)}** ${bm.label}`);
+      out.push(bm.quote ? `- **${fmtTime(bm.global ?? bm.time)}** > ${bm.label}` : `- **${fmtTime(bm.global ?? bm.time)}** ${bm.label}`);
       if (bm.note) out.push(`  ${bm.note}`);
     }
     out.push('');

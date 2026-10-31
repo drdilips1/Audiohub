@@ -6,8 +6,9 @@ import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
 import * as player from '../lib/player.js';
 import { knownCharacters, CharacterCard } from './story-sheet.jsx';
-import { useStore } from '../lib/store.js';
-import { MODELS, transcriptAvailable, subscribeTranscript, follow, installedModels, downloadModel, restartTranscript, findEbook, takeEbook, ebooksOnPhone, takeOnPhone, heardLines } from '../lib/transcript.js';
+import { useStore, bookmarks } from '../lib/store.js';
+import { MODELS, transcriptAvailable, subscribeTranscript, follow, installedModels, downloadModel, restartTranscript, findEbook, takeEbook, ebooksOnPhone, takeOnPhone, heardLines, fixHeard, stopLooking, transcriptCfg } from '../lib/transcript.js';
+import { cachedXray } from '../lib/xray.js';
 import { fmtTime } from '../lib/format.js';
 
 // Wrap known character names in tappable spans.
@@ -42,41 +43,51 @@ function EbookStatus({ b }) {
   const [hits, setHits] = useState(null); // null: not searched; [] none found
   const [mine, setMine] = useState(null); // ebooks already on the phone
   const [busy, setBusy] = useState(''); // 'search' | link being downloaded
-  const search = async () => {
+  const [query, setQuery] = useState(''); // your own words for the search ('' = the audiobook's title)
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const run = useRef(0); // the latest search: one from a closed sheet mustn't reopen it
+  const search = async (q = '') => {
+    const my = ++run.current;
+    setSheetOpen(true);
     setBusy('search');
-    setMine(await ebooksOnPhone());
+    const onPhone = await ebooksOnPhone(q);
+    if (my !== run.current) return;
+    setMine(onPhone);
     try {
-      setHits(await findEbook());
+      const found = await findEbook(q);
+      if (my === run.current) setHits(found);
     } catch (e) {
-      toast(e?.message || String(e));
-      setHits([]);
+      if (my === run.current) (toast(e?.message || String(e)), setHits([]));
     }
-    setBusy('');
+    if (my === run.current) setBusy('');
   };
   const pickMine = async (eb) => {
-    setHits(null);
-    setMine(null);
+    close();
     await takeOnPhone(eb);
+  };
+  // An EPUB / PDF anywhere on the phone (e.g. downloaded in the browser): pick it, it's added and used.
+  const pickFile = async () => {
+    try {
+      const { pickBooks } = await import('../sources/local.js');
+      const [eb] = await pickBooks({ books: true });
+      if (!eb) return;
+      close();
+      await takeOnPhone(eb);
+      toast(`Using “${eb.title}”`);
+    } catch (e) {
+      if (e?.message !== 'cancelled') toast(e?.message || String(e));
+    }
   };
   const take = async (h) => {
     setBusy(h.r.link);
     try {
       await takeEbook(h);
-      setHits(null);
-      setMine(null);
+      close();
     } catch (e) {
       toast(e?.message || String(e));
     }
     setBusy('');
   };
-  if (!b || b.state === 'loading')
-    return b ? (
-      <div class="tl-bar">
-        <span>
-          <span class="spinner small" /> Looking for your ebook of this book…
-        </span>
-      </div>
-    ) : null;
   const phoneList = mine?.length > 0 && (
     <div class="tl-ebook-hits">
       <p class="tl-source">On this phone</p>
@@ -103,7 +114,7 @@ function EbookStatus({ b }) {
             <span>
               <b>{h.r.title || h.file.name}</b>
               <small>
-                {h.file.format}
+                {h.file.format === '?' ? 'Type unknown (checked when picked)' : h.file.format}
                 {h.r.size ? ` · ${(h.r.size / 1048576).toFixed(1)} MB` : ''} · {h.source}
               </small>
             </span>
@@ -112,18 +123,39 @@ function EbookStatus({ b }) {
         ))}
       </div>
     ) : (
-      <p class="tl-source">No EPUB of this book in your sources.</p>
+      <p class="tl-source">No EPUB {query.trim() ? `for “${query.trim()}”` : 'of this book'} in your sources — try other words.</p>
     ));
-  const open = !!(mine || hits || busy === 'search');
+  const open = sheetOpen;
+  // Closing always works, even mid-search (that search is just forgotten).
   const close = () => {
+    run.current++;
+    setSheetOpen(false);
+    setBusy('');
     setHits(null);
     setMine(null);
+    setQuery('');
   };
   const sheet = open && (
     <PickSheet close={close}>
-      <h3>{b.state === 'on' ? 'Use another ebook' : 'Get the ebook'}</h3>
+      <h3>{b?.state === 'on' ? 'Use another ebook' : 'Get the ebook'}</h3>
       <p class="muted small">With the ebook of this book, the transcript shows its exact words.</p>
+      <form
+        class="tl-ebook-search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          search(query);
+        }}
+      >
+        <input type="search" value={query} placeholder={`Search, e.g. “${player.getState().book?.title || 'title'} book 2”`} onInput={(e) => setQuery(e.currentTarget.value)} />
+        <button class="btn primary" disabled={busy === 'search'}>
+          Search
+        </button>
+      </form>
       {phoneList}
+      {mine && !mine.length && query.trim() && <p class="tl-source">Nothing on this phone matches “{query.trim()}”.</p>}
+      <button class="btn secondary wide tl-pick-file" disabled={!!busy && busy !== 'search'} onClick={pickFile}>
+        <Icon name="book" size={15} /> Choose a file from this phone (Downloads…)
+      </button>
       {busy === 'search' ? (
         <p class="tl-source">
           <span class="spinner small" /> Searching your sources…
@@ -134,12 +166,28 @@ function EbookStatus({ b }) {
       {srcList}
     </PickSheet>
   );
+  if (!b) return null;
+  if (b.state === 'loading')
+    return (
+      <div class="tl-bar">
+        <span>
+          <span class="spinner small" /> Looking for the ebook…
+        </span>
+        <button class="link-btn" onClick={() => search()}>
+          Choose
+        </button>
+        <button class="link-btn" onClick={stopLooking}>
+          Stop
+        </button>
+        {open && sheet}
+      </div>
+    );
   // A small bar above the text (it doesn't scroll away): which words you're reading, and a way to change it.
   if (b.state === 'on')
     return (
       <div class="tl-bar">
         <span>📖 Ebook{b.title ? `: ${b.title}` : ''}</span>
-        <button class="link-btn" disabled={!!busy} onClick={search}>
+        <button class="link-btn" disabled={!!busy} onClick={() => search()}>
           Change
         </button>
         {sheet}
@@ -148,7 +196,7 @@ function EbookStatus({ b }) {
   return (
     <div class={'tl-bar' + (b.state === 'error' ? ' err' : '')}>
       <span>{b.state === 'error' ? `Couldn't use your ebook: ${b.error}` : 'Heard from the audio, some words may be wrong'}</span>
-      <button class="pill small" disabled={!!busy} onClick={search}>
+      <button class="pill small" disabled={!!busy} onClick={() => search()}>
         {busy === 'search' ? <span class="spinner small" /> : 'Get the ebook'}
       </button>
       {sheet}
@@ -169,10 +217,38 @@ function PickSheet({ close, children }) {
 }
 
 export function TranscriptView({ s }) {
+  // Long-press a line to highlight it (a bookmark with its words, in Notes); again to remove.
+  const marks = useStore(bookmarks);
+  const press = useRef({ timer: 0, fired: false });
+  // A highlighted line: its moment falls within the line, or its words are the line's (lines
+  // are recognised afresh each time you play, so their exact start can shift a little).
+  const squash = (v) => String(v || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const quoted = (i) => {
+    const g = segs[i];
+    const next = segs.slice(i + 1).find((x) => x.start != null)?.start ?? g.start + 15;
+    const text = squash(typeof g.book === 'string' ? g.book : g.text);
+    return (marks[s.book?.uid] || []).some(
+      (b) => b.quote && b.track === s.index && ((b.time >= g.start - 1 && b.time < next) || (text.length > 20 && (text.includes(squash(b.label).slice(0, 60)) || squash(b.label).includes(text.slice(0, 60)))))
+    );
+  };
+  const hold = (start, text) => {
+    clearTimeout(press.current.timer);
+    press.current.timer = setTimeout(() => {
+      press.current.fired = true;
+      const added = player.toggleQuote(start, typeof text === 'string' ? text : String(text || ''));
+      navigator.vibrate?.(15);
+      toast(added ? 'Highlighted — find it in Notes' : 'Highlight removed');
+    }, 550);
+  };
+  const release = () => clearTimeout(press.current.timer);
   const [t, setT] = useState(null);
   const chars = useStore(knownCharacters);
   const [card, setCard] = useState(null);
-  const [finding, setFinding] = useState(false);
+  // The player's Find button opens the text with the search ready.
+  const [finding, setFinding] = useState(() => !!transcriptCfg.get().find);
+  useEffect(() => {
+    if (transcriptCfg.get().find) transcriptCfg.set({ ...transcriptCfg.get(), find: false });
+  }, []);
   const list = chars.uid === s.book?.uid ? chars.list : [];
   // Full names, aliases and distinctive first names all link to the same character.
   const lookup = new Map();
@@ -180,6 +256,10 @@ export function TranscriptView({ s }) {
     for (const n of [c.name, ...(c.aliases || []), c.name.split(' ')[0]]) if (n && n.length > 2 && !lookup.has(n)) lookup.set(n, c);
   }
   const names = [...lookup.keys()];
+  // Everyone the book has (X-Ray's cast and places too): misheard names are put right.
+  const xr = s.book?.uid ? cachedXray(s.book.uid) : null;
+  const allNames = [...names, ...(xr ? [...xr.people, ...xr.places].flatMap((x) => [x.name, ...(x.aliases || [])]) : [])];
+  const heard = (text) => (typeof text === 'string' ? fixHeard(text, allNames) : text);
   const box = useRef();
   const userScroll = useRef(0);
   useEffect(() => subscribeTranscript(setT), []);
@@ -254,10 +334,15 @@ export function TranscriptView({ s }) {
         {segs.map((g, i) => (
           <p
             data-i={i}
-            class={'tl' + (i === active ? ' on' : i < active ? ' past' : '') + (t?.bookText?.state === 'on' && !g.book && !t?.published ? ' heard' : '')}
-            onClick={() => g.start != null && player.seek(g.start)}
+            class={'tl' + (i === active ? ' on' : i < active ? ' past' : '') + (t?.bookText?.state === 'on' && !g.book && !t?.published ? ' heard' : '') + (g.start != null && quoted(i) ? ' hl' : '')}
+            onClick={() => (press.current.fired ? (press.current.fired = false) : g.start != null && player.seek(g.start))}
+            onContextMenu={(e) => e.preventDefault()}
+            onPointerDown={() => g.start != null && hold(g.start, !t?.published && t?.bookText?.state === 'on' && g.book ? g.book : heard(g.text))}
+            onPointerUp={release}
+            onPointerLeave={release}
+            onPointerCancel={release}
           >
-            {withNames(!t?.published && t?.bookText?.state === 'on' && g.book ? g.book : g.text, names, (n) => setCard(lookup.get(n)))}
+            {withNames(!t?.published && t?.bookText?.state === 'on' && g.book ? g.book : heard(g.text), names, (n) => setCard(lookup.get(n)))}
           </p>
         ))}
         {segs.length > 0 && t?.status === 'error' && <p class="err small">{t.error}</p>}

@@ -11,7 +11,7 @@ import { Browser } from '@capacitor/browser';
 import { App as CapApp } from '@capacitor/app';
 import { podcasts } from '../sources/podcasts.js';
 import { ai } from './ai.js';
-import { persisted, settings, library, progress, bookmarks, addons, abs, debrid, hardcover, goodreads, removedBooks, mergeRemoved, cleanLibrary, cleanProgress, highlights, mergeHighlights } from './store.js';
+import { persisted, settings, library, progress, bookmarks, addons, abs, debrid, hardcover, goodreads, removedBooks, mergeRemoved, cleanLibrary, cleanProgress, kindle, bookTags, highlights, mergeHighlights } from './store.js';
 import { cleanUrl } from './http.js';
 import { ttsCfg } from './tts.js';
 import { myRatings } from './taste.js';
@@ -52,6 +52,8 @@ const SECTIONS = {
   debrid: { store: debrid, secret: true },
   hardcover: { store: hardcover, secret: true },
   tts: { store: ttsCfg, secret: true },
+  kindle: { store: kindle, secret: true, merge: mergeKindle },
+  bookTags: { store: bookTags },
   highlights: { store: highlights, merge: mergeHighlights },
 };
 
@@ -80,6 +82,17 @@ function mergeSent(local, remote) {
   }
   return { ...remote, ...local, items, clearedAt: Math.max(local?.clearedAt || 0, remote?.clearedAt || 0) };
 }
+// Kindles and Gmail senders: both lists kept (by address) — an empty or older list from
+// another device must never wipe the ones on this phone.
+function mergeKindle(local, remote) {
+  const byEmail = (a = [], b = []) => {
+    const out = [...a];
+    for (const x of b || []) if (x?.email && !out.some((y) => y.email?.toLowerCase() === x.email.toLowerCase())) out.push(x);
+    return out;
+  };
+  return { ...local, targets: byEmail(local?.targets, remote?.targets), senders: byEmail(local?.senders, remote?.senders) };
+}
+
 function mergeBookmarks(local, remote) {
   const out = { ...local };
   for (const [k, list] of Object.entries(remote || {})) {

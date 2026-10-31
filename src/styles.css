@@ -1,3 +1,4 @@
+@import '@fontsource-variable/figtree';
 @import '@fontsource-variable/plus-jakarta-sans';
 @import '@fontsource-variable/fraunces';
 @import '@fontsource-variable/outfit';
@@ -28,7 +29,7 @@
   --radius-sm: 12px;
   --shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.6);
   --grad: linear-gradient(135deg, var(--accent), var(--accent-2));
-  --font: 'Plus Jakarta Sans Variable', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font: 'Figtree Variable', 'Plus Jakarta Sans Variable', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --display: 'Fraunces Variable', Georgia, serif;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -5167,13 +5168,16 @@ textarea {
   min-width: 0;
 }
 .home-hello b {
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 16px;
+  font-family: var(--font);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
   color: #f4f1fb;
-  white-space: nowrap;
+  /* "Good morning, name" wraps onto a second line rather than being cut off. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .home-hello small {
   font-size: 11.5px;
@@ -7787,10 +7791,68 @@ button.stats {
   border-radius: 2px;
   padding: 0 1px;
 }
-
-
-
-
+.sel-dock {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 14px);
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+}
+.sel-grow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.sel-grow small {
+  padding: 0 6px;
+  color: #f2eff8;
+  opacity: 0.75;
+  font-size: 12px;
+  border-radius: 10px;
+  background: #1f1d26;
+  line-height: 30px;
+}
+.sel-grow button {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #1f1d26;
+  color: #f2eff8;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.sel-bar {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: #1f1d26;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+}
+.sel-bar button {
+  flex: none;
+  padding: 9px 11px;
+  border-radius: 10px;
+  color: #f2eff8;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sel-bar button:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+.sel-bar .hl-btn {
+  color: #f5c84b;
+}
 .sel-sheet {
   max-height: 70vh;
   overflow-y: auto;
@@ -8110,11 +8172,15 @@ button.stats {
   font-size: 13.5px;
 }
 .source-results .src-actions.ready {
-  flex-wrap: nowrap;
+  /* The main button keeps room for its label; with many extra buttons they move to a second line */
+  flex-wrap: wrap;
 }
 .source-results .src-actions.ready > .btn:first-child {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 150px;
+  min-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .source-results .src-actions.ready > .btn.play-alt {
   padding: 0 10px;
@@ -8368,7 +8434,7 @@ button.stats {
   --card-r: 14px;
   --grad: var(--accent);
   --on-grad: #fff;
-  --font: 'Inter', 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Figtree Variable', 'Inter', 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --dyn: var(--accent);
 }
 :root[data-mode='light'][data-palette='paperink'] {
@@ -9419,6 +9485,595 @@ button.notes-book-head {
 .sel-bar .hl-btn {
   color: #f5c84b;
 }
+
+/* =====================================================================
+   Sources, redesigned (Oct 2026): audiobooks, then ebooks, top three
+   of each as clean cards (format badge, readable title, one big action).
+   ===================================================================== */
+.source-results {
+  --ready: #3ecf8e;
+}
+:root[data-mode='light'] .source-results {
+  --ready: #11845a;
+}
+.src-head .section-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.src-counts {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.book .src-head {
+  margin-top: 22px;
+}
+.src-sec + .src-sec {
+  margin-top: 18px;
+}
+.src-sec-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 2px 8px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.src-sec .src-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.src-sec .src-list > * {
+  min-width: 0;
+}
+.src-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 2px 0;
+  padding: 6px 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+/* Format badge: MP3 / M4B / EPUB… */
+.src-fmt {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.is-ebook .src-top .src-fmt {
+  color: #6aa9ff;
+  background: color-mix(in srgb, #6aa9ff 13%, var(--surface));
+  border-color: color-mix(in srgb, #6aa9ff 26%, transparent);
+}
+:root[data-mode='light'] .is-ebook .src-top .src-fmt {
+  color: #1d5fb8;
+}
+.src-meta .ok {
+  color: var(--ready);
+}
+.src-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.src-meta span + span::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--faint);
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.seeds.good {
+  color: var(--ready);
+}
+/* Full card */
+.src-row {
+  border-radius: 20px;
+  padding: 14px;
+}
+.src-row.is-ready {
+  border-color: color-mix(in srgb, var(--ready) 45%, transparent);
+  box-shadow: inset 3px 0 0 var(--ready);
+}
+.src-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.src-names {
+  flex: 1;
+  min-width: 0;
+}
+.src-names .src-title {
+  font-size: 16px;
+}
+.src-raw {
+  margin-top: 4px;
+  font: 500 10.5px/1.3 ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-meta {
+  margin-top: 10px;
+}
+.src-row .src-services {
+  margin-top: 10px;
+}
+.src-row .src-actions.ready {
+  margin-top: 12px;
+}
+.src-row .src-actions.ready > .btn:first-child {
+  height: 46px;
+  border-radius: 14px;
+  font-size: 15px;
+}
+.src-row .src-actions.ready > .btn:not(:first-child) {
+  height: 46px;
+  min-width: 46px;
+  border-radius: 14px;
+}
+.src-dots.on {
+  color: var(--accent);
+}
+
+/* =====================================================================
+   Covers, polished (Oct 2026) — applies on top of every theme.
+   Real covers: soft two-layer shadow, a fine rim and a faint sheen.
+   No image: a printed jacket — spine, serif title, author under a rule.
+   ===================================================================== */
+:root[data-palette][data-mode] .cover {
+  isolation: isolate;
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.3), 0 12px 24px -14px rgba(0, 0, 0, 0.7);
+}
+:root[data-palette][data-mode='light'] .cover {
+  box-shadow: 0 1px 1.5px rgba(50, 35, 20, 0.14), 0 12px 24px -16px rgba(50, 35, 20, 0.42);
+}
+.cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0) 30%);
+}
+:root[data-mode='light'] .cover::after {
+  box-shadow: inset 0 0 0 1px rgba(30, 20, 10, 0.08);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 30%);
+}
+/* The jacket (shown until — or instead of — a cover image) */
+:root[data-palette][data-mode] .cover-fallback {
+  padding: 13% 11% 11% 16%;
+  justify-content: space-between;
+  color: hsl(var(--h) 60% 94%);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.32), rgba(0, 0, 0, 0) 6%, rgba(255, 255, 255, 0.09) 7.5%, rgba(255, 255, 255, 0) 10%),
+    radial-gradient(130% 90% at 90% 0%, hsl(calc(var(--h) + 35) 70% 62% / 0.32), transparent 62%),
+    linear-gradient(165deg, hsl(var(--h) 42% 30%), hsl(calc(var(--h) + 25) 48% 14%));
+}
+:root[data-palette][data-mode='light'] .cover-fallback {
+  color: hsl(var(--h) 45% 16%);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0) 6%, rgba(255, 255, 255, 0.5) 7.5%, rgba(255, 255, 255, 0) 10%),
+    radial-gradient(130% 90% at 90% 0%, rgba(255, 255, 255, 0.55), transparent 60%),
+    linear-gradient(165deg, hsl(var(--h) 42% 86%), hsl(calc(var(--h) + 25) 34% 72%));
+}
+:root[data-palette][data-mode] .cover-title {
+  font-family: 'Fraunces Variable', Georgia, serif;
+  font-weight: 600;
+  font-size: 12.5cqw;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  -webkit-line-clamp: 5;
+}
+:root[data-palette][data-mode] .cover-author {
+  margin-top: 0;
+  padding-top: 6%;
+  border-top: 1px solid currentColor;
+  border-top-color: color-mix(in srgb, currentColor 35%, transparent);
+  font-size: 6.2cqw;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.cover-author:empty {
+  display: none;
+}
+/* Little marks on covers: frosted glass */
+:root[data-palette][data-mode] .kind-dot {
+  width: 24px;
+  height: 24px;
+  top: 7px;
+  right: 7px;
+  background: rgba(12, 10, 8, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  color: #fff;
+  z-index: 3;
+}
+:root[data-palette][data-mode] :is(.rank-badge, .match-badge, .copies-badge) {
+  z-index: 3;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+}
+/* Title and author under a cover */
+.book-card-title {
+  margin-top: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+.book-card:active .cover {
+  transform: scale(0.985);
+}
+
+/* Light colour themes added Oct 2026 (each picks its own accent in Settings). */
+:root[data-mode='light'][data-palette='linen'] {
+  --bg: #f8f3eb;
+  --bg-2: #fffdf9;
+  --surface: rgba(110, 70, 30, 0.05);
+  --surface-2: rgba(110, 70, 30, 0.09);
+  --border: rgba(110, 70, 30, 0.12);
+  --text: #2b2219;
+  --muted: #6f6152;
+  --faint: #a39482;
+}
+:root[data-mode='light'][data-palette='cloud'] {
+  --bg: #f3f6fb;
+  --bg-2: #ffffff;
+  --surface: rgba(30, 60, 120, 0.05);
+  --surface-2: rgba(30, 60, 120, 0.09);
+  --border: rgba(30, 60, 120, 0.12);
+  --text: #142033;
+  --muted: #56637a;
+  --faint: #8d98ab;
+}
+:root[data-mode='light'][data-palette='apricot'] {
+  --bg: #fff6ef;
+  --bg-2: #fffdfb;
+  --surface: rgba(170, 80, 20, 0.05);
+  --surface-2: rgba(170, 80, 20, 0.09);
+  --border: rgba(170, 80, 20, 0.12);
+  --text: #2e1a10;
+  --muted: #7a5848;
+  --faint: #ad8c7c;
+}
+:root[data-mode='light'][data-palette='sage'] {
+  --bg: #f2f4ec;
+  --bg-2: #fbfcf8;
+  --surface: rgba(60, 90, 40, 0.05);
+  --surface-2: rgba(60, 90, 40, 0.09);
+  --border: rgba(60, 90, 40, 0.12);
+  --text: #1d2419;
+  --muted: #5b6653;
+  --faint: #8f9a86;
+}
+:root[data-mode='light'][data-palette='lilac'] {
+  --bg: #f6f3fc;
+  --bg-2: #fdfcff;
+  --surface: rgba(90, 60, 160, 0.05);
+  --surface-2: rgba(90, 60, 160, 0.09);
+  --border: rgba(90, 60, 160, 0.12);
+  --text: #1f1830;
+  --muted: #625a78;
+  --faint: #9790ab;
+}
+:root[data-mode='light'][data-palette='stone'] {
+  --bg: #f2f0ed;
+  --bg-2: #fbfaf8;
+  --surface: rgba(60, 50, 40, 0.05);
+  --surface-2: rgba(60, 50, 40, 0.09);
+  --border: rgba(60, 50, 40, 0.12);
+  --text: #1d1b19;
+  --muted: #625d57;
+  --faint: #98928b;
+}
+/* Light themes: header buttons as clean light circles in the theme's own colours, not frosted grey. */
+:root[data-mode='light']:is([data-palette='linen'], [data-palette='cloud'], [data-palette='apricot'], [data-palette='sage'], [data-palette='lilac'], [data-palette='stone'], [data-palette='sepia'], [data-palette='paper'], [data-palette='blossom'], [data-palette='mint'], [data-palette='default']) :is(.icon-btn.glass, .home-top .home-logo) {
+  background: var(--bg-2);
+  color: var(--text);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+/* The jacket's title starts below the little mark in the corner. */
+:root[data-palette][data-mode] .cover-fallback {
+  padding-top: 24%;
+}
+/* Light themes: greeting in the theme's ink, and the logo's "A" in the accent (the pale
+   cyan → pink gradient vanishes on a light chip). */
+:root[data-mode='light']:is([data-palette='linen'], [data-palette='cloud'], [data-palette='apricot'], [data-palette='sage'], [data-palette='lilac'], [data-palette='stone'], [data-palette='sepia'], [data-palette='paper'], [data-palette='blossom'], [data-palette='mint'], [data-palette='default'], [data-palette='studio'], [data-palette='paperink']) {
+  & .home-hello b {
+    color: var(--text);
+  }
+  & .home-hello small {
+    color: var(--muted);
+    opacity: 1;
+  }
+  & .home-logo span {
+    color: var(--text);
+  }
+  & .home-logo stop:nth-child(1) {
+    stop-color: var(--accent);
+  }
+  & .home-logo stop:nth-child(2) {
+    stop-color: color-mix(in srgb, var(--accent) 50%, var(--accent-2));
+  }
+  & .home-logo stop:nth-child(3) {
+    stop-color: var(--accent-2);
+  }
+}
+
+/* Send to Kindle: the forms in Settings and the "which Kindle?" sheet */
+.set-sub {
+  display: block;
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.kindle-form {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0;
+}
+.kindle-list {
+  display: grid;
+  gap: 8px;
+}
+.kindle-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+.kindle-pick span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.kindle-pick small {
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kindle-pick.all {
+  border-style: dashed;
+}
+.kindle-from {
+  margin-top: 14px;
+}
+.kindle-from small {
+  display: block;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+/* Your tags: on the book page and as Library filters */
+.book-tags .chips {
+  align-items: center;
+}
+.book-tags-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.book-tags-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.book-tags-add input {
+  flex: 1 1 160px;
+}
+.book-tags-add .chips {
+  flex-basis: 100%;
+}
+.tag-filter {
+  white-space: nowrap;
+}
+
+/* Transcript highlights: long-pressed lines, and their quotes in Notes */
+.tl {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.tl.hl {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  border-radius: 10px;
+}
+.bm-quote .ch-title {
+  font-style: italic;
+}
+
+/* What's new (after an update) */
+.whats-new .wn-kicker {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+.whats-new section + section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.whats-new h3 {
+  font-family: var(--display);
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+.whats-new ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.whats-new li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.wn-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.whats-new li span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.whats-new li small {
+  opacity: 0.75;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.whats-new .btn.wide {
+  width: 100%;
+  margin-top: 20px;
+}
+.set-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 32px);
+  margin: 12px 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+}
+
+/* Shared quotes: the sheet when one is opened, and the "jump there" offer */
+.shared-quote .sq-kicker {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f7b267;
+}
+.shared-quote .sq-quote {
+  font-family: 'Fraunces Variable', Georgia, serif;
+  font-size: 21px;
+  line-height: 1.45;
+  margin: 10px 0 0;
+  color: #fff3e6;
+}
+.shared-quote .sq-quote.small {
+  font-size: 17px;
+}
+.shared-quote .sq-note {
+  margin: 12px 0 0;
+  padding-left: 12px;
+  border-left: 3px solid #f7931e;
+  font-size: 14.5px;
+  opacity: 0.85;
+}
+.shared-quote .sq-book {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 18px 0 4px;
+}
+.shared-quote .sq-book .cover {
+  width: 56px;
+  flex: none;
+}
+.shared-quote .sq-book span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.shared-quote .sq-book small {
+  opacity: 0.7;
+}
+.shared-quote .sq-actions,
+.share-quote .sq-actions {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+.shared-quote .sq-hint,
+.share-quote .sq-hint {
+  font-size: 13px;
+  opacity: 0.65;
+  margin: 12px 0 0;
+}
+
+/* This book's notes (reader panel and player sheet) */
 .book-notes .section-label {
   margin: 18px 0 4px;
 }
@@ -9470,6 +10125,21 @@ button.notes-book-head {
 .reader-text {
   -webkit-touch-callout: none;
 }
+.share-quote .sq-preview {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  margin: 8px 0 12px;
+}
+.share-quote .sq-preview img {
+  width: min(62vw, 280px);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.share-quote .sq-styles {
+  justify-content: center;
+  margin-bottom: 8px;
+}
 .aloud-rate {
   flex: none;
   min-width: 52px;
@@ -9492,4 +10162,625 @@ button.notes-book-head {
 }
 .tl-pick-file {
   margin: 10px 0 4px;
+}
+
+/* Playback history (player → More → History) */
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.history-session {
+  margin: 10px -8px 0;
+  padding: 6px 8px 8px;
+  border-radius: 14px;
+}
+.history-session.alt {
+  background: color-mix(in srgb, var(--text, #fff) 4%, transparent);
+}
+.history-day {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 2px;
+  text-align: left;
+  color: inherit;
+}
+.history-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.history-what {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.history-what small {
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-time {
+  flex: none;
+  font-size: 12px;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Ivory & Gold: Paper & Ink's layout on warm ivory, antique-gold accent ---- */
+:root[data-variant='ivory'][data-mode='light'] {
+  --bg: #f7f2e9;
+  --bg-2: #fffdf8;
+  --surface: #fffdf8;
+  --surface-2: #f1e9da;
+  --border: #e7dccb;
+  --text: #1f1b16;
+  --muted: #857a6a;
+  --faint: #a89d8b;
+  --sage: #f1e5cc;
+  --shadow: 0 8px 22px -12px rgba(80, 60, 30, 0.22);
+  --on-grad: #fff;
+}
+:root[data-variant='ivory'][data-mode='dark'] {
+  --bg: #1a1814;
+  --bg-2: #24211b;
+  --surface: #24211b;
+  --surface-2: #2d2921;
+  --border: #3a352b;
+  --text: #f4efe4;
+  --muted: #b5ab98;
+  --faint: #877e6d;
+  --sage: #3a3122;
+  --on-grad: #1a1814;
+}
+
+/* ---- Home, tighter (Paper & Ink / Ivory & Gold) ---- */
+.row-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--sage);
+  color: var(--accent);
+  letter-spacing: 0;
+}
+:root[data-palette='paperink'] {
+  & .row {
+    margin-top: 14px;
+  }
+  & .row-head {
+    padding-bottom: 6px;
+  }
+  & .row-head h2 {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  & .row-head p {
+    font-size: 12px;
+    margin-top: 1px;
+  }
+  & .row-scroll {
+    gap: 10px;
+    padding-bottom: 8px;
+  }
+}
+
+/* ---- Whole covers: a tall cover sits inside the square on a soft blur of itself ---- */
+.cover.whole::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  background: var(--cover-img) center / cover no-repeat;
+  filter: blur(14px) saturate(1.1);
+  opacity: 0.75;
+  z-index: 0;
+}
+.cover.whole img {
+  object-fit: contain;
+  z-index: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.28));
+}
+.cover.whole .cover-fallback {
+  display: none;
+}
+
+/* ---- Long-press book actions ---- */
+.book-actions .ba-book {
+  display: flex;
+  align-self: stretch;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 12px;
+  align-items: center;
+  margin: 2px 0 8px;
+}
+.book-actions .ba-book .cover {
+  width: 54px;
+  flex: none;
+}
+.book-actions .ba-book span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.book-actions .ba-book b {
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.book-actions .ba-book small {
+  color: var(--muted);
+  font-size: 13px;
+}
+.book-actions .menu-item .icon {
+  color: var(--accent);
+}
+.book-actions .menu-item.danger,
+.book-actions .menu-item.danger .icon {
+  color: #b0432f;
+}
+.book-card {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+/* ---- Text, full screen: the words fill the player; a slim strip below ---- */
+.full-player.text-mode .transcript {
+  margin-top: 4px;
+  padding-top: 18%;
+}
+.full-player.text-mode .transcript .tl {
+  font-family: 'Literata Variable', 'Literata', Georgia, serif;
+  font-size: 19px;
+  line-height: 1.65;
+}
+.full-player.text-mode .transcript .tl.on {
+  font-weight: 500;
+}
+.text-strip .chip-btn {
+  padding: 6px 9px;
+  min-width: 0;
+  border: none;
+  background: transparent;
+}
+.text-strip .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+.text-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.text-strip .play-btn {
+  width: 42px;
+  height: 42px;
+  flex: none;
+}
+.text-strip .icon-btn {
+  flex: none;
+}
+.text-strip .ts-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.text-strip .ts-bar i {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+.text-strip .ts-bar b {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.text-strip .ts-bar small {
+  font-size: 11px;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* In the light Paper & Ink / Ivory & Gold themes: ink on paper, like a page. */
+:root[data-mode='light'][data-palette='paperink'] .full-player.text-mode {
+  background: var(--bg);
+  color: var(--text);
+  & .player-bg,
+  & .fp-bg {
+    display: none;
+  }
+  & .fp-top,
+  & .fp-top .icon-btn {
+    color: var(--text);
+  }
+  & .transcript .tl {
+    color: color-mix(in srgb, var(--text) 55%, transparent);
+  }
+  & .transcript .tl.past {
+    color: color-mix(in srgb, var(--text) 38%, transparent);
+  }
+  & .transcript .tl.on {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  & .tl-bar {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  & .tm-row {
+    border-top-color: var(--border);
+  }
+  & .text-strip {
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    color: var(--text);
+  }
+  & .text-strip .icon-btn,
+  & .text-strip .chip-btn {
+    color: var(--text);
+  }
+  & .text-strip .play-btn {
+    background: var(--accent);
+    color: #fff;
+  }
+  & .text-strip .ts-bar i {
+    background: var(--border);
+  }
+}
+
+/* ---- Reader: following the audiobook ---- */
+.reader-text .listen-now {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  box-shadow: -10px 0 0 color-mix(in srgb, var(--accent) 13%, transparent), 10px 0 0 color-mix(in srgb, var(--accent) 13%, transparent);
+  border-radius: 6px;
+  transition: background 0.4s;
+}
+.follow-audio {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 58px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.follow-audio .pill {
+  pointer-events: auto;
+  box-shadow: var(--shadow);
+  background: var(--surface);
+  color: var(--text);
+}
+.follow-audio.on .pill {
+  background: var(--accent);
+  color: #fff;
+}
+.follow-audio small {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+
+/* ---- Player (design A): source pill, centred title, pills, AI row, labelled buttons ---- */
+.fp-source .badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 11px;
+  border-radius: 99px;
+  letter-spacing: 0.02em;
+}
+:root[data-palette='paperink'] .fp-source .badge {
+  background: var(--sage);
+  color: var(--accent);
+  border: none;
+}
+.full-player .fp-meta {
+  text-align: center;
+}
+.full-player .fp-meta p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fp-pills {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.fp-pills .fp-chapters {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 70%;
+  padding: 6px 12px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.fp-pills .fp-chapters span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root[data-palette='paperink'] .fp-pills .fp-chapters {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.fp-signature {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+.fp-signature button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 2px;
+  border-radius: 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+}
+.fp-signature .icon {
+  color: var(--accent);
+}
+:root[data-palette='paperink'] .fp-signature button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.fp-actions.one-row {
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+:root[data-palette='paperink'] .fp-actions.one-row {
+  border-top-color: var(--border);
+}
+.fp-actions.one-row .chip-btn {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  background: transparent !important;
+  border: none !important;
+  font-size: 14px;
+  line-height: 1.1;
+}
+.fp-actions.one-row .chip-btn small {
+  font-size: 10.5px;
+  opacity: 0.75;
+  font-weight: 500;
+}
+.fp-actions.one-row .chip-btn.active small,
+.fp-actions.one-row .chip-btn.active .icon {
+  color: var(--accent);
+  opacity: 1;
+}
+.fp-actions.one-row .chip-btn b {
+  font-size: 15px;
+}
+/* The Ask / Challenge / Rabbit hole … row now sits in More. */
+.sheet .fp-companion {
+  margin: 0 0 12px;
+}
+
+/* ---- Ask AI page (design 21) ---- */
+.ask-book .ask-set {
+  margin-left: auto;
+  flex: none;
+  color: var(--muted);
+}
+.ask-book .ask-set.on {
+  color: var(--accent);
+}
+.ask-book .ask-cover {
+  width: 48px;
+  height: 48px;
+}
+.ask-book b {
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ask-book span {
+  font-size: 12px;
+}
+.ask-settings {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+}
+.ask-msg.user {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 18px 18px 4px 18px;
+  font-weight: 500;
+}
+:root[data-mode='dark'] .ask-msg.user {
+  color: var(--bg);
+}
+.ask-msg.ai {
+  padding: 14px 15px;
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+.ask-msg.ai .ask-answer {
+  font-family: 'Literata Variable', Georgia, serif;
+  font-size: 15px;
+  line-height: 1.62;
+}
+.ask-msg.ai .ask-answer b,
+.ask-msg.ai .ask-answer h4 {
+  font-family: var(--font);
+}
+.ask-from {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.ask-from span {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--sage);
+  color: var(--accent);
+}
+.ask-acts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: -2px 0 4px;
+}
+.ask-acts button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  padding: 6px 11px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+.ask-acts button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ask-acts .icon {
+  color: var(--accent);
+}
+.ask-next {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ask-next .ask-q {
+  width: auto;
+  font-size: 12.5px;
+  padding: 7px 12px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  border: none;
+}
+.ask-input {
+  border-radius: 24px;
+}
+.ask-send {
+  background: var(--accent);
+  color: #fff;
+}
+.text-strip .ts-bar {
+  cursor: pointer;
+}
+.text-strip .ts-cover {
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.text-strip .ts-cover .cover {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+}
+.text-strip .ts-cover .icon {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 2px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+}
+
+/* "Show N more" under source results: a clear full-width button, with which sources. */
+.src-more {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  margin: 10px 0 0;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.src-more .icon {
+  color: var(--accent);
+  flex: none;
+}
+.src-more-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  min-width: 0;
+}
+.src-more-text b {
+  font-size: 14px;
+  color: var(--accent);
+}
+.src-more-text small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }

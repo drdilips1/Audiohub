@@ -33,7 +33,15 @@ export function NameRow() {
     <label class="set-row">
       <div>
         <b>Your name</b>
-        <small>{st.myName ? 'Shown on Home: “Good evening, ' + st.myName.trim().slice(0, 24) + '”' : a.name || a.email ? 'Leave empty to use the name from your account' : 'Shown on Home after the greeting'}</small>
+        <small>
+          {/\p{L}/u.test(st.myName || '')
+            ? 'Shown on Home: “Good evening, ' + st.myName.trim().slice(0, 24) + '”'
+            : (st.myName || '').trim()
+              ? 'No name on Home'
+              : a.name || a.email
+                ? 'Leave empty to use the name from your account, or type “.” for no name'
+                : 'Shown on Home after the greeting'}
+        </small>
       </div>
       <input class="set-name" value={st.myName || ''} placeholder="First name" maxLength={24} onInput={(e) => settings.patch({ myName: e.currentTarget.value })} />
     </label>

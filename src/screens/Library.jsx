@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Grid, Empty, Cover, BookCover, toast, AskButton, BookCard } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
-import { library, progress, useStore, forgetBook, persisted, clearPodcastHistory } from '../lib/store.js';
+import { library, progress, useStore, forgetBook, persisted, clearPodcastHistory, bookTags } from '../lib/store.js';
+import { allTags } from '../components/book-tags.jsx';
 import { localSrc } from '../sources/index.js';
 import { fmtDuration } from '../lib/format.js';
 import { metaNow, metaFixes, coverNow, findMissingCovers } from '../lib/meta.js';
@@ -195,7 +196,11 @@ export function Library() {
     };
   }, [lib, prog, dls, local, kept]);
   const subs = tab === 'audio' || tab === 'text' ? groups[tab] : null;
-  const fresh = subs ? subs[where] || subs.all : groups[tab];
+  // Your tags: one more filter row under Audiobooks / Ebooks ("tag:Psychology").
+  const tagMap = useStore(bookTags);
+  const tagsHere = subs ? allTags(Object.fromEntries(subs.all.filter((b) => tagMap[b.uid]).map((b) => [b.uid, tagMap[b.uid]]))) : [];
+  const tagged = (t) => subs.all.filter((b) => (tagMap[b.uid] || []).includes(t));
+  const fresh = subs ? (where.startsWith('tag:') ? tagged(where.slice(4)) : subs[where] || subs.all) : groups[tab];
   // Phone books are listed once a folder has been scanned.
   useEffect(() => {
     if ((tab === 'audio' || tab === 'text') && localSrc.connected() && !local.scannedAt) localSrc.rescan().catch(() => {});
@@ -294,6 +299,11 @@ export function Library() {
           {WHERE.filter(([k]) => k === 'all' || (subs[k].length && !(k === 'saved' && subs.saved.length === subs.all.length)) || (k === 'phone' && localSrc.available)).map(([k, label]) => (
             <button class={'pill small' + (where === k ? ' active' : '')} onClick={() => setWhere(k)}>
               {label} <span class="lib-count">{subs[k].length}</span>
+            </button>
+          ))}
+          {tagsHere.map((t) => (
+            <button class={'pill small tag-filter' + (where === 'tag:' + t ? ' active' : '')} onClick={() => setWhere(where === 'tag:' + t ? 'all' : 'tag:' + t)}>
+              # {t} <span class="lib-count">{tagged(t).length}</span>
             </button>
           ))}
         </div>
