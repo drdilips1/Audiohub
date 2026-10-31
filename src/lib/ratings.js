@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { getJson, getText, qs } from './http.js';
 import { stripHtml } from './format.js';
 import { persisted } from './store.js';
-import { words, mainTitle } from './match.js';
+import { words, mainTitle, searchTitle } from './match.js';
 import * as hcSrc from '../sources/hardcover.js';
 
 const cache = persisted('ratingsCache', {}, { delay: 2000 }); // key -> { t, v }
@@ -15,7 +15,8 @@ const cache = persisted('ratingsCache', {}, { delay: 2000 }); // key -> { t, v }
 const AUTHOR_SPLIT = /\s*(?:,|&|;|\/|\||\band\b)\s*/;
 const firstAuthor = (a) => String(a || '').split(AUTHOR_SPLIT).map((x) => x.trim()).filter(Boolean)[0] || '';
 function plainTitle(b) {
-  let t = mainTitle(b?.title).replace(/\b(unabridged|abridged|audiobook|audio ?book)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  // File names too: "The Selfish Gene Unabridged 2_005" → "The Selfish Gene".
+  let t = searchTitle(b?.title).replace(/\b(unabridged|abridged|audiobook|audio ?book)\b/gi, ' ').replace(/\s+/g, ' ').trim();
   const au = new Set(words(firstAuthor(b?.author)));
   const m = /^(.+?)\s+[-–—]\s+(.+)$/.exec(t);
   if (m && au.size) {
@@ -288,13 +289,20 @@ export const hardcoverStars = (raw) => {
   );
 };
 
-const TILE = 'tile8-gr';
+const TILE = 'tile9';
 /** The rating to show on a tile: Goodreads. Only a real "no rating" is remembered. */
 export const tileRating = (book) =>
   cached(TILE, book, async () => {
+    // Goodreads first; a book Goodreads doesn't clearly have gets Audible's stars instead
+    // (then Hardcover's, when connected).
     const g = await goodreads(book);
-    if (g === undefined) throw new Error('not reachable'); // ask again next time
-    return g;
+    if (g) return g;
+    const a = await audibleStars(book);
+    if (a) return a;
+    const h = await hardcoverStars(book).catch(() => null);
+    if (h) return h;
+    if (g === undefined && a === undefined) throw new Error('not reachable'); // ask again next time
+    return null;
   });
 
 /** Hook for tiles: { rating, count, url, from } once known. */

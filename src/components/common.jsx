@@ -181,7 +181,13 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
   const book = { ...merged, title: str(merged.title), author: str(merged.author), rating: Number(merged.rating) || 0, ratings: Number(merged.ratings) || 0 };
   const prog = useStoreKey(progressStore, book.uid);
   // Same careful lookup everywhere (your Audible store, else Goodreads), not whatever rating a listing carried.
-  const rt = useTileRating(book);
+  const looked = useTileRating(book);
+  // A book from Audible's own lists carries Audible's stars: shown when Goodreads has none.
+  const rt =
+    looked ||
+    (book.source === 'au' && book.rating > 0
+      ? { rating: book.rating, count: book.ratings || 0, url: book.link || '', from: 'Audible' }
+      : null);
   const ss = useStoryShots(book);
   const pct = prog ? Math.round((prog.percent || 0) * 100) : 0;
   // Press and hold: the book's actions (play, download, tag, finished…).
