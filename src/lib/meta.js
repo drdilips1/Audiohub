@@ -15,6 +15,8 @@ export const PROVIDERS = {
   apple: { name: 'iTunes Store / Apple Books', blurb: 'Audiobook covers & descriptions' },
   google: { name: 'Google Books', blurb: 'Covers & descriptions for most books' },
   openlibrary: { name: 'Open Library', blurb: 'Open catalogue, good for older titles' },
+  applebooks: { name: 'Apple Books (ebooks)', blurb: 'Print-edition covers for books with no audiobook' },
+  goodreads: { name: 'Goodreads covers', blurb: 'The cover Goodreads shows, for almost any book' },
 };
 
 const cache = persisted('metaCache', {}, { delay: 3000 });
@@ -117,6 +119,27 @@ const lookups = {
       source: 'Google Books',
     };
   },
+  async applebooks(q) {
+    const d = await getJson('https://itunes.apple.com/search?' + qs({ term: q, media: 'ebook', limit: 5 }), { timeout: 12000 });
+    const r = (d.results || []).find((x) => plausible(q, x.trackName));
+    if (!r) return null;
+    return {
+      title: r.trackName || '',
+      author: r.artistName || '',
+      cover: hiRes((r.artworkUrl100 || r.artworkUrl60 || '').replace(/\/\d+x\d+bb\./, '/600x600bb.')),
+      description: stripHtml(r.description || ''),
+      year: (r.releaseDate || '').slice(0, 4),
+      genres: r.genres || [],
+      source: 'Apple Books',
+    };
+  },
+  // Goodreads' cover for a title (through bookcover.longitood.com, a small open service).
+  async goodreads(q) {
+    const t = mainTitle(q.replace(/\s+by\s+.*$/i, ''));
+    const d = await getJson('https://bookcover.longitood.com/bookcover?' + qs({ book_title: t }), { timeout: 12000 });
+    if (!d?.url) return null;
+    return { title: t, author: '', cover: hiRes(d.url), source: 'Goodreads' };
+  },
   async openlibrary(q) {
     const d = await getJson('https://openlibrary.org/search.json?' + qs({ q, limit: 5, fields: 'key,title,author_name,cover_i,first_publish_year,subject' }), { timeout: 12000 });
     const w = (d.docs || []).find((x) => plausible(q, x.title));
@@ -134,7 +157,10 @@ const lookups = {
 
 export function enabledProviders() {
   const st = settings.get().metaProviders || {};
-  return (settings.get().metaOrder || Object.keys(PROVIDERS)).filter((k) => lookups[k] && st[k] !== false);
+  // Providers added since the order was saved come at the end.
+  const saved = settings.get().metaOrder || [];
+  const order = [...saved, ...Object.keys(PROVIDERS).filter((k) => !saved.includes(k))];
+  return order.filter((k) => lookups[k] && st[k] !== false);
 }
 
 // Small queue so a page of 30 covers doesn't fire 120 requests at once.
@@ -213,6 +239,8 @@ export function useMeta(book) {
     lookup(book).then((m) => alive && setMeta(m));
     return () => (alive = false);
   }, [book?.uid]);
+  // A cover picked with "Find cover & details" (book page or press-and-hold) shows at once.
+  useEffect(() => metaFixes.subscribe(() => fixFor(book?.uid) && setMeta(fixFor(book?.uid))), [book?.uid]);
   return meta;
 }
 
@@ -327,4 +355,42 @@ export function useSquareCover(book, want) {
     return () => (alive = false);
   }, [book?.title, want]);
   return settings.get().squareCovers === false ? '' : u;
+}
+
+// ---- "Find cover & details": many places at once -------------------------------
+/** Candidates for a book's cover & details from every source: [{ title, author, cover, … from }]. */
+export async function searchCovers(term) {
+  const t = String(term || '').trim();
+  if (!t) return [];
+  const safe = (p) => p.catch(() => []);
+  const apple = (media, from) =>
+    safe(
+      getJson('https://itunes.apple.com/search?' + qs({ term: t, media, limit: 6 }), { timeout: 12000 }).then((d) =>
+        (d.results || []).map((r) => ({
+          title: String(r.collectionName || r.trackName || '').replace(/\s*\((unabridged|abridged)\)\s*$/i, ''),
+          author: r.artistName || '',
+          cover: hiRes((r.artworkUrl100 || '').replace(/\/\d+x\d+bb\./, '/600x600bb.')),
+          description: stripHtml(r.description || ''),
+          year: (r.releaseDate || '').slice(0, 4),
+          from,
+        }))
+      )
+    );
+  const [au, ap, ab, gb, ol, gr] = await Promise.all([
+    safe(audibleCat.search(t)).then((l) => l.slice(0, 6).map((b) => ({ ...b, from: 'Audible' }))),
+    apple('audiobook', 'Apple audiobook'),
+    apple('ebook', 'Apple Books'),
+    safe(googleBooks.search(t)).then((l) => l.slice(0, 5).map((b) => ({ ...b, from: 'Google Books' }))),
+    safe(
+      getJson('https://openlibrary.org/search.json?' + qs({ q: t, limit: 5, fields: 'title,author_name,cover_i,first_publish_year' }), { timeout: 12000 }).then((d) =>
+        (d.docs || []).filter((w) => w.cover_i).map((w) => ({ title: w.title, author: (w.author_name || []).slice(0, 2).join(', '), cover: `https://covers.openlibrary.org/b/id/${w.cover_i}-L.jpg`, year: w.first_publish_year || '', from: 'Open Library' }))
+      )
+    ),
+    lookups.goodreads(t).then((r) => (r ? [{ ...r, from: 'Goodreads' }] : []), () => []),
+  ]);
+  // Interleaved, so the first screen shows a few from each place.
+  const lists = [au, ap, gr, ab, gb, ol];
+  const out = [];
+  for (let i = 0; i < 8; i++) for (const l of lists) if (l[i]?.cover && l[i]?.title) out.push(l[i]);
+  return out.slice(0, 30);
 }

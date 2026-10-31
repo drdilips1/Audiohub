@@ -6,6 +6,7 @@ import { Cover, toast } from './common.jsx';
 import { useStore, library, progress, bookTags, toggleLibrary, hideFromContinue, summarize } from '../lib/store.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { allTags } from './book-tags.jsx';
+import { FixDetails } from './fix-details.jsx';
 
 // The book whose sheet is open (not saved).
 let current = null;
@@ -51,9 +52,10 @@ export function BookActionsSheet() {
   const lib = useStore(library);
   const prog = useStore(progress);
   const [busy, setBusy] = useState('');
-  const close = () => sheet.set(null);
+  const [fixing, setFixing] = useState(false);
+  const close = () => (setFixing(false), sheet.set(null));
   useBackClose(!!book, close);
-  useEffect(() => setBusy(''), [book?.uid]);
+  useEffect(() => (setBusy(''), setFixing(false)), [book?.uid]);
   if (!book) return null;
   const p = prog[book.uid];
   const pct = p ? Math.round((p.percent || 0) * 100) : 0;
@@ -143,6 +145,13 @@ export function BookActionsSheet() {
         {pct > 0 && (
           <button class="menu-item" onClick={act(() => confirm(`Start “${book.title}” from the beginning?`) && (setDone(false), toast('Progress reset')))}>
             <Icon name="replay" size={18} /> Reset progress
+          </button>
+        )}
+        {fixing ? (
+          <FixDetails book={book} autoOpen onDone={close} />
+        ) : (
+          <button class="menu-item" onClick={() => setFixing(true)}>
+            <Icon name="covers" size={18} /> {book.cover ? 'Find a better cover & details' : 'Find cover & details'}
           </button>
         )}
         <button class="menu-item" onClick={act(() => nav.push('book', { book }))}>

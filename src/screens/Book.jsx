@@ -31,6 +31,7 @@ import { STARTERS } from "../lib/askbook.js";
 import { setFix } from "../lib/meta.js";
 import { audible as audibleCat, googleBooks } from "../sources/catalogs.js";
 import { SourceResults } from "../components/source-results.jsx";
+import { FixDetails } from "../components/fix-details.jsx";
 import { Available } from "../components/available.jsx";
 import { SeriesCard } from "../components/series-card.jsx";
 import { useRatings, useGoodreads } from "../lib/ratings.js";
@@ -1070,118 +1071,6 @@ function BookMenu({ book, onClose, onFixed, hcStatus, setHcStatus }) {
 }
 
 /** Missing or wrong cover / title? Search Audible and Google Books and pick the right one. */
-function FixDetails({ book, onFixed }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [list, setList] = useState(null);
-  const search = async (term) => {
-    if (!term.trim()) return;
-    setBusy(true);
-    setList(null);
-    const [a, g] = await Promise.all([
-      audibleCat.search(term).catch(() => []),
-      googleBooks.search(term).catch(() => []),
-    ]);
-    setList([...a.slice(0, 8), ...g.slice(0, 6)].filter((b) => b.title));
-    setBusy(false);
-  };
-  const start = () => {
-    const term =
-      `${mainTitle(book.title)} ${(book.author || "").split(",")[0]}`.trim();
-    setQ(term);
-    setOpen(true);
-    search(term);
-  };
-  const pick = (m) => {
-    const fix = {
-      title: m.title,
-      author: m.author,
-      cover: m.cover,
-      description: m.description || "",
-      narrator: m.narrator || "",
-      year: m.year || "",
-      genres: m.genres || m.subjects || [],
-      source: m.source === "au" ? "Audible" : "Google Books",
-    };
-    setFix(book.uid, fix);
-    // A phone book keeps the cover with its file details too (survives rescans).
-    if (book.source === "loc" && fix.cover) localSrc.setCover(book.uid, fix.cover);
-    onFixed({ ...fix, metaSource: fix.source, fixed: true });
-    setOpen(false);
-    toast("Details saved for this book");
-  };
-  if (!open)
-    return (
-      <div class="fix-row">
-        <button class="link-btn fix-link" onClick={start}>
-          <Icon name="search" size={14} />{" "}
-          {book.cover
-            ? "Wrong cover or details? Find the right ones"
-            : "Find cover & details"}
-        </button>
-        {book.fixed && (
-          <button
-            class="link-btn fix-link"
-            onClick={() => {
-              setFix(book.uid, null);
-              toast(
-                "Back to the original details — reopen the book to see them",
-              );
-            }}
-          >
-            Undo
-          </button>
-        )}
-      </div>
-    );
-  return (
-    <div class="fix-panel">
-      <form
-        class="set-form inline"
-        onSubmit={(e) => {
-          e.preventDefault();
-          search(q);
-        }}
-      >
-        <input
-          value={q}
-          onInput={(e) => setQ(e.currentTarget.value)}
-          placeholder="Title and author"
-        />
-        <button class="btn primary" disabled={busy}>
-          {busy ? <span class="spinner small" /> : "Search"}
-        </button>
-      </form>
-      {list && !list.length && (
-        <p class="muted small">Nothing found — try fewer words.</p>
-      )}
-      <div class="fix-list">
-        {(list || []).map((m) => (
-          <button class="fix-item" onClick={() => pick(m)}>
-            {m.cover ? (
-              <img src={m.cover} alt="" loading="lazy" />
-            ) : (
-              <span class="fix-nocover" />
-            )}
-            <span>
-              <b>{m.title}</b>
-              <small>
-                {m.author}
-                {m.year ? ` · ${m.year}` : ""} ·{" "}
-                {m.source === "au" ? "Audible" : "Google Books"}
-              </small>
-            </span>
-          </button>
-        ))}
-      </div>
-      <button class="link-btn" onClick={() => setOpen(false)}>
-        Cancel
-      </button>
-    </div>
-  );
-}
-
 /** Ask AI about this book: one slim row of one-tap questions, and "Ask…" for your own. */
 function AskCard({ book, description, genres }) {
   const open = (extra = {}) =>

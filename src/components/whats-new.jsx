@@ -39,6 +39,11 @@ const STEPS = [
     text: 'Player → More → History: every play, pause, skip, jump and sleep-timer stop, with the time and where you were. Fell asleep or bumped skip? Tap an entry to go back there.',
   },
   {
+    icon: 'covers',
+    title: 'Covers from more places',
+    text: 'Press and hold a book → Find cover & details (or on the book page): it searches Audible, Apple audiobooks, Apple Books, Goodreads, Google Books and Open Library at once. Missing covers are also looked up in Apple Books and Goodreads by themselves.',
+  },
+  {
     icon: 'ai',
     title: 'Ask AI reads the book',
     text: 'With the ebook attached, Ask AI answers from the book’s own text (never past where you are, with No spoilers on), or from what you’ve heard. Answers say where they came from, and you can share, copy, listen or save them.',
