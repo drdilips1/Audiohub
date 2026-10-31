@@ -10930,3 +10930,66 @@ button.notes-book-head {
 .myrate-v.on small {
   display: inline;
 }
+
+/* Up next */
+.upnext-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.upnext-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.upnext-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  color: inherit;
+}
+.upnext-main .cover {
+  width: 44px;
+  flex: none;
+  border-radius: 8px;
+}
+.upnext-main span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.upnext-main b {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upnext-main small {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.upnext-list li {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.upnext-main {
+  overflow: hidden;
+}
+.upnext-list .icon-btn {
+  flex: none;
+  width: 34px;
+  height: 34px;
+}

@@ -20,6 +20,7 @@ import { SceneButton } from './scene-cmd.jsx';
 import { Rows as BookmarkRows } from './bookmarks.jsx';
 import { HighlightCards, AudioNotes, useBookNoteCount } from './book-notes.jsx';
 import { HistorySheet } from './history-sheet.jsx';
+import { UpNextList } from './up-next.jsx';
 import { transcriptCfg, stopTranscript } from '../lib/transcript.js';
 import { sleepDetectAvailable, setSleepDetect } from '../lib/sleepdetect.js';
 
@@ -443,6 +444,12 @@ export function FullPlayer() {
             {sheet === 'story' && <StorySheet close={() => setSheet(null)} />}
             {sheet === 'recap' && <StorySheet close={() => setSheet(null)} start="story" />}
             {sheet === 'xray' && <XraySheet s={s} />}
+            {sheet === 'upnext' && (
+              <>
+                <h3>Up next</h3>
+                <UpNextList onPlay={() => setSheet(null)} />
+              </>
+            )}
             {sheet === 'more' && <Companion book={s.book} />}
             {sheet === 'more' && (
               <div class="fp-more">
@@ -465,6 +472,10 @@ export function FullPlayer() {
                 <button onClick={() => setSheet('bookmarks')}>
                   <Icon name="bookmark" size={22} />
                   Notes · {noteCount}
+                </button>
+                <button onClick={() => setSheet('upnext')}>
+                  <Icon name="list" size={22} />
+                  Up next
                 </button>
                 <button onClick={() => setSheet('history')}>
                   <Icon name="list" size={22} />

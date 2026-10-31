@@ -7,6 +7,7 @@ import { useStore, library, progress, bookTags, toggleLibrary, hideFromContinue,
 import { nav, useBackClose } from '../lib/nav.js';
 import { allTags } from './book-tags.jsx';
 import { FixDetails } from './fix-details.jsx';
+import { upNext, addUpNext, removeUpNext } from '../lib/upnext.js';
 
 // The book whose sheet is open (not saved).
 let current = null;
@@ -50,6 +51,7 @@ const ebookOnly = (b) => b.kind === 'text';
 export function BookActionsSheet() {
   const book = useStore(sheet);
   const lib = useStore(library);
+  const queue = useStore(upNext);
   const prog = useStore(progress);
   const [busy, setBusy] = useState('');
   const [fixing, setFixing] = useState(false);
@@ -127,6 +129,16 @@ export function BookActionsSheet() {
             {busy === 'dl' ? <span class="spinner small" /> : <Icon name="download" size={18} />} Download
           </button>
         )}
+        {!ebookOnly(book) &&
+          (queue.some((x) => x.book.uid === book.uid && x.at == null) ? (
+            <button class="menu-item" onClick={act(() => (removeUpNext(book.uid), toast('Taken off Up next')))}>
+              <Icon name="list" size={18} /> Remove from Up next
+            </button>
+          ) : (
+            <button class="menu-item" onClick={act(() => (addUpNext(book), toast(`Up next: ${book.title}`)))}>
+              <Icon name="list" size={18} /> Add to Up next
+            </button>
+          ))}
         <button class="menu-item" onClick={act(() => (toggleLibrary(book), toast(saved ? 'Removed from your library' : 'Added to your library')))}>
           <Icon name="heart" size={18} fill={saved} /> {saved ? 'Remove from library' : 'Add to library'}
         </button>

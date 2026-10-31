@@ -1295,6 +1295,7 @@ export function Settings() {
       <Section icon="headphones" title="Playback">
         <Stepper label="Skip back" value={st.skipBack} options={[5, 10, 15, 30]} fmt={(v) => v + 's'} onChange={(v) => settings.patch({ skipBack: v })} />
         <Stepper label="Skip forward" value={st.skipForward} options={[10, 15, 30, 45, 60]} fmt={(v) => v + 's'} onChange={(v) => settings.patch({ skipForward: v })} />
+        <Toggle label="Play Up next by itself" hint="When a book ends, the next one in Up next starts (press and hold a book → Add to Up next)" on={st.upNextAuto !== false} onChange={(v) => settings.patch({ upNextAuto: v })} />
       </Section>
 
       <Section icon="ai" title="AI (bookseller & story helper)">

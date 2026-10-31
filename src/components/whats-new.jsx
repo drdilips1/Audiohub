@@ -44,6 +44,11 @@ const STEPS = [
     text: 'Press and hold a book → Find cover & details (or on the book page): it searches Audible, Apple audiobooks, Apple Books, Goodreads, Google Books and Open Library at once. Missing covers are also looked up in Apple Books and Goodreads by themselves.',
   },
   {
+    icon: 'list',
+    title: 'Up next',
+    text: 'Line up what to listen to next: press and hold a book → Add to Up next (or hold a bookmark to queue that passage). It shows on Home and in the player (More → Up next), and the next one starts when a book ends — each from its own place.',
+  },
+  {
     icon: 'chart',
     title: 'Reading stats',
     text: 'Library → Stats now has Listening and Reading: time spent reading ebooks, your reading streak, when you read, your most-read books and the ebooks you finished.',

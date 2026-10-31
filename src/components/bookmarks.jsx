@@ -44,7 +44,14 @@ export function Rows({ uid, book, list, onPlay }) {
     <ol class="chapter-list bm-list">
       {list.map((bm) => (
         <li class={bm.quote ? 'bm-quote' : ''}>
-          <button onClick={() => (playBookmark(book, bm), onPlay?.())}>
+          <button
+            onClick={() => (playBookmark(book, bm), onPlay?.())}
+            onContextMenu={(e) => {
+              // Press and hold: this passage goes to Up next (plays from that moment).
+              e.preventDefault();
+              import('../lib/upnext.js').then((m) => m.addUpNext(book, { at: bm.global ?? bm.time, label: bm.label }) && toast('Passage added to Up next'));
+            }}
+          >
             <span class="ch-num">
               <Icon name={bm.quote ? 'edit' : 'bookmark'} size={14} />
             </span>
