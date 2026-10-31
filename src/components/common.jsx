@@ -192,42 +192,9 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
     <button class={'book-card' + (wide ? ' wide' : '')} {...hold} onClick={() => (isReaderEbook(book) ? nav.push('reader', { book }) : nav.push('book', { book }))}>
       <div class="book-card-cover">
         <Cover book={book} />
-        {/* Recommendations: the ✕ (Not interested) takes the corner, off the match %. */}
-        {!rec && (
-          <span class="kind-dot" title={book.kind}>
-            <Icon name={book.kind === 'text' ? 'book' : book.kind === 'discover' ? 'sparkle' : 'headphones'} size={13} />
-          </span>
-        )}
         {book.rank > 0 && <span class="rank-badge">#{book.rank}</span>}
         {book.copies > 1 && <span class="copies-badge">{book.copies} copies</span>}
         {!(book.rank > 0) && book.match > 0 && <span class={'match-badge' + (book.match >= 80 ? ' hi' : '')}>{book.match}% match</span>}
-        {rt && (
-          <span
-            class="rating-badge"
-            role="link"
-            title={`${rt.from}: ${rt.rating.toFixed(1)} from ${rt.count.toLocaleString()} ratings — tap for reviews`}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (rt.url) openExternal(rt.url);
-            }}
-          >
-            <Icon name="star" size={10} fill /> {rt.rating.toFixed(1)}
-            {rt.count > 0 && <small> ({fmtCount(rt.count)})</small>}
-          </span>
-        )}
-        {ss && (
-          <span
-            class={'ss-badge' + (ss.ep ? '' : ' outline')}
-            role="link"
-            title={ss.ep ? 'StoryShots audio summary — plays here' : 'Summary in StoryShots — tap for options'}
-            onClick={(e) => {
-              e.stopPropagation();
-              chooseStoryShots(book, ss);
-            }}
-          >
-            S
-          </span>
-        )}
         {rec && (
           <span
             class="not-btn"
@@ -244,14 +211,46 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
           </span>
         )}
         {book.fetching != null && <span class="fetch-badge">{Math.round((book.fetching || 0) * 100)}%</span>}
-        {pct > 0 && (
-          <div class="progress-mini">
-            <div style={{ width: pct + '%' }} />
-          </div>
-        )}
       </div>
+      {/* How far you are: a thin line under the cover, not on it. */}
+      {pct > 0 && (
+        <div class="progress-under">
+          <div style={{ width: pct + '%' }} />
+        </div>
+      )}
       <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
       <div class="book-card-author">{book.author || ' '}</div>
+      {(rt || ss) && (
+        <div class="book-card-badges">
+          {rt && (
+            <span
+              class="card-rating"
+              role="link"
+              title={`${rt.from}: ${rt.rating.toFixed(1)} from ${rt.count.toLocaleString()} ratings — tap for reviews`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (rt.url) openExternal(rt.url);
+              }}
+            >
+              <Icon name="star" size={10} fill /> {rt.rating.toFixed(1)}
+              {rt.count > 0 && <small> ({fmtCount(rt.count)})</small>}
+            </span>
+          )}
+          {ss && (
+            <span
+              class={'card-ss' + (ss.ep ? '' : ' outline')}
+              role="link"
+              title={ss.ep ? 'StoryShots audio summary — plays here' : 'Summary in StoryShots — tap for options'}
+              onClick={(e) => {
+                e.stopPropagation();
+                chooseStoryShots(book, ss);
+              }}
+            >
+              S
+            </span>
+          )}
+        </div>
+      )}
       <CardFacts book={book} meta={meta} />
     </button>
   );

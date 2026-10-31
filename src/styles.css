@@ -11018,3 +11018,55 @@ button.notes-book-head {
 .ch-sum-text .ask-answer ul {
   padding-left: 18px;
 }
+
+
+/* Book cards: the cover stays clean — rating, StoryShots and progress sit under it. */
+.progress-under {
+  height: 3px;
+  margin: 6px 2px 0;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.progress-under div {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.book-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+.card-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.card-rating .icon {
+  color: #e0a526;
+}
+.card-rating small {
+  font-weight: 500;
+  color: var(--muted);
+}
+.card-ss {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--accent);
+  color: #fff;
+}
+.card-ss.outline {
+  background: none;
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+}
