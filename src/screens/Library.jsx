@@ -6,6 +6,7 @@ import { allTags } from '../components/book-tags.jsx';
 import { localSrc } from '../sources/index.js';
 import { fmtDuration } from '../lib/format.js';
 import { metaNow, metaFixes, coverNow, findMissingCovers } from '../lib/meta.js';
+import { longPress } from '../components/book-actions.jsx';
 import { seriesOf } from '../lib/series.js';
 import { oneEach } from '../lib/works.js';
 import { downloads, removeDownload } from '../lib/downloads.js';
@@ -56,7 +57,7 @@ function CoverGrid({ items }) {
     <>
       <div class="cover-grid">
         {items.slice(0, count).map((b) => (
-          <button class="cover-tile" aria-label={titleOf(b)} onClick={() => (b.kind === 'text' && !String(b.uid).startsWith('lbl') ? nav.push('reader', { book: b }) : nav.push('book', { book: b }))}>
+          <button class="cover-tile" aria-label={titleOf(b)} {...longPress(() => b)} onClick={() => (b.kind === 'text' && !String(b.uid).startsWith('lbl') ? nav.push('reader', { book: b }) : nav.push('book', { book: b }))}>
             <BookCover book={b} />
           </button>
         ))}
@@ -432,7 +433,7 @@ function ListView({ items, prog }) {
         const p = prog?.[b.uid];
         const pct = p && !p.finished ? Math.round((p.percent || 0) * 100) : 0;
         return (
-          <button class="lib-row" onClick={() => nav.push(b.kind === 'text' && /#ebook$/.test(b.uid) ? 'reader' : 'book', { book: b })}>
+          <button class="lib-row" {...longPress(() => b)} onClick={() => nav.push(b.kind === 'text' && /#ebook$/.test(b.uid) ? 'reader' : 'book', { book: b })}>
             <BookCover book={b} />
             <div>
               <b>{bare(b.title)}</b>

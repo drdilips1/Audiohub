@@ -255,11 +255,13 @@ export const coverNow = (book) => (book && (fixFor(book.uid)?.cover || book.cove
 
 /** Does a search result look like this book? Most of the title's words, and the author's surname when both are known. */
 function sameBook(want, hit) {
-  const t = new Set(words(mainTitle(bare(want.title))));
+  // A file name often carries the author ("Atul Gawande - Better"): the title's words without them.
+  const aw = new Set(words(want.author || ''));
+  const t = new Set(words(mainTitle(bare(want.title))).filter((w) => !aw.has(w)));
   const h = words(String(hit.title || '').replace(/[:(].*$/, ''));
   if (!t.size || !h.length) return false;
   const shared = h.filter((w) => t.has(w)).length;
-  if (shared / Math.max(t.size, h.length) < 0.6) return false;
+  if (shared / Math.max(t.size, h.length) < 0.5) return false;
   const sn = words(String(want.author || '').split(',')[0]).pop();
   return !sn || !hit.author || words(hit.author).includes(sn);
 }
@@ -281,8 +283,9 @@ export async function findMissingCovers(books, onProgress = () => {}, onFound = 
     const author = String(b.author || '').split(',')[0].trim();
     for (const term of [`${title} ${author}`.trim(), title]) {
       if (!title) break;
-      const [a, g] = await Promise.all([audibleCat.search(term).catch(() => []), googleBooks.search(term).catch(() => [])]);
-      const hit = [...a, ...g].find((m) => m?.cover && sameBook({ title, author }, m));
+      // Every place "Find cover & details" looks: Audible, Apple, Goodreads, Google Books, Open Library.
+      const all = await searchCovers(term).catch(() => []);
+      const hit = all.find((m) => m?.cover && sameBook({ title, author }, m));
       if (hit) {
         setFix(b.uid, { ...(fixFor(b.uid) || {}), cover: hiRes(hit.cover) });
         onFound(b, hiRes(hit.cover));
