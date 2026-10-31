@@ -174,8 +174,6 @@ export function FullPlayer() {
     const iv = setInterval(() => tick((x) => x + 1), 1000);
     return () => clearInterval(iv);
   }, [s.sleepUntil]);
-  if (!s.book) return null;
-  const dur = s.duration || s.tracks[s.index]?.duration || 0;
   const held = useRef(false); // a finger is on the slider
   // A drag left over (no finger on it for a few seconds): follow the playing time again.
   useEffect(() => {
@@ -183,6 +181,8 @@ export function FullPlayer() {
     const id = setTimeout(() => !held.current && setScrub(null), 4000);
     return () => clearTimeout(id);
   }, [scrub]);
+  if (!s.book) return null;
+  const dur = s.duration || s.tracks[s.index]?.duration || 0;
   const t = scrub ?? s.time;
   const chapters = player.chapters();
   const g = player.globalTime();
