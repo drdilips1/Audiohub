@@ -29,6 +29,8 @@ export function Cover({ book, class: cls = '', eager }) {
   useEffect(() => setFailed(!book?.cover || proxyFailed), [book?.cover, proxyFailed]);
   const hue = hashHue(book?.title || '');
   const [frame, setFrame] = useState(null);
+  // A different book (or picture) here: start over (tall/whole, the trimmed frame).
+  useEffect(() => (setTall(false), setRatio(0)), [book?.uid]);
   useEffect(() => {
     setFrame(null);
     if (!src) return;

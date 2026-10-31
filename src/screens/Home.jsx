@@ -435,7 +435,7 @@ function ContinueRow() {
       {rest.length > 0 && (
         <div class="row-scroll continue">
           {rest.map(([uid, p]) => (
-            <button class="continue-card" onClick={() => open(p)}>
+            <button key={uid} class="continue-card" onClick={() => open(p)}>
               <Cover book={p.book} />
               <div class="continue-meta">
                 <b>{p.book.title}</b>

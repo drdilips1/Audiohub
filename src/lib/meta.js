@@ -349,11 +349,13 @@ export function squareCover(book) {
 export function useSquareCover(book, want) {
   const [u, setU] = useState(() => (book ? squareNow(book) : ''));
   useEffect(() => {
+    // Another book in the same place (a list that moved up): never keep the last one's cover.
+    setU(book ? squareNow(book) : '');
     if (!book || !want || settings.get().squareCovers === false) return;
     let alive = true;
     squareCover(book).then((x) => alive && x && setU(x));
     return () => (alive = false);
-  }, [book?.title, want]);
+  }, [book?.uid, book?.title, want]);
   return settings.get().squareCovers === false ? '' : u;
 }
 
