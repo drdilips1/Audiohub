@@ -71,6 +71,12 @@ const STEPS = [
     tip: 'Addon torrents now play through TorBox / Real-Debrid, and sources say “seeds ?” instead of hiding results they don’t know.',
   },
   {
+    icon: 'download',
+    title: 'Backups that always save',
+    text: 'Saving a big backup no longer crashes the app or leaves an empty file — your whole library, progress, notes and settings go into it, however much you have.',
+    tip: 'Also fixed: no long wait on “Getting the file list” in TorBox (it says why when it can’t), ebook results open with Read, sources list audiobooks first, and Report a problem includes TorBox errors.',
+  },
+  {
     icon: 'book',
     title: 'Select by sliding',
     text: 'In an ebook, press on a word, hold a moment, then slide your finger — the selection follows it word by word (the page scrolls at the edges). Or tap Sentence, Paragraph or + Next to select exactly that.',
