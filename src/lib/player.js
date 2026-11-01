@@ -26,7 +26,14 @@ async function titlesFor(b) {
   const fromFiles = [b?.tracks?.[0]?.title, state.book?.uid === b?.uid ? state.tracks[0]?.title : '', b?.chaptersMeta?.[0]?.title, b?.part0, progress.get()[b?.uid]?.book?.part0]
     .map((x) => searchTitle(x || ''))
     .find((x) => words(x).length >= 2 && !/^(chapter|part|track|disc|cd)\b/i.test(x));
-  return [...new Set([b?.title, fromFiles].filter(Boolean))];
+  // A "title" that is really the author's name ("Richard Dawkin" for a Dawkins book) finds the
+  // author's other books, never this one: left out.
+  const by = words(b?.author || '');
+  const isAuthor = (t) => {
+    const w = words(t);
+    return w.length > 0 && w.every((x) => by.some((a) => a === x || (x.length > 3 && (a.startsWith(x) || x.startsWith(a)))));
+  };
+  return [...new Set([fromFiles, b?.title].filter((t) => t && !isAuthor(t)))];
 }
 /**
  * No copy of your own: a result from your sources that your TorBox / Real-Debrid can play
@@ -41,9 +48,11 @@ async function instantCopy(book, why) {
   const { getDetails } = await import('../sources/index.js');
   const where = provider === 'torbox' ? 'TorBox' : 'Real-Debrid';
   const ebookish = /\b(epub|pdf|mobi|azw3?|ebook)\b/i;
-  const usable = (r) =>
-    r && !r.loose && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`) && (provider === 'torbox' ? r.cache?.torbox : r.cache?.realdebrid) && !rescueTried.has('h:' + r.hash);
+  const { matches } = await import('./match.js');
+  const usable = (r, title) =>
+    r && !r.loose && matches(title, r.title || '') && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`) && (provider === 'torbox' ? r.cache?.torbox : r.cache?.realdebrid) && !rescueTried.has('h:' + r.hash);
   const titles = await titlesFor(book);
+  if (!titles.length) return null; // only the author's name to go by: nothing safe to look for
   if (why) set({ loading: true, error: null, phase: `${why} — looking for it ready in your ${where}…` });
   // Every title at once; the first source that has it ready wins (no waiting for slow ones).
   const pick = await new Promise((resolve) => {
@@ -51,7 +60,7 @@ async function instantCopy(book, why) {
     const finish = (v) => !done && ((done = true), resolve(v));
     const tries = titles.map((title) =>
       searchSources({ title, author: book.author || '' }, (n, list) => {
-        const r = (list || []).filter(usable).sort((x, y) => (y.seeders || 0) - (x.seeders || 0))[0];
+        const r = (list || []).filter((x) => usable(x, title)).sort((x, y) => (y.seeders || 0) - (x.seeders || 0))[0];
         if (r) finish({ r, title });
       }).catch(() => {})
     );

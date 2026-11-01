@@ -12,7 +12,7 @@ import * as gr from './goodreads.js';
 import * as pods from './podcasts.js';
 import * as ttsb from './ttsbooks.js';
 import { audible, googleBooks } from './catalogs.js';
-import { settings } from '../lib/store.js';
+import { settings, progress } from '../lib/store.js';
 import { matches, mainTitle, words, otherBook } from '../lib/match.js';
 import { lookup, wantsMeta, fixFor, metaNow } from '../lib/meta.js';
 import { applyLocal, isDownloaded } from '../lib/downloads.js';
@@ -70,7 +70,24 @@ export function sourceOf(uid) {
  * Everything needed to show and play a book. `fast` (pressing play): don't wait for the
  * online details lookup — use what's already known, so playback starts sooner.
  */
-export async function getDetails(book, { fast = false } = {}) {
+// A book you're partway through: keep its first chapter / file name with your place (the real
+// title when a server's title is wrong), so another copy can be found while the server is down.
+function notePart0(d) {
+  const p0 = String(d?.chaptersMeta?.[0]?.title || d?.tracks?.[0]?.title || '').slice(0, 120);
+  const cur = d?.uid && progress.get()[d.uid];
+  if (!p0 || !cur?.book || cur.book.part0 === p0) return;
+  progress.set((all) => (all[d.uid] ? { ...all, [d.uid]: { ...all[d.uid], book: { ...all[d.uid].book, part0: p0 } } } : all));
+}
+
+export async function getDetails(book, opts = {}) {
+  const d = await getDetailsRaw(book, opts);
+  try {
+    notePart0(d);
+  } catch {}
+  return d;
+}
+
+async function getDetailsRaw(book, { fast = false } = {}) {
   // A pasted link (direct MP3 / M4B…): the link is in its id, so Continue can reopen it.
   if ((book.uid || '').startsWith('url:') && book.kind !== 'text') {
     const url = decodeURIComponent(book.uid.slice(4));
