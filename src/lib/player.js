@@ -232,6 +232,11 @@ const handlers = {
     const t = state.tracks[state.index];
     if (t && dur > 0) t.duration = dur;
     set({ time: pos, duration: dur || state.duration });
+    if (pctSeek && dur > 0) {
+      const ps = pctSeek;
+      pctSeek = null;
+      if (ps.i === state.index && ps.frac > 0.002) return seekTo(Math.min(dur - 5, ps.frac * dur));
+    }
     saveProgress();
     stats.tick(state.playing, state.rate, state.book, globalTime());
     // The show's outro: treat it as the end of the episode.
@@ -678,9 +683,11 @@ async function playOtherCopy(book, err, opts = {}) {
   }
 }
 
+let pctSeek = null; // { i, frac }: go to this point of part i once its length is known
 let bookStartedAt = 0; // when a copy the app switched to started (one that 'ends' at once isn't finished)
 export async function playBook(details, { index, time, globalStart, percent, autoplay = true } = {}) {
   bookStartedAt = rescuing ? Date.now() : 0;
+  pctSeek = null;
   stopWaiting();
   // Another book (or the same one again): the previous server session is done.
   if (state.book) {
@@ -751,6 +758,15 @@ export async function playBook(details, { index, time, globalStart, percent, aut
     // through you were, never past its end.
     const whole = totalDuration();
     if (g != null && percent > 0 && whole > 0 && (g > whole - 30 || Math.abs(g / whole - percent) > 0.06)) g = Math.min(percent, 0.995) * whole;
+    // The parts' lengths aren't known yet (a cloud copy before it loads): by how far through
+    // you were — the right part, then the right point in it once its length is known.
+    if (g != null && !(whole > 0) && percent > 0) {
+      const x = Math.min(percent, 0.995) * tracks.length;
+      i = Math.min(tracks.length - 1, Math.floor(x));
+      t = 0;
+      pctSeek = { i, frac: x - i };
+      g = null;
+    }
     if (g != null) ({ i, t } = locate(g));
     // Gentle rewind when resuming after a break.
     if (resume && index == null && time == null && Date.now() - saved.updatedAt > 5 * 60e3) t = Math.max(0, t - 10);
