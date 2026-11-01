@@ -742,7 +742,7 @@ async function phoneCopy(book) {
 
 let pctSeek = null; // { i, frac }: go to this point of part i once its length is known
 let bookStartedAt = 0; // when a copy the app switched to started (one that 'ends' at once isn't finished)
-export async function playBook(details, { index, time, globalStart, percent, autoplay = true } = {}) {
+export async function playBook(details, { index, time, globalStart, percent, autoplay = true, exact = false } = {}) {
   bookStartedAt = rescuing ? Date.now() : 0;
   pctSeek = null;
   stopWaiting();
@@ -757,7 +757,7 @@ export async function playBook(details, { index, time, globalStart, percent, aut
   rescuing = false;
   if (details && !details.offline && isDownloaded(details.uid)) details = applyLocal(details);
   // The same book is also on this phone ("On this phone" folders): play that, not the cloud.
-  if (!wasRescue && details && !details.offline && !NO_PHONE_SWAP.has(details.source) && details.kind !== 'text') {
+  if (!wasRescue && !exact && details && !details.offline && !NO_PHONE_SWAP.has(details.source) && details.kind !== 'text') {
     const phone = await phoneCopy(details).catch(() => null);
     if (phone) {
       const p = progress.get()[details.uid];

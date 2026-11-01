@@ -67,7 +67,7 @@ export async function quickPlay(r, via, book, onStatus) {
   const stub = await cloud.prepareMagnet(via, r, (text) => onStatus?.(text));
   const details = await getDetails({ ...stub, title: book?.title || stub.title, author: book?.author || r.author || stub.author, cover: book?.cover || stub.cover });
   nav.openOverlay('player');
-  player.playBook(details);
+  player.playBook(details, { exact: true }); // the copy you tapped, not the phone's
 }
 export const readerBookFor = (r, book) => {
   const f = directEbookFile(r);
@@ -446,7 +446,7 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
         cover: book?.cover || stub.cover,
       });
       nav.openOverlay('player');
-      player.playBook(details);
+      player.playBook(details, { exact: true });
       setStatus(null);
     } catch (e) {
       setStatus(null);

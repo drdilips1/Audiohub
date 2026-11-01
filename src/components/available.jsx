@@ -116,7 +116,7 @@ export function Available({ book, editions }) {
       else {
         const d = await getDetails(a.book);
         nav.openOverlay('player');
-        player.playBook(d);
+        player.playBook(d, { exact: true }); // the copy you tapped, not the phone's
       }
     } catch (e) {
       toast(e.message);
