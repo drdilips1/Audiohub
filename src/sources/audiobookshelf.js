@@ -242,7 +242,7 @@ function ebookOf(li) {
 
 async function startSession(id) {
   const s = await call(`/api/items/${id}/play`, { method: 'POST', body: {
-    deviceInfo: { clientName: 'Audiohub', deviceId: 'audiohub-android' },
+    deviceInfo: { clientName: 'Audioyam', deviceId: 'audiohub-android' },
     forceDirectPlay: true,
     mediaPlayer: 'html5',
     supportedMimeTypes: ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/webm', 'audio/x-m4b'],

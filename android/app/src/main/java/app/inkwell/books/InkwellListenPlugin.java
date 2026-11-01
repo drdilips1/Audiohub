@@ -15,7 +15,7 @@ import java.util.ArrayList;
 /**
  * Voice questions for Ask AI: opens Google's speech input (very good with Indian
  * English and Hindi) and returns what was said. Google's app handles the microphone,
- * so Audiohub needs no microphone permission of its own.
+ * so Audioyam needs no microphone permission of its own.
  */
 @CapacitorPlugin(name = "InkwellListen")
 public class InkwellListenPlugin extends Plugin {

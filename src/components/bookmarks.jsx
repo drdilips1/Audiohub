@@ -29,7 +29,7 @@ export function noteBookmark(uid, bm) {
 const remove = (uid, bm) => bookmarks.set((all) => ({ ...all, [uid]: (all[uid] || []).filter((b) => b.createdAt !== bm.createdAt) }));
 
 /** Bookmark rows: tap to play from there, ✎ to add a note, bin to delete. */
-// Share a bookmark / transcript quote as a quote card + link another Audiohub user can open.
+// Share a bookmark / transcript quote as a quote card + link another Audioyam user can open.
 async function shareBookmark(book, bm) {
   try {
     const r = await shareQuote({ kind: 'audio', title: book?.title || 'A book', author: book?.author || '', cover: book?.cover || '', quote: bm.label, note: bm.note || '', global: bm.global ?? bm.time });

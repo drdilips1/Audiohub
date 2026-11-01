@@ -12,7 +12,7 @@ const nativeShare = Capacitor.isNativePlatform() && Capacitor.isPluginAvailable(
 // An answer as plain text (no ** or ### marks), for sharing and copying.
 const plain = (t) => String(t || '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/^#{1,4}\s+/gm, '').replace(/^[*•]\s+/gm, '• ').trim();
 async function shareAnswer(book, q, a) {
-  const text = `${q ? `Q: ${q.replace(/^[🎧🎙]\s*/u, '')}\n\n` : ''}${plain(a)}${book ? `\n\n— Asked about “${mainTitle(book.title)}”${book.author ? ` by ${book.author}` : ''} in Audiohub` : ''}`;
+  const text = `${q ? `Q: ${q.replace(/^[🎧🎙]\s*/u, '')}\n\n` : ''}${plain(a)}${book ? `\n\n— Asked about “${mainTitle(book.title)}”${book.author ? ` by ${book.author}` : ''} in Audioyam` : ''}`;
   if (nativeShare) return Web.shareText({ text, title: 'Share answer' });
   if (navigator.share) return navigator.share({ text }).catch(() => {});
   if (await copyText(text)) toast('Copied — paste it anywhere');

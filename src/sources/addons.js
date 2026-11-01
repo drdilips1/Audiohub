@@ -76,7 +76,7 @@ export async function install(rawUrl) {
       if (installed.length) return { name: `${installed.length} addon${installed.length > 1 ? 's' : ''}`, id: installed[0].id };
     }
     const keys = data && typeof data === 'object' ? Object.keys(data).slice(0, 6).join(', ') : typeof data;
-    lastErr = new Error(`This addon uses a format Audiohub doesn't support yet (it has: ${keys || 'nothing'}).`);
+    lastErr = new Error(`This addon uses a format Audioyam doesn't support yet (it has: ${keys || 'nothing'}).`);
     lastErr.raw = data;
     break;
   }

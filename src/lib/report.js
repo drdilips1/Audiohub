@@ -113,11 +113,11 @@ export function buildReport({ note = '', version = '', setup = [] } = {}) {
   const screen = st.overlay || (st.top ? `${st.tab} › ${st.top.name}${st.top.params?.book?.title ? ` (“${st.top.params.book.title}”)` : ''}` : st.tab);
   const errs = recentErrors().slice(-15);
   return [
-    '🐞 Audiohub problem report',
+    '🐞 Audioyam problem report',
     '',
     `What happened: ${note.trim() || '(not described)'}`,
     '',
-    `App: Audiohub ${version} · ${{ android: 'Android app', ios: 'iPhone app' }[Capacitor.getPlatform()] || 'web app'}`,
+    `App: Audioyam ${version} · ${{ android: 'Android app', ios: 'iPhone app' }[Capacitor.getPlatform()] || 'web app'}`,
     `Device: ${navigator.userAgent.replace(/\s*\(KHTML.*$/, '').slice(0, 140)}`,
     `Screen: ${screen}`,
     `Time: ${when(Date.now())} · Online: ${navigator.onLine ? 'yes' : 'no'}`,
@@ -134,12 +134,12 @@ export function buildReport({ note = '', version = '', setup = [] } = {}) {
 /** Android: the share sheet (pick Claude). Web: the browser's share, else copy. Returns what happened. */
 export async function shareReport(text) {
   if (native) {
-    await Web.shareText({ text, title: 'Send the report to…', subject: 'Audiohub problem report' });
+    await Web.shareText({ text, title: 'Send the report to…', subject: 'Audioyam problem report' });
     return 'shared';
   }
   if (navigator.share) {
     try {
-      await navigator.share({ title: 'Audiohub problem report', text });
+      await navigator.share({ title: 'Audioyam problem report', text });
       return 'shared';
     } catch (e) {
       if (e?.name === 'AbortError') return 'cancelled';

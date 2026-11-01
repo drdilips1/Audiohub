@@ -57,7 +57,7 @@ export function StoryShotsSheet() {
             >
               <Icon name="play" size={18} /> Play StoryShots audio{mins(ep.duration)}
             </button>
-            <small class="muted">Their own narrated summary (from their free podcast), in the Audiohub player.</small>
+            <small class="muted">Their own narrated summary (from their free podcast), in the Audioyam player.</small>
           </>
         )}
         {!ep && openBlock(true)}

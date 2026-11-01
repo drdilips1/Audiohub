@@ -35,7 +35,7 @@ public class InkwellUpdatePlugin extends Plugin {
         call.resolve(r);
     }
 
-    /** Open the "Install unknown apps" setting for Audiohub. */
+    /** Open the "Install unknown apps" setting for Audioyam. */
     @PluginMethod
     public void allowInstall(PluginCall call) {
         try {

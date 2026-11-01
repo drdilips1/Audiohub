@@ -407,7 +407,7 @@ public class InkwellWebActivity extends AppCompatActivity {
     private String sendToQbit(byte[] torrent, String magnet, String name, boolean ebook) {
         try {
             String raw = getIntent().getStringExtra("qbit");
-            if (raw == null || raw.isEmpty()) return "Set up your home server in Audiohub first";
+            if (raw == null || raw.isEmpty()) return "Set up your home server in Audioyam first";
             JSONObject q = new JSONObject(raw);
             String base = q.optString("url").replaceAll("/+$", "");
             if (!base.matches("(?i)^https?://.*")) base = "http://" + base;
@@ -494,7 +494,7 @@ public class InkwellWebActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
             String label = (name != null && !name.isEmpty() ? name.replaceAll("(?i)\\.torrent$", "") : "it") + (toEbooks ? " (ebooks folder)" : "");
             if (code == 409) return "OK Already in qBittorrent — " + label;
-            if (code == 401 || code == 403) return "qBittorrent refused the request (HTTP " + code + ") — check the API key or login in Audiohub";
+            if (code == 401 || code == 403) return "qBittorrent refused the request (HTTP " + code + ") — check the API key or login in Audioyam";
             if (code >= 400) return "qBittorrent: HTTP " + code;
             // 5.2.3+: a JSON summary ({"success_count":1,"failure_count":0,…}); older: "Ok." / "Fails."
             try {

@@ -27,9 +27,9 @@ public class InkwellLocalPlugin extends Plugin {
     private static final Pattern IMAGE = Pattern.compile("(?i)^(cover|folder|front|album|art)[^/]*\\.(jpe?g|png|webp)$");
     private static final int MAX_FILES = 20000;
 
-    // ---- ebooks opened with / shared to Audiohub ---------------------------------
+    // ---- ebooks opened with / shared to Audioyam ---------------------------------
 
-    /** A file another app opened with / shared to Audiohub, if any is waiting (copied into the app). */
+    /** A file another app opened with / shared to Audioyam, if any is waiting (copied into the app). */
     @PluginMethod
     public void incoming(PluginCall call) {
         Intent i = getActivity() != null ? getActivity().getIntent() : null;
@@ -265,7 +265,7 @@ public class InkwellLocalPlugin extends Plugin {
                 o.put("covers", covers);
                 call.resolve(o);
             } catch (SecurityException e) {
-                call.reject("Audiohub lost access to that folder — choose it again");
+                call.reject("Audioyam lost access to that folder — choose it again");
             } catch (Exception e) {
                 call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
             }

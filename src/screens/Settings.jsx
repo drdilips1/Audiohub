@@ -356,7 +356,7 @@ function AiCard() {
       <p class="muted small">
         <b>What leaves your phone:</b> only when you use an AI feature, the question and what it needs — the book's title and author, where you are in it, and (for questions about
         what you're hearing) the last few minutes of the transcript — go to the service you set up here, under your own key. Playback, downloads, your library, bookmarks and
-        voice commands like “back 30 seconds” never use AI and work without any key. Nothing goes to us: there is no Audiohub server.
+        voice commands like “back 30 seconds” never use AI and work without any key. Nothing goes to us: there is no Audioyam server.
       </p>
       <p class="muted small">
         <b>Groq</b> is the fastest and most generous (recommended). <b>Gemini</b> (Google AI Studio) has a free tier too. <b>OpenRouter</b> gives free Llama, DeepSeek and Qwen models. No card is needed for these three.
@@ -514,7 +514,7 @@ function QbitCard() {
       >
         <input value={form.lanUrl} placeholder="At home (Wi-Fi), e.g. http://192.168.1.20:8080" autocapitalize="off" onInput={set('lanUrl')} />
         <input value={form.url} placeholder="Away (Tailscale), e.g. http://100.101.102.103:8080" autocapitalize="off" onInput={set('url')} />
-        <small class="muted qbit-hint">Audiohub uses the home address when it answers (no Tailscale needed on your Wi-Fi) and the Tailscale one everywhere else. Fill in either or both.</small>
+        <small class="muted qbit-hint">Audioyam uses the home address when it answers (no Tailscale needed on your Wi-Fi) and the Tailscale one everywhere else. Fill in either or both.</small>
         <input value={form.username} placeholder="Web UI username" autocapitalize="off" autocomplete="username" onInput={set('username')} />
         <input value={form.password} type="password" placeholder="Web UI password" autocomplete="current-password" onInput={set('password')} />
         <input value={form.apiKey} placeholder="Or API key (qBittorrent 5.2+, starts with qbt_)" autocapitalize="off" autocomplete="off" onInput={set('apiKey')} />
@@ -1335,7 +1335,7 @@ export function Settings() {
       </Section>
 
       <p class="about">
-        Audiohub {APP_VERSION}
+        Audioyam {APP_VERSION}
         <br />
         Addons and servers you add are your responsibility.
       </p>
@@ -1453,7 +1453,7 @@ function KindleCard() {
       </form>
       <p class="muted small">
         <b>App password</b> (not your normal password): turn on 2-Step Verification in your Google account, then <b>myaccount.google.com/apppasswords</b> → create one named
-        "Audiohub" → copy the 16 letters here. Then add this Gmail address to each Kindle's <b>Approved Personal Document E-mail List</b> (same Amazon page as above). EPUB and PDF
+        "Audioyam" → copy the 16 letters here. Then add this Gmail address to each Kindle's <b>Approved Personal Document E-mail List</b> (same Amazon page as above). EPUB and PDF
         work; Gmail sends books up to about 18 MB.
       </p>
     </>

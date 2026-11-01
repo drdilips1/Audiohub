@@ -3192,7 +3192,7 @@ button.source-card:active {
 }
 
 /* =====================================================================
-   Audiohub — refined palette: warm charcoal, muted accents, calm tags.
+   Audioyam — refined palette: warm charcoal, muted accents, calm tags.
    ===================================================================== */
 :root {
   --bg: #101012;
@@ -3940,7 +3940,7 @@ button.source-card:active {
 
 
 /* =====================================================================
-   Audiohub v2 — Material You-inspired: soft tonal surfaces with a faint
+   Audioyam v2 — Material You-inspired: soft tonal surfaces with a faint
    violet tint, pastel gradients, rounder shapes, Outfit for headings.
    ===================================================================== */
 :root {
@@ -10810,7 +10810,7 @@ button.notes-book-head {
 
 
 
-/* ---- Home top (B3): the logo, a small greeting over "Audiohub", plain icons; it sits on the
+/* ---- Home top (B3): the logo, a small greeting over "Audioyam", plain icons; it sits on the
    page above the banner (nothing behind the text). ---- */
 :root[data-palette='paperink'] {
   & .home-top {

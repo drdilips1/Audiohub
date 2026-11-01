@@ -1,7 +1,7 @@
 // Shared quotes: a highlight, note or transcript quote as a link (and a quote card image)
-// that another Audiohub user can open — to read it, or to play / read the book from there.
+// that another Audioyam user can open — to read it, or to play / read the book from there.
 // The quote travels inside the link itself (nothing is stored on a server):
-//   https://api.audiohubapp.com/q/<data>   (a web page anyone can read; "Open in Audiohub")
+//   https://api.audiohubapp.com/q/<data>   (a web page anyone can read; "Open in Audioyam")
 //   audiohub://q/<data>                    (opens the app straight away)
 import { Capacitor, registerPlugin, CapacitorHttp } from '@capacitor/core';
 import { persisted, library, progress } from './store.js';
@@ -383,7 +383,7 @@ const byline = (q) => `${q.title}${q.author ? `, ${q.author}` : ''}${atLabel(q) 
 
 /** The words for the message: short with a picture; everything as text (or when the picture had to shorten it). */
 export function quoteMessage(q, link, full) {
-  const open = `▶ Open in Audiohub: ${link}`;
+  const open = `▶ Open in Audioyam: ${link}`;
   if (!full) return `From “${q.title}”${q.author ? ` by ${q.author}` : ''}${atLabel(q) ? ` · at ${atLabel(q)}` : ''}\n${open}`;
   return `“${q.quote}”\n— ${byline(q)}${q.note ? `\n\n${q.note}` : ''}\n\n${open}`;
 }
