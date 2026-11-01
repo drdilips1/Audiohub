@@ -153,8 +153,15 @@ export function locate(bt, text, near = null) {
  * as [{ r, file, book }] ready to download and keep.
  */
 export async function findEbookInSources(book, query = '') {
-  const { searchSources } = await import('../sources/sourceaddons.js');
+  const { searchSources, sourceAddons } = await import('../sources/sourceaddons.js');
   query = query.trim();
+  // Only sources that can have ebooks (audiobook-only and torrent sources never give an EPUB link).
+  const only = sourceAddons()
+    .filter((a) => a.manifest.contentType !== 'audiobook')
+    .map((a) => a.manifest.name);
+  if (!only.length) return [];
+  let early = null;
+  const ready = new Promise((res) => (early = res));
   // Your own words ("harry potter chamber of secrets"): every one of them in the result.
   const t = query || mainTitle(book.title || '');
   const sn = surname(book.author);
@@ -171,15 +178,22 @@ export async function findEbookInSources(book, query = '') {
       if (!query && sn && words(t).length < 3 && !words(`${r.title || ''} ${r.author || ''} ${file.name}`).includes(sn)) continue;
       if (found.some((x) => x.r.link === r.link)) continue;
       found.push({ r, file, source: name, book: directReaderBook(r, file, book) });
+      // A clear EPUB (title matches, author named): no need to wait for slower sources.
+      if (!query && file.format === 'EPUB' && (!sn || words(`${r.title || ''} ${r.author || ''} ${file.name}`).includes(sn))) early?.();
     }
   };
   // Two searches, like the main search box: the clean title (no "Unabridged" etc.) with
   // the author, and the plain words "title surname" — between them far more ebook links.
-  await Promise.all(
-    query
-      ? [searchSources({ title: '', author: '', query }, take), searchSources({ title: query, author: '', query: '' }, take)]
-      : [searchSources({ title: t, author: book.author || '', query: '' }, take), searchSources({ title: '', author: '', query: `${t} ${sn}`.trim() }, take)]
-  );
+  // The first clear EPUB, everything answered, or 25 s — whichever comes first.
+  await Promise.race([
+    Promise.all(
+      query
+        ? [searchSources({ title: '', author: '', query }, take, only), searchSources({ title: query, author: '', query: '' }, take, only)]
+        : [searchSources({ title: t, author: book.author || '', query: '' }, take, only), searchSources({ title: '', author: '', query: `${t} ${sn}`.trim() }, take, only)]
+    ),
+    ready,
+    new Promise((res) => setTimeout(res, 25000)),
+  ]);
   const rank = { EPUB: 0, PDF: 1, '?': 2 };
   return found.sort((a, b) => rank[a.file.format] - rank[b.file.format]);
 }
