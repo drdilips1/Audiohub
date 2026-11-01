@@ -28,6 +28,40 @@ async function titlesFor(b) {
     .find((x) => words(x).length >= 2 && !/^(chapter|part|track|disc|cd)\b/i.test(x));
   return [...new Set([b?.title, fromFiles].filter(Boolean))];
 }
+/**
+ * No copy of your own: a result from your sources that your TorBox / Real-Debrid can play
+ * at once (cached there), found by the book's title (or its file name's). { details, where } or null.
+ */
+async function instantCopy(book, why) {
+  const cloud = await import('../sources/debrid.js');
+  const provider = cloud.preferredProvider(settings.get().debridPreferred);
+  if (!provider) return null;
+  const { searchSources, sourceAddons } = await import('../sources/sourceaddons.js');
+  if (!sourceAddons().length) return null;
+  const { getDetails } = await import('../sources/index.js');
+  const where = provider === 'torbox' ? 'TorBox' : 'Real-Debrid';
+  const ebookish = /\b(epub|pdf|mobi|azw3?|ebook)\b/i;
+  for (const title of await titlesFor(book)) {
+    set({ loading: true, error: null, phase: `${why} — looking for “${title}” ready in your ${where}…` });
+    const found = [];
+    await Promise.race([searchSources({ title, author: book.author || '' }, (n, list) => found.push(...(list || []))), delay(25000)]);
+    const ready = found
+      .filter((r) => r && !r.loose && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`))
+      .filter((r) => (provider === 'torbox' ? r.cache?.torbox : r.cache?.realdebrid))
+      .sort((a, b) => (b.seeders || 0) - (a.seeders || 0));
+    for (const r of ready.slice(0, 2)) {
+      if (rescueTried.has('h:' + r.hash)) continue;
+      rescueTried.add('h:' + r.hash);
+      try {
+        set({ loading: true, error: null, phase: `${why} — playing it from your ${where} (ready there)…` });
+        const stub = await cloud.prepareMagnet(provider, r);
+        const details = await getDetails({ ...stub, title, author: book.author || r.author || stub.author, cover: book.cover || stub.cover });
+        if (details?.tracks?.length || details?.resolveTracks) return { details, where };
+      } catch {}
+    }
+  }
+  return null;
+}
 async function otherCopy(b) {
   const { localSrc, findOwned } = await import('../sources/index.js');
   const { matches, mainTitle } = await import('./match.js');
@@ -111,6 +145,14 @@ async function recover(msg = '') {
       }
     }
     const alt = await otherCopy(b).catch(() => null);
+    if (!alt && b.source === 'abs') {
+      const inst = await instantCopy(b, 'Your server isn’t answering').catch(() => null);
+      if (inst) {
+        rescuing = true;
+        await playBook(inst.details, { globalStart: g });
+        return true;
+      }
+    }
     if (alt) {
       set({ loading: true, error: null, phase: `This copy won't play — switching to ${alt.label}…` });
       try {
@@ -576,7 +618,14 @@ async function playOtherCopy(book, err, opts = {}) {
       }
       if (copy) break;
     }
-    if (!copy) return false;
+    if (!copy) {
+      const inst = await instantCopy(book, book.source === 'abs' ? 'Your server isn’t answering' : 'That copy isn’t available');
+      if (!inst) return false;
+      const g = opts.globalStart ?? (opts.index == null && opts.time == null ? progress.get()[book.uid]?.global : undefined);
+      rescuing = true;
+      await playBook(inst.details, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g } : opts);
+      return true;
+    }
     rescueTried.add(copy.uid);
     const where = { loc: 'on this phone', tb: 'in TorBox', rd: 'in Real-Debrid' }[copy.source] || (downloads.get()[copy.uid] ? 'downloaded' : 'another copy');
     set({ loading: true, error: null, phase: `${book.source === 'abs' ? 'Your server isn’t answering' : 'That copy isn’t available'} — playing your copy ${where}…` });
