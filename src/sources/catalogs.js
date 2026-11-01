@@ -33,6 +33,17 @@ function fromAudible(p, market = '') {
   };
 }
 
+/**
+ * Unrated copycats ("12 Rules for Life In English" by someone else) go below the real, rated
+ * book whose title they borrow. New releases without ratings keep their place.
+ */
+const normTitle = (t) => String(t || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/[^a-z0-9\u0900-\u097f]+/g, ' ').trim();
+function sinkCopycats(list) {
+  const rated = list.filter((b) => b.rating > 0).map((b) => ({ t: normTitle(b.title), a: String(b.author || '').toLowerCase() }));
+  const copy = (b) => !(b.rating > 0) && rated.some((r) => r.t.length > 3 && ` ${normTitle(b.title)} `.includes(` ${r.t} `) && !String(b.author || '').toLowerCase().includes(r.a.split(',')[0].trim()));
+  return [...list.filter((b) => !copy(b)), ...list.filter(copy)];
+}
+
 /** Star rating and number of ratings from Audible's `rating` response group. */
 export function audibleRating(p) {
   const r = p.rating?.overall_distribution || {};
@@ -88,7 +99,7 @@ export const audible = {
   async search(term) {
     if (!term.trim()) return [];
     const d = await getJson(`${AUDIBLE}?` + qs({ keywords: term, num_results: 24, products_sort_by: 'Relevance', response_groups: GROUPS, image_sizes: '500,1024' }));
-    return (d.products || []).filter((p) => p.title && wantedLanguage(p.language, p.title)).map(fromAudible);
+    return sinkCopycats((d.products || []).filter((p) => p.title && wantedLanguage(p.language, p.title)).map(fromAudible));
   },
   /** Audible's "listeners also enjoyed" for an ASIN, falling back to same-author titles. */
   async related(asin, { exclude = [] } = {}) {

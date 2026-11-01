@@ -230,7 +230,7 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
         <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
       )}
       <div class="book-card-author">{book.author || ' '}</div>
-      {(rt || ss || match) && (
+      {(rt || ss || match > 0) && (
         <div class="book-card-badges">
           {/* How well it suits you, under the cover (not on it). */}
           {match > 0 && <span class={'card-match' + (match >= 80 ? ' hi' : '')}>{match}%</span>}
