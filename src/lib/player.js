@@ -761,10 +761,22 @@ export async function playBook(details, { index, time, globalStart, percent, aut
     // The parts' lengths aren't known yet (a cloud copy before it loads): by how far through
     // you were — the right part, then the right point in it once its length is known.
     if (g != null && !(whole > 0) && percent > 0) {
-      const x = Math.min(percent, 0.995) * tracks.length;
-      i = Math.min(tracks.length - 1, Math.floor(x));
+      const pc = Math.min(percent, 0.995);
+      const sizes = tracks.map((x) => Number(x.size) || 0);
+      const totalSize = sizes.reduce((a, b) => a + b, 0);
+      if (sizes.every((x) => x > 0)) {
+        // By the files' sizes (a bigger part is a longer part): far closer than equal parts.
+        let left = pc * totalSize;
+        let k = 0;
+        while (k < sizes.length - 1 && left >= sizes[k]) left -= sizes[k++];
+        i = k;
+        pctSeek = { i, frac: left / sizes[k] };
+      } else {
+        const x = pc * tracks.length;
+        i = Math.min(tracks.length - 1, Math.floor(x));
+        pctSeek = { i, frac: x - i };
+      }
       t = 0;
-      pctSeek = { i, frac: x - i };
       g = null;
     }
     if (g != null) ({ i, t } = locate(g));
