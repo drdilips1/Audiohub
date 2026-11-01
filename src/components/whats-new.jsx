@@ -7,7 +7,7 @@ import { persisted, useStore } from '../lib/store.js';
 import { useBackClose } from '../lib/nav.js';
 
 // Change the id for the next update's notes: everyone sees them once.
-const EDITION = 'nov-2026b';
+const EDITION = 'nov-2026c';
 const seen = persisted('whatsNewSeen', '');
 
 const STEPS = [
@@ -31,7 +31,17 @@ const STEPS = [
     icon: 'server',
     title: 'In step with Audiobookshelf',
     text: 'Listened further in Absorb or the web player? Audiohub carries on from there — when you open the book and when you press play after a break, even if you play it here from TorBox or a download. Your place here goes back to your server too.',
-    tip: 'Server not answering? Play uses your copy on the phone or in TorBox / Real-Debrid instead.',
+  },
+  {
+    icon: 'cloud',
+    title: 'Server down? It plays from TorBox',
+    text: 'If your Audiobookshelf doesn’t answer within a few seconds, Audiohub plays the same book from your copy on the phone, in your TorBox / Real-Debrid — or, if a source has it cached there, straight from that — and starts from your place.',
+    tip: 'It also finds the book when the server’s title is wrong, from the names of its files.',
+  },
+  {
+    icon: 'star',
+    title: 'Ratings on more books',
+    text: 'Book cards show Goodreads ratings, and Audible’s stars when Goodreads doesn’t have the book — so Audible lists, lectures and file-named books get ratings too.',
   },
   {
     icon: 'replay',
