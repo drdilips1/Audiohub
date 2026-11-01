@@ -685,13 +685,37 @@ async function playOtherCopy(book, err, opts = {}) {
 
 // Sources whose files are already on the phone, or that have no phone copy to look for.
 const NO_PHONE_SWAP = new Set(['loc', 'pod', 'tts', 'sum', 'ss', 'url']);
+/**
+ * A phone book that is this book: its title (or folder name, after an author name in front)
+ * starts with this book's main title — "12 Rules for Life An Antidote to Chaos" for
+ * "12 Rules for Life", but not "Beyond Order: 12 More Rules for Life" — and the author fits.
+ */
+function samePhoneBook(book, c, { words, mainTitle, searchTitle, surname }) {
+  const t = words(mainTitle(searchTitle(book.title)));
+  if (!t.length) return false;
+  const aw = new Set(words(`${book.author || ''} ${c.author || ''}`));
+  const starts = (text) => {
+    const x = words(searchTitle(text));
+    while (x.length && aw.has(x[0]) && x[0] !== t[0]) x.shift();
+    return t.every((w, i) => x[i] === w);
+  };
+  if (!starts(c.title) && !starts(c.rawName || '')) return false;
+  const s = surname(book.author);
+  return !s || !c.author || words(`${c.author} ${c.rawName || ''}`).includes(s);
+}
 /** This book in your "On this phone" folders (same title and author), with its details. */
 async function phoneCopy(book) {
   const { localCfg, localUrl } = await import('../sources/local.js');
   const books = (localCfg.get().books || []).filter((b) => b && b.kind !== 'text' && b.uid !== book.uid);
   if (!books.length) return null;
-  const hit = books.find((c) => sameWork(c, book));
-  if (!hit) return null;
+  const m = await import('./match.js');
+  const hit = books.find((c) => sameWork(c, book)) || books.find((c) => samePhoneBook(book, c, m));
+  const note = (msg) => import('./report.js').then((r) => r.logError?.('phone copy', msg)).catch(() => {});
+  if (!hit) {
+    const near = books.find((c) => m.matches(m.mainTitle(m.searchTitle(book.title)), `${c.title} ${c.rawName || ''}`));
+    if (near) note(`“${near.title}” on the phone looked like “${book.title}” but wasn't taken`);
+    return null;
+  }
   const { getDetails } = await import('../sources/index.js');
   const d = await getDetails(hit);
   if (!d?.tracks?.length) return null;
@@ -702,8 +726,12 @@ async function phoneCopy(book) {
     const t = setTimeout(() => ctl.abort(), 2000);
     try {
       const r = await fetch(/^(content|file):/.test(u) ? localUrl(u) : u, { headers: { Range: 'bytes=0-1' }, signal: ctl.signal });
-      if (!r.ok) return null;
-    } catch {
+      if (!r.ok) {
+        note(`“${hit.title}”: file check answered ${r.status} — streaming instead`);
+        return null;
+      }
+    } catch (e) {
+      note(`“${hit.title}”: file check failed (${e.message}) — streaming instead`);
       return null;
     } finally {
       clearTimeout(t);
