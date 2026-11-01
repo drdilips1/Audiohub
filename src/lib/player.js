@@ -698,7 +698,25 @@ export async function playBook(details, { index, time, globalStart, percent, aut
     let server = null;
     if (!tracks?.length && details.resolveTracks) {
       set({ phase: 'Starting a session on your server…' });
-      const r = await details.resolveTracks();
+      // Your server slow to start a session: look for a copy ready in TorBox / Real-Debrid
+      // meanwhile and play whichever is ready first (no waiting out every timeout).
+      const asked = details.resolveTracks();
+      asked.catch(() => {});
+      let r = details.uid.startsWith('abs:') ? await Promise.race([asked, delay(6000).then(() => null)]) : await asked;
+      if (!r) {
+        set({ phase: 'Your server is slow — also looking for a copy ready in TorBox / Real-Debrid…' });
+        const inst = instantCopy(details, '').catch(() => null);
+        const first = await Promise.race([asked.then((v) => ({ v }), (e) => ({ e })), inst.then((i) => (i ? { i } : null))]);
+        if (state.book?.uid !== details.uid) return; // you started something else meanwhile
+        if (first?.v) r = first.v;
+        else if (first?.i) {
+          set({ phase: `Your server is slow — playing your ${first.i.where} copy (ready there)…` });
+          const p = progress.get()[details.uid];
+          const g = globalStart ?? (index == null && time == null && p && !p.finished ? p.global : undefined);
+          rescuing = true;
+          return playBook(first.i.details, g != null ? { globalStart: g, percent: p?.percent } : { autoplay });
+        } else r = await asked;
+      }
       tracks = r.tracks;
       serverStart = r.startTime || 0;
       server = r.server || null;
