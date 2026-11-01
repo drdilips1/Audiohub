@@ -183,7 +183,7 @@ function FeatureSlide({ book: raw, active }) {
   const rt = useTileRating(active ? b : null);
   const playable = b.kind === 'audio';
   // Audiobooks: the square audiobook cover (Apple Books / Audible), not a cropped print cover.
-  const square = useSquareCover(b.kind === 'text' ? null : b, true);
+  const square = useSquareCover(b.kind === 'text' || /^data:/.test(b.cover || '') || meta?.fixed ? null : b, true);
   const heroCover = square || hiResCover(b.cover);
   const bits = [
     (meta?.genres || [])[0],

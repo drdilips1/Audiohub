@@ -8,7 +8,7 @@ import { nav } from '../lib/nav.js';
 import { progress as progressStore, useStoreKey, persisted, useStore, settings } from '../lib/store.js';
 import { useImage, coverFrame, frameStyle, frameTall } from '../lib/image.js';
 import { longPress } from './book-actions.jsx';
-import { useSquareCover, squareNow } from '../lib/meta.js';
+import { useSquareCover, squareNow, fixFor } from '../lib/meta.js';
 import { activePalette, isInk } from '../lib/theme.js';
 import { useMeta } from '../lib/meta.js';
 import { useTileRating } from '../lib/ratings.js';
@@ -21,7 +21,9 @@ import { markNotInterested, notInterested, isNotInterested } from '../lib/taste.
 export function Cover({ book, class: cls = '', eager }) {
   // A tall print cover: the square audiobook cover (Apple Books / Audible) instead, once found.
   const [tall, setTall] = useState(false);
-  const square = useSquareCover(book?.kind === 'text' ? null : book, tall);
+  // A cover you chose (your own picture, or one picked in "Find cover") is never swapped.
+  const chosen = /^data:/.test(book?.cover || '') || !!(book?.uid && fixFor(book.uid)?.cover && fixFor(book.uid).cover === book.cover);
+  const square = useSquareCover(book?.kind === 'text' || chosen ? null : book, tall);
   const { src, failed: proxyFailed } = useImage(square || cardCover(book?.cover || ''));
   // A tall (or wide) cover is shown whole — not cropped to the square — on a blur of itself.
   const [ratio, setRatio] = useState(0);

@@ -72,6 +72,7 @@ function savedFrames() {
 // Saved a few seconds after the last one found (not once per cover while scrolling).
 let saveTimer = null;
 function keep(url, f) {
+  if (url.startsWith('data:')) return; // your own picture: not worth keeping (its address is the whole image)
   const all = savedFrames();
   all[url] = f;
   clearTimeout(saveTimer);

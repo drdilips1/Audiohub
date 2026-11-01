@@ -10,6 +10,7 @@ import { fmtTime } from '../lib/format.js';
 import { coverColor } from '../lib/color.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { bookmarks, settings, useStore } from '../lib/store.js';
+import { metaFixes, fixFor } from '../lib/meta.js';
 import { openDrive } from './drive-mode.jsx';
 import { COMPANION, rememberHere, chapterSummary, chapterSummaries } from '../lib/askbook.js';
 import { Answer } from '../screens/Ask.jsx';
@@ -28,7 +29,10 @@ import { sleepDetectAvailable, setSleepDetect } from '../lib/sleepdetect.js';
 export function usePlayer() {
   const [s, setS] = useState(player.getState());
   useEffect(() => player.subscribe(setS), []);
-  return s;
+  // A cover you chose for this book (your picture, or one from "Find cover") shows here too.
+  useStore(metaFixes);
+  const fix = s.book?.uid && fixFor(s.book.uid);
+  return fix?.cover && s.book.cover !== fix.cover ? { ...s, book: { ...s.book, cover: fix.cover } } : s;
 }
 
 /** Just which book / part is playing and whether it plays: no redraw on every second of playback. */
