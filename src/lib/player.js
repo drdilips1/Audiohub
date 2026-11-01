@@ -137,7 +137,7 @@ async function recover(msg = '') {
           set({ loading: true, error: null, phase: 'Real-Debrid can’t serve this right now — playing it from your Audiobookshelf…' });
           const d = await getDetails(hit);
           rescuing = true;
-          await playBook(d, { globalStart: g });
+          await playBook(d, { globalStart: g, percent: progress.get()[b.uid]?.percent });
           return true;
         }
       } catch {
@@ -152,7 +152,7 @@ async function recover(msg = '') {
           const stub = await cloud.prepareMagnet('torbox', { hash: b.hash, title: b.title });
           const d = await getDetails({ ...stub, title: b.title, author: b.author, cover: b.cover });
           rescuing = true;
-          await playBook(d, { globalStart: g });
+          await playBook(d, { globalStart: g, percent: progress.get()[b.uid]?.percent });
           return true;
         }
       } catch {
@@ -164,7 +164,7 @@ async function recover(msg = '') {
       const inst = await instantCopy(b, 'Your server isn’t answering').catch(() => null);
       if (inst) {
         rescuing = true;
-        await playBook(inst.details, { globalStart: g });
+        await playBook(inst.details, { globalStart: g, percent: progress.get()[b.uid]?.percent });
         return true;
       }
     }
@@ -174,7 +174,7 @@ async function recover(msg = '') {
         const { getDetails } = await import('../sources/index.js');
         const d = await getDetails(alt.book);
         rescuing = true;
-        await playBook(d, { globalStart: g });
+        await playBook(d, { globalStart: g, percent: progress.get()[b.uid]?.percent });
         return true;
       } catch {
         rescuing = false;
@@ -292,6 +292,9 @@ const handlers = {
     else {
       set({ playing: false });
       saveProgress(true);
+      // Ended within a minute of starting (a copy shorter than your place, a broken file): not
+      // a finished book — don't move on to Up next.
+      if (bookStartedAt && Date.now() - bookStartedAt < 60000) return set({ error: 'This copy ended right away — it may be shorter or incomplete. Try another copy from the book page.' });
       finishedSubs.forEach((f) => f(state.book));
     }
   },
@@ -612,7 +615,7 @@ export async function openAndPlay(book, getDetails, opts) {
         set({ phase: `Your server is slow — playing your ${first.i.where} copy (ready there)…` });
         const g = opts?.globalStart ?? (opts?.index == null && opts?.time == null ? progress.get()[book.uid]?.global : undefined);
         rescuing = true;
-        return playBook(first.i.details, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g } : opts);
+        return playBook(first.i.details, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g, percent: progress.get()[book.uid]?.percent } : opts);
       } else {
         // The ready copy wasn't found first: whatever the server says decides.
         details = await asked;
@@ -658,7 +661,7 @@ async function playOtherCopy(book, err, opts = {}) {
       if (!inst) return false;
       const g = opts.globalStart ?? (opts.index == null && opts.time == null ? progress.get()[book.uid]?.global : undefined);
       rescuing = true;
-      await playBook(inst.details, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g } : opts);
+      await playBook(inst.details, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g, percent: progress.get()[book.uid]?.percent } : opts);
       return true;
     }
     rescueTried.add(copy.uid);
@@ -667,7 +670,7 @@ async function playOtherCopy(book, err, opts = {}) {
     const d = await getDetails(copy);
     const g = opts.globalStart ?? (opts.index == null && opts.time == null ? progress.get()[book.uid]?.global : undefined);
     rescuing = true;
-    await playBook(d, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g } : opts);
+    await playBook(d, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g, percent: progress.get()[book.uid]?.percent } : opts);
     return true;
   } catch {
     rescuing = false;
@@ -675,7 +678,9 @@ async function playOtherCopy(book, err, opts = {}) {
   }
 }
 
-export async function playBook(details, { index, time, globalStart, autoplay = true } = {}) {
+let bookStartedAt = 0; // when a copy the app switched to started (one that 'ends' at once isn't finished)
+export async function playBook(details, { index, time, globalStart, percent, autoplay = true } = {}) {
+  bookStartedAt = rescuing ? Date.now() : 0;
   stopWaiting();
   // Another book (or the same one again): the previous server session is done.
   if (state.book) {
@@ -723,7 +728,11 @@ export async function playBook(details, { index, time, globalStart, autoplay = t
     const resume = saved && !saved.finished;
     let i = index ?? (resume ? saved.track : 0) ?? 0;
     let t = time ?? (resume ? saved.time : 0);
-    const g = globalStart ?? (serverNewer ? server.time : null) ?? (useOther ? other.global : null) ?? (index == null && time == null && !resume && serverStart ? serverStart : null);
+    let g = globalStart ?? (serverNewer ? server.time : null) ?? (useOther ? other.global : null) ?? (index == null && time == null && !resume && serverStart ? serverStart : null);
+    // Switched to another copy (another edition, another length): the same point by how far
+    // through you were, never past its end.
+    const whole = totalDuration();
+    if (g != null && percent > 0 && whole > 0 && (g > whole - 30 || Math.abs(g / whole - percent) > 0.06)) g = Math.min(percent, 0.995) * whole;
     if (g != null) ({ i, t } = locate(g));
     // Gentle rewind when resuming after a break.
     if (resume && index == null && time == null && Date.now() - saved.updatedAt > 5 * 60e3) t = Math.max(0, t - 10);
