@@ -11299,3 +11299,16 @@ button.notes-book-head {
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.7);
 }
+
+/* "Choose your own picture" in the cover search panel: easy to spot. */
+.fix-panel .own-cover {
+  margin: 8px 0 4px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13.5px;
+  opacity: 1;
+  cursor: pointer;
+}
+.fix-row .own-cover {
+  cursor: pointer;
+}

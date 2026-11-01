@@ -3,9 +3,51 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
-import { setFix, searchCovers } from '../lib/meta.js';
+import { setFix, searchCovers, metaNow } from '../lib/meta.js';
 import { mainTitle } from '../lib/match.js';
 import { localSrc } from '../sources/index.js';
+
+/** A picture from the phone as a small cover (square-ish, ~40 KB), kept as a data URL. */
+async function coverFromFile(file) {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, 480 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * scale);
+  c.height = Math.round(img.height * scale);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.82);
+}
+
+/** "Choose your own picture" — keeps this book's details, swaps only the cover. */
+export function OwnCoverButton({ book, onFixed = () => {}, onDone = () => {}, label = 'Choose your own picture' }) {
+  return (
+    <label class="link-btn fix-link own-cover">
+      <Icon name="covers" size={14} /> {label}
+      <input
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={async (e) => {
+          const f = e.currentTarget.files?.[0];
+          e.currentTarget.value = '';
+          if (!f) return;
+          try {
+            const cover = await coverFromFile(f);
+            const now = metaNow(book) || {};
+            const fix = { title: book.title, author: book.author || '', description: book.description || '', narrator: book.narrator || '', year: book.year || '', genres: book.genres || [], ...now, cover, source: now.source || 'you' };
+            setFix(book.uid, fix);
+            if (book.source === 'loc') localSrc.setCover(book.uid, cover);
+            onFixed({ ...fix, metaSource: fix.source, fixed: true });
+            toast('Your picture is this book’s cover now');
+            onDone();
+          } catch (err) {
+            toast("Couldn't use that picture: " + err.message);
+          }
+        }}
+      />
+    </label>
+  );
+}
 
 export function FixDetails({ book, onFixed = () => {}, autoOpen = false, onDone = () => {} }) {
   const [open, setOpen] = useState(false);
@@ -53,6 +95,7 @@ export function FixDetails({ book, onFixed = () => {}, autoOpen = false, onDone 
         <button class="link-btn fix-link" onClick={start}>
           <Icon name="search" size={14} /> {book.cover ? 'Wrong cover or details? Find the right ones' : 'Find cover & details'}
         </button>
+        <OwnCoverButton book={book} onFixed={onFixed} label="Use your own picture" />
         {book.fixed && (
           <button
             class="link-btn fix-link"
@@ -80,6 +123,7 @@ export function FixDetails({ book, onFixed = () => {}, autoOpen = false, onDone 
           {busy ? <span class="spinner small" /> : 'Search'}
         </button>
       </form>
+      <OwnCoverButton book={book} onFixed={onFixed} onDone={() => (setOpen(false), onDone())} label="Or choose your own picture from the phone" />
       {busy && <p class="muted small">Looking in Audible, Apple, Goodreads, Google Books and Open Library…</p>}
       {list && !list.length && <p class="muted small">Nothing found — try fewer words.</p>}
       <div class="fix-list">
