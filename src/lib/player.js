@@ -23,7 +23,7 @@ const rescueTried = new Set(); // copies already tried for this listen
  */
 async function titlesFor(b) {
   const { searchTitle, words } = await import('./match.js');
-  const fromFiles = [b?.tracks?.[0]?.title, state.book?.uid === b?.uid ? state.tracks[0]?.title : '', b?.chaptersMeta?.[0]?.title]
+  const fromFiles = [b?.tracks?.[0]?.title, state.book?.uid === b?.uid ? state.tracks[0]?.title : '', b?.chaptersMeta?.[0]?.title, b?.part0, progress.get()[b?.uid]?.book?.part0]
     .map((x) => searchTitle(x || ''))
     .find((x) => words(x).length >= 2 && !/^(chapter|part|track|disc|cd)\b/i.test(x));
   return [...new Set([b?.title, fromFiles].filter(Boolean))];
