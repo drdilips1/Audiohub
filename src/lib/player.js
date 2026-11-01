@@ -41,25 +41,31 @@ async function instantCopy(book, why) {
   const { getDetails } = await import('../sources/index.js');
   const where = provider === 'torbox' ? 'TorBox' : 'Real-Debrid';
   const ebookish = /\b(epub|pdf|mobi|azw3?|ebook)\b/i;
-  for (const title of await titlesFor(book)) {
-    set({ loading: true, error: null, phase: `${why} — looking for “${title}” ready in your ${where}…` });
-    const found = [];
-    await Promise.race([searchSources({ title, author: book.author || '' }, (n, list) => found.push(...(list || []))), delay(25000)]);
-    const ready = found
-      .filter((r) => r && !r.loose && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`))
-      .filter((r) => (provider === 'torbox' ? r.cache?.torbox : r.cache?.realdebrid))
-      .sort((a, b) => (b.seeders || 0) - (a.seeders || 0));
-    for (const r of ready.slice(0, 2)) {
-      if (rescueTried.has('h:' + r.hash)) continue;
-      rescueTried.add('h:' + r.hash);
-      try {
-        set({ loading: true, error: null, phase: `${why} — playing it from your ${where} (ready there)…` });
-        const stub = await cloud.prepareMagnet(provider, r);
-        const details = await getDetails({ ...stub, title, author: book.author || r.author || stub.author, cover: book.cover || stub.cover });
-        if (details?.tracks?.length || details?.resolveTracks) return { details, where };
-      } catch {}
-    }
-  }
+  const usable = (r) =>
+    r && !r.loose && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`) && (provider === 'torbox' ? r.cache?.torbox : r.cache?.realdebrid) && !rescueTried.has('h:' + r.hash);
+  const titles = await titlesFor(book);
+  if (why) set({ loading: true, error: null, phase: `${why} — looking for it ready in your ${where}…` });
+  // Every title at once; the first source that has it ready wins (no waiting for slow ones).
+  const pick = await new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => !done && ((done = true), resolve(v));
+    const tries = titles.map((title) =>
+      searchSources({ title, author: book.author || '' }, (n, list) => {
+        const r = (list || []).filter(usable).sort((x, y) => (y.seeders || 0) - (x.seeders || 0))[0];
+        if (r) finish({ r, title });
+      }).catch(() => {})
+    );
+    Promise.all(tries).then(() => finish(null));
+    setTimeout(() => finish(null), 20000);
+  });
+  if (!pick) return null;
+  rescueTried.add('h:' + pick.r.hash);
+  try {
+    if (why) set({ loading: true, error: null, phase: `${why} — playing it from your ${where} (ready there)…` });
+    const stub = await cloud.prepareMagnet(provider, pick.r);
+    const details = await getDetails({ ...stub, title: pick.title, author: book.author || pick.r.author || stub.author, cover: book.cover || stub.cover });
+    if (details?.tracks?.length || details?.resolveTracks) return { details, where };
+  } catch {}
   return null;
 }
 async function otherCopy(b) {
@@ -582,7 +588,27 @@ export async function openAndPlay(book, getDetails, opts) {
   try {
     const early = ready.get(book.uid);
     ready.delete(book.uid);
-    const details = early?.details && Date.now() - early.t < 15 * 60e3 ? early.details : await getDetails(book, { fast: true });
+    if (early?.details && Date.now() - early.t < 15 * 60e3) return playBook(early.details, opts);
+    const asked = getDetails(book, { fast: true });
+    // Your server slow to answer: look for a copy ready in TorBox / Real-Debrid meanwhile, and
+    // play whichever is ready first (as quick as tapping an instant source yourself).
+    let details = book.source === 'abs' ? await Promise.race([asked, delay(6000).then(() => null)]) : await asked;
+    if (!details) {
+      const token = loadToken;
+      const instant = instantCopy(book, '').catch(() => null);
+      const first = await Promise.race([asked.then((d) => ({ d }), (e) => ({ e })), instant.then((i) => (i ? { i } : null))]);
+      if (token !== loadToken) return; // you started something else meanwhile
+      if (first?.d) details = first.d;
+      else if (first?.i) {
+        set({ phase: `Your server is slow — playing your ${first.i.where} copy (ready there)…` });
+        const g = opts?.globalStart ?? (opts?.index == null && opts?.time == null ? progress.get()[book.uid]?.global : undefined);
+        rescuing = true;
+        return playBook(first.i.details, g != null && !progress.get()[book.uid]?.finished ? { globalStart: g } : opts);
+      } else {
+        // The ready copy wasn't found first: whatever the server says decides.
+        details = await asked;
+      }
+    }
     return playBook(details, opts);
   } catch (e) {
     if (await playOtherCopy(book, e, opts)) return;
