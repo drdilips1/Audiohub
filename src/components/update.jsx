@@ -20,7 +20,7 @@ const isApk = Capacitor.getPlatform() === 'android';
 export const updateAvailable = () => isApk && APP_VERSION !== 'dev' && num(update.get().latest) > num(APP_VERSION);
 
 // Updates are served from GitHub Pages (a fast CDN) with the GitHub release as a fallback.
-const PAGES = 'https://drdilips1.github.io/audiohub/';
+const PAGES = 'https://drdilips1.github.io/Audiohub/';
 
 export async function checkForUpdate() {
   try {

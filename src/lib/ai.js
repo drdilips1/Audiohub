@@ -45,7 +45,7 @@ export const PROVIDERS = [
     discover: () => freeRouterModels(),
     cached: () => routerList.get().ids,
     json: false,
-    headers: { 'HTTP-Referer': 'https://drdilips1.github.io/audiohub/', 'X-Title': 'Audiohub' },
+    headers: { 'HTTP-Referer': 'https://drdilips1.github.io/Audiohub/', 'X-Title': 'Audiohub' },
   },
   {
     id: 'claude',
