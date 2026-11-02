@@ -8,6 +8,8 @@ import { syncProgress, switchTracks, closeSession, serverPlace, mirrorPlace, con
 import { fetchStatus } from '../sources/debrid.js';
 import { applyLocal, isDownloaded, downloads } from './downloads.js';
 import { otherCopyProgress, sameWork } from './works.js';
+import { estimateDuration, copyPlace, partByPercent, fitted } from './place.js';
+import { samePhoneBook } from './match.js';
 
 // ---- safety net: a part that won't play --------------------------------------
 // First a fresh link and one more try; then another copy of the same book you
@@ -386,16 +388,7 @@ function trySwitch() {
 // A part's length is only known once it has played. Until then it's estimated:
 // from its file size at the rate of the parts already played, else as their
 // average — so "% of book" and "time left" cover the whole book, not one file.
-function estDuration(i) {
-  const t = state.tracks[i];
-  if (!t) return 0;
-  if (t.duration > 0) return t.duration;
-  const known = state.tracks.filter((x) => x.duration > 0);
-  if (!known.length) return 0;
-  const sized = known.filter((x) => x.size > 0);
-  if (t.size > 0 && sized.length) return (t.size * sized.reduce((a, x) => a + x.duration, 0)) / sized.reduce((a, x) => a + x.size, 0);
-  return known.reduce((a, x) => a + x.duration, 0) / known.length;
-}
+const estDuration = (i) => estimateDuration(state.tracks, i);
 export function trackOffset(i) {
   const t = state.tracks[i];
   if (t && typeof t.offset === 'number') return t.offset;
@@ -685,31 +678,13 @@ async function playOtherCopy(book, err, opts = {}) {
 
 // Sources whose files are already on the phone, or that have no phone copy to look for.
 const NO_PHONE_SWAP = new Set(['loc', 'pod', 'tts', 'sum', 'ss', 'url']);
-/**
- * A phone book that is this book: its title (or folder name, after an author name in front)
- * starts with this book's main title — "12 Rules for Life An Antidote to Chaos" for
- * "12 Rules for Life", but not "Beyond Order: 12 More Rules for Life" — and the author fits.
- */
-function samePhoneBook(book, c, { words, mainTitle, searchTitle, surname }) {
-  const t = words(mainTitle(searchTitle(book.title)));
-  if (!t.length) return false;
-  const aw = new Set(words(`${book.author || ''} ${c.author || ''}`));
-  const starts = (text) => {
-    const x = words(searchTitle(text));
-    while (x.length && aw.has(x[0]) && x[0] !== t[0]) x.shift();
-    return t.every((w, i) => x[i] === w);
-  };
-  if (!starts(c.title) && !starts(c.rawName || '')) return false;
-  const s = surname(book.author);
-  return !s || !c.author || words(`${c.author} ${c.rawName || ''}`).includes(s);
-}
 /** This book in your "On this phone" folders (same title and author), with its details. */
 async function phoneCopy(book) {
   const { localCfg, localUrl } = await import('../sources/local.js');
   const books = (localCfg.get().books || []).filter((b) => b && b.kind !== 'text' && b.uid !== book.uid);
   if (!books.length) return null;
   const m = await import('./match.js');
-  const hit = books.find((c) => sameWork(c, book)) || books.find((c) => samePhoneBook(book, c, m));
+  const hit = books.find((c) => sameWork(c, book)) || books.find((c) => samePhoneBook(book, c));
   const note = (msg) => import('./report.js').then((r) => r.logError?.('phone copy', msg)).catch(() => {});
   if (!hit) {
     const near = books.find((c) => m.matches(m.mainTitle(m.searchTitle(book.title)), `${c.title} ${c.rawName || ''}`));
@@ -825,25 +800,12 @@ export async function playBook(details, { index, time, globalStart, percent, aut
     // Switched to another copy (another edition, another length): the same point by how far
     // through you were, never past its end.
     const whole = totalDuration();
-    if (g != null && percent > 0 && whole > 0 && (g > whole - 30 || Math.abs(g / whole - percent) > 0.06)) g = Math.min(percent, 0.995) * whole;
+    g = copyPlace(g, percent, whole);
     // The parts' lengths aren't known yet (a cloud copy before it loads): by how far through
     // you were — the right part, then the right point in it once its length is known.
     if (g != null && !(whole > 0) && percent > 0) {
-      const pc = Math.min(percent, 0.995);
-      const sizes = tracks.map((x) => Number(x.size) || 0);
-      const totalSize = sizes.reduce((a, b) => a + b, 0);
-      if (sizes.every((x) => x > 0)) {
-        // By the files' sizes (a bigger part is a longer part): far closer than equal parts.
-        let left = pc * totalSize;
-        let k = 0;
-        while (k < sizes.length - 1 && left >= sizes[k]) left -= sizes[k++];
-        i = k;
-        pctSeek = { i, frac: left / sizes[k] };
-      } else {
-        const x = pc * tracks.length;
-        i = Math.min(tracks.length - 1, Math.floor(x));
-        pctSeek = { i, frac: x - i };
-      }
+      pctSeek = partByPercent(percent, tracks);
+      i = pctSeek.i;
       t = 0;
       g = null;
     }
@@ -866,15 +828,6 @@ export async function playBook(details, { index, time, globalStart, percent, aut
     if (await playOtherCopy(details, e, { index, time, globalStart, autoplay })) return;
     set({ loading: false, phase: '', error: e.message || String(e) });
   }
-}
-
-/** The server's place in this copy's time: the same when the lengths match, scaled when
- *  they're close (a few seconds of intro), null for another edition (too different). */
-function fitted(place, total) {
-  if (!place || !(place.time >= 0)) return null;
-  if (!place.duration || !total) return place.time;
-  const k = total / place.duration;
-  return Math.abs(1 - k) > 0.06 ? null : place.time * k;
 }
 
 function locate(g) {

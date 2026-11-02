@@ -3,6 +3,7 @@
 // playable or readable copy across the user's own sources.
 import { getJson, qs } from '../lib/http.js';
 import { stripHtml } from '../lib/format.js';
+import { sinkCopycats } from '../lib/match.js';
 
 const AUDIBLE = 'https://api.audible.com/1.0/catalog/products';
 // Audible India carries the Hindi catalogue.
@@ -31,17 +32,6 @@ function fromAudible(p, market = '') {
     genres: [...new Set((p.category_ladders || []).flatMap((l) => (l.ladder || []).map((x) => x.name)).filter(Boolean))],
     ...audibleRating(p),
   };
-}
-
-/**
- * Unrated copycats ("12 Rules for Life In English" by someone else) go below the real, rated
- * book whose title they borrow. New releases without ratings keep their place.
- */
-const normTitle = (t) => String(t || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/[^a-z0-9\u0900-\u097f]+/g, ' ').trim();
-function sinkCopycats(list) {
-  const rated = list.filter((b) => b.rating > 0).map((b) => ({ t: normTitle(b.title), a: String(b.author || '').toLowerCase() }));
-  const copy = (b) => !(b.rating > 0) && rated.some((r) => r.t.length > 3 && ` ${normTitle(b.title)} `.includes(` ${r.t} `) && !String(b.author || '').toLowerCase().includes(r.a.split(',')[0].trim()));
-  return [...list.filter((b) => !copy(b)), ...list.filter(copy)];
 }
 
 /** Star rating and number of ratings from Audible's `rating` response group. */

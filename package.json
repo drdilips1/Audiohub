@@ -2,12 +2,14 @@
   "name": "audiohub",
   "private": true,
   "version": "1.0.0",
-  "description": "Inkwell — a colorful audiobook & ebook player with free public-domain sources, Audiobookshelf and addon integrations",
+  "description": "Inkwell \u2014 a colorful audiobook & ebook player with free public-domain sources, Audiobookshelf and addon integrations",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "icons": "node scripts/make-icons.mjs",
     "android:sync": "npm run build && npx cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleRelease"
@@ -35,6 +37,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
     "@preact/preset-vite": "^2.10.6",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "vitest": "4.1.12"
   }
 }

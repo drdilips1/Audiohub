@@ -90,3 +90,33 @@ export function otherBook(resultTitle, title, author) {
   return true; // the words are there, but not together: another title
 }
 
+
+/**
+ * A phone book that is this book: its title (or folder name, after an author name in front)
+ * starts with this book's main title — "12 Rules for Life An Antidote to Chaos" for
+ * "12 Rules for Life", but not "Beyond Order: 12 More Rules for Life" — and the author fits.
+ */
+export function samePhoneBook(book, c) {
+  const t = words(mainTitle(searchTitle(book.title)));
+  if (!t.length) return false;
+  const aw = new Set(words(`${book.author || ''} ${c.author || ''}`));
+  const starts = (text) => {
+    const x = words(searchTitle(text));
+    while (x.length && aw.has(x[0]) && x[0] !== t[0]) x.shift();
+    return t.every((w, i) => x[i] === w);
+  };
+  if (!starts(c.title) && !starts(c.rawName || '')) return false;
+  const s = surname(book.author);
+  return !s || !c.author || words(`${c.author} ${c.rawName || ''}`).includes(s);
+}
+
+/**
+ * Unrated copycats ("12 Rules for Life In English" by someone else) go below the real, rated
+ * book whose title they borrow. New releases without ratings keep their place.
+ */
+const normTitle = (t) => String(t || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').trim();
+export function sinkCopycats(list) {
+  const rated = list.filter((b) => b.rating > 0).map((b) => ({ t: normTitle(b.title), a: String(b.author || '').toLowerCase() }));
+  const copy = (b) => !(b.rating > 0) && rated.some((r) => r.t.length > 3 && ` ${normTitle(b.title)} `.includes(` ${r.t} `) && !String(b.author || '').toLowerCase().includes(r.a.split(',')[0].trim()));
+  return [...list.filter((b) => !copy(b)), ...list.filter(copy)];
+}
