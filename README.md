@@ -90,7 +90,7 @@ Built with Preact + Vite, packaged for Android with Capacitor 8.
 
 Download the latest `AudioYam-v….apk` from **[Releases](../../releases)**, open it on your phone and allow "Install unknown apps" when asked.
 
-The web version (for iPhone/iPad/desktop) is published on GitHub Pages by the *Web app* workflow.
+**Web version:** [listen.audiohubapp.com](https://listen.audiohubapp.com) — for PC, iPhone and iPad (on iPhone: Safari → Share → Add to Home Screen). Sign into the same account to keep your library and progress in sync. It's published on GitHub Pages by the *Web app* workflow.
 
 ---
 
