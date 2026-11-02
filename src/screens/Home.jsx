@@ -599,17 +599,13 @@ export function Home() {
     <div class="screen home">
       <header class="home-top">
         <div class="home-logo">
-          <svg viewBox="0 0 512 512" aria-hidden="true">
-            <defs>
-              <linearGradient id="ah-brand" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0" stop-color="#7cf0ff" />
-                <stop offset=".5" stop-color="#a78bfa" />
-                <stop offset="1" stop-color="#ff7ab6" />
-              </linearGradient>
-            </defs>
-            <path d="M136 400 L256 112 L376 400" fill="none" stroke="url(#ah-brand)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
-            <path d="M170 300 h26 l14 -34 l20 70 l22 -96 l22 112 l18 -52 h30 l14 22 h24" fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="ay-g1" gradientUnits="userSpaceOnUse" x1="110" y1="120" x2="400" y2="420"><stop offset="0" stopColor="#7cf0ff"/><stop offset=".5" stopColor="#a78bfa"/><stop offset="1" stopColor="#ff7ab6"/></linearGradient>
+<linearGradient id="ay-cup" gradientUnits="userSpaceOnUse" x1="100" y1="150" x2="410" y2="250"><stop offset="0" stopColor="#7cf0ff"/><stop offset="1" stopColor="#ff7ab6"/></linearGradient>
+<linearGradient id="ay-bgd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#171235"/><stop offset="1" stopColor="#07080f"/></linearGradient>
+<radialGradient id="ay-glow" cx="0.3" cy="0.2" r="0.8"><stop offset="0" stopColor="#8b5cf6" stopOpacity=".35"/><stop offset="1" stopColor="#8b5cf6" stopOpacity="0"/></radialGradient></defs><rect width="512" height="512" rx="120" fill="url(#ay-bgd)"/><rect width="512" height="512" rx="120" fill="url(#ay-glow)"/><g transform="translate(0 10)"><path d="M128 178 a128 128 0 0 1 256 0" fill="none" stroke="#fff" strokeOpacity=".94" strokeWidth="20" strokeLinecap="round"/>
+<g fill="none" stroke="#fff" strokeOpacity=".85" strokeWidth="18" strokeLinecap="round"><path d="M224 164 a46 46 0 0 1 64 0"/><path d="M200 132 a80 80 0 0 1 112 0"/></g>
+<g fill="none" stroke="url(#ay-g1)" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round"><path d="M150 208 L256 318 L362 208"/><path d="M256 318 V420"/></g>
+<rect x="96" y="172" width="62" height="94" rx="28" fill="url(#ay-cup)"/><rect x="354" y="172" width="62" height="94" rx="28" fill="url(#ay-cup)"/></g></svg>
           <div class="home-hello">
             <small>{me ? `${greeting()}, ${me}` : greeting()}</small>
             <b>AudioYam</b>

@@ -9851,15 +9851,6 @@ button.notes-book-head {
   & .home-logo span {
     color: var(--text);
   }
-  & .home-logo stop:nth-child(1) {
-    stop-color: var(--accent);
-  }
-  & .home-logo stop:nth-child(2) {
-    stop-color: color-mix(in srgb, var(--accent) 50%, var(--accent-2));
-  }
-  & .home-logo stop:nth-child(3) {
-    stop-color: var(--accent-2);
-  }
 }
 
 /* Send to Kindle: the forms in Settings and the "which Kindle?" sheet */
