@@ -1,6 +1,6 @@
 {
   "appId": "app.audiohub.player",
-  "appName": "Audioyam",
+  "appName": "AudioYam",
   "webDir": "dist",
   "backgroundColor": "#101012",
   "android": {

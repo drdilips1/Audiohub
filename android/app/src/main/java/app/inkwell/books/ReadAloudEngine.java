@@ -120,7 +120,7 @@ public final class ReadAloudEngine {
 
     private static void ensureSession() {
         if (mediaSession != null || app == null) return;
-        mediaSession = new android.media.session.MediaSession(app, "Audioyam read aloud");
+        mediaSession = new android.media.session.MediaSession(app, "AudioYam read aloud");
         mediaSession.setCallback(new android.media.session.MediaSession.Callback() {
             @Override
             public void onPlay() {
@@ -182,7 +182,7 @@ public final class ReadAloudEngine {
             .build());
         mediaSession.setMetadata(new android.media.MediaMetadata.Builder()
             .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, title.isEmpty() ? "Reading aloud" : title)
-            .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, "Audioyam")
+            .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, "AudioYam")
             .build());
     }
 

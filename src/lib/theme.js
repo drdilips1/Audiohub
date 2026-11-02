@@ -5,7 +5,7 @@ export const ACCENTS = {
   brass: { name: 'Brass', a: '#dcb675', b: '#c98a62', l: '#8a6322', lb: '#9b4f2b' },
   // Warm orange on clean black / white.
   studio: { name: 'Studio orange', a: '#f7991c', b: '#ff7a00', l: '#c45f00', lb: '#b84d00' },
-  audiohub: { name: 'Audioyam', a: '#8fe9ff', b: '#f7a6d8', l: '#0e7490', lb: '#be185d' },
+  audiohub: { name: 'AudioYam', a: '#8fe9ff', b: '#f7a6d8', l: '#0e7490', lb: '#be185d' },
   orchid: { name: 'Orchid', a: '#dcb0ff', b: '#ff9fd2', l: '#7e22ce', lb: '#be185d' },
   sunset: { name: 'Sunset', a: '#ffb57a', b: '#ff86a8', l: '#c2410c', lb: '#be123c' },
   ocean: { name: 'Ocean', a: '#7cc8ff', b: '#8f9dff', l: '#0369a1', lb: '#4338ca' },

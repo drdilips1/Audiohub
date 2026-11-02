@@ -1,6 +1,6 @@
-# Audioyam — Frequently Asked Questions
+# AudioYam — Frequently Asked Questions
 
-A practical guide collected while building and using Audioyam: how the pieces fit together, how to set each one up, and what to do when something doesn't work.
+A practical guide collected while building and using AudioYam: how the pieces fit together, how to set each one up, and what to do when something doesn't work.
 
 **Contents**
 
@@ -27,7 +27,7 @@ A practical guide collected while building and using Audioyam: how the pieces fi
 
 ## 1. General
 
-**What is Audioyam?**
+**What is AudioYam?**
 An audiobook, ebook and podcast app. It plays your own collection — from your Audiobookshelf server, your TorBox / Real-Debrid cloud, or files on the phone — and adds discovery (genre pages, recommendations, ratings, an AI "bookseller"), an EPUB reader with natural read-aloud voices, and a polished player.
 
 **Is it free?**
@@ -38,14 +38,14 @@ Yes, and open source (MIT). Some services it connects to have their own terms: d
 - **Web app** — for iPhone, iPad and computers. Browse, play, read and discover, but browsers limit a few things (see [section 15](#15-the-web-app-iphone-ipad-mac-pc-and-the-relay)).
 
 **Does it come with any books or sources?**
-No. Audioyam ships with no content, no torrent sources and no trackers. You connect your own server and services.
+No. AudioYam ships with no content, no torrent sources and no trackers. You connect your own server and services.
 
 ---
 
 ## 2. Installing and updating
 
 **How do I install the Android app?**
-Download the latest `Audioyam-v….apk` from the [Releases](../../releases) page, open it, and allow "Install unknown apps" for your browser or file manager when Android asks.
+Download the latest `AudioYam-v….apk` from the [Releases](../../releases) page, open it, and allow "Install unknown apps" for your browser or file manager when Android asks.
 
 **"App not installed" / "package conflicts with an existing package" — why?**
 The new APK is signed with a different key from the one on your phone. Android only installs updates signed with the same key. Uninstall the old one first (your server progress is safe; local settings are lost unless you use sync or Settings → Data → backup). If you build your own copy, add a permanent signing key (see [section 17](#17-building-your-own-copy)) so this only happens once.
@@ -68,14 +68,14 @@ Settings → Audiobookshelf → enter the server address and sign in with your u
 - From anywhere: a Tailscale address — see [section 4](#4-reaching-your-server-from-anywhere-tailscale).
 
 **What is the "second address"?**
-Add both a home address and a Tailscale address. Audioyam uses whichever answers, and switches automatically when one stops working — **even mid-book**: if playback fails or stalls for about 12 seconds, it moves to the other address and carries on from the same second.
+Add both a home address and a Tailscale address. AudioYam uses whichever answers, and switches automatically when one stops working — **even mid-book**: if playback fails or stalls for about 12 seconds, it moves to the other address and carries on from the same second.
 
 **"Recently added" is empty or says the library has no books.**
 - Open Settings → Audiobookshelf and make sure the **Library** is your audiobook library (Audiobookshelf treats ebook libraries as "book" libraries too, so the wrong one can be picked). The message names the library and address it checked.
 - In the web app, see the next questions — the usual cause there is an `http://` address or a missing `ALLOW_CORS`.
 
 **Does listening progress sync with Audiobookshelf?**
-Yes, both ways. Progress you make in Audioyam shows in Audiobookshelf and other players (e.g. Absorb), and vice versa.
+Yes, both ways. Progress you make in AudioYam shows in Audiobookshelf and other players (e.g. Absorb), and vice versa.
 
 **Do I need to change anything on the server?**
 For the Android app, no. For the **web app**, start Audiobookshelf with `ALLOW_CORS=1` so browsers are allowed to read it, e.g. if you run it from source:
@@ -115,7 +115,7 @@ tailscale serve --bg <PORT>
 That's a DNS issue on that device. Use the `100.x.y.z` address there, or in the Tailscale admin console → DNS add a public nameserver (e.g. Cloudflare) and enable "Override local DNS".
 
 **Things stop working when I'm away from home.**
-Tailscale is probably off on the phone. To keep it on: Android Settings → Connections → More connection settings → VPN → ⚙ next to Tailscale → **Always-on VPN**. It does no harm at home — Audioyam prefers your home address when it answers.
+Tailscale is probably off on the phone. To keep it on: Android Settings → Connections → More connection settings → VPN → ⚙ next to Tailscale → **Always-on VPN**. It does no harm at home — AudioYam prefers your home address when it answers.
 
 **The browser shows "Not secure" for my server.**
 That's just because the address is `http://`. Use the Tailscale `https://…ts.net` address to get a padlock.
@@ -124,11 +124,11 @@ That's just because the address is `http://`. Use the Tailscale `https://…ts.n
 
 ## 5. TorBox and Real-Debrid
 
-**What do they do in Audioyam?**
-Paste your API key (Settings → TorBox / Real-Debrid) and Audioyam lists the audiobooks and ebooks already in your cloud, streams them, and can download them for offline listening. You can also add a magnet or link from Settings.
+**What do they do in AudioYam?**
+Paste your API key (Settings → TorBox / Real-Debrid) and AudioYam lists the audiobooks and ebooks already in your cloud, streams them, and can download them for offline listening. You can also add a magnet or link from Settings.
 
 **It says the book is "still downloading".**
-The service hasn't finished fetching it. Audioyam shows its progress and starts playing by itself when it's ready.
+The service hasn't finished fetching it. AudioYam shows its progress and starts playing by itself when it's ready.
 
 **Why does a download link never expire mid-book?**
 Links are requested just before each part plays.
@@ -144,7 +144,7 @@ Ebooks stay in the cloud by default; you can read them in the app or send them t
 ## 6. Home server: qBittorrent
 
 **What is this for?**
-If your Audiobookshelf library lives on a computer running qBittorrent, Audioyam can send torrents there so books land straight in your library folder.
+If your Audiobookshelf library lives on a computer running qBittorrent, AudioYam can send torrents there so books land straight in your library folder.
 
 **How do I set it up?**
 Settings → Home server (qBittorrent):
@@ -171,10 +171,10 @@ Fixed: cleared items stay cleared, across devices too. The list only shows items
 
 ## 7. Source add-ons and trackers (at your own risk)
 
-> **Audioyam ships with no sources and no trackers.** What you add, and what you download through it, is your choice and your responsibility. Respect copyright, your tracker's rules, and the laws where you live.
+> **AudioYam ships with no sources and no trackers.** What you add, and what you download through it, is your choice and your responsibility. Respect copyright, your tracker's rules, and the laws where you live.
 
 **What are source add-ons?**
-Small JSON definitions (hosted anywhere, e.g. a gist) that tell Audioyam how to search a site. Add them in Settings → Addons, and reorder or switch them off in Settings → Sources. Results appear on book pages under "Sources". Only install add-ons you trust.
+Small JSON definitions (hosted anywhere, e.g. a gist) that tell AudioYam how to search a site. Add them in Settings → Addons, and reorder or switch them off in Settings → Sources. Results appear on book pages under "Sources". Only install add-ons you trust.
 
 **Why do some results say "loose matches"?**
 Results that don't clearly match the book (title words and the author's name) are hidden behind "Show N loose matches", so the list isn't full of other books with similar titles.
@@ -186,9 +186,9 @@ That site didn't answer within 20 seconds; the others still show. It's retried n
 Settings → Tracker: add the tracker site you use (e.g. `www.example.net`), and optionally a search link (`…?q={q}`) plus a second, **filtered** search link with its own label (for example a "freeleech/VIP only" search, if your tracker offers one). Book pages then show a small round badge next to "Sources" with your filtered search and **All**, searching the book's title and author.
 
 **How do tracker downloads reach my server?**
-The tracker opens inside Audioyam's browser (sign in once; pinch to zoom works). When **you** tap a download (.torrent or magnet), the app sends it to your qBittorrent — ebooks to the ebooks folder. A strip at the bottom shows what happened.
+The tracker opens inside AudioYam's browser (sign in once; pinch to zoom works). When **you** tap a download (.torrent or magnet), the app sends it to your qBittorrent — ebooks to the ebooks folder. A strip at the bottom shows what happened.
 
-**Can Audioyam download from my tracker automatically?**
+**Can AudioYam download from my tracker automatically?**
 No, deliberately. Automating a private tracker usually breaks its rules and can get your account banned. Downloads happen only when you tap them.
 
 **Which filters should I use to prefer certain formats or free downloads?**
@@ -211,7 +211,7 @@ They were tried; lookups were unreliable from some regions and could hold up the
 
 ## 9. Recommendations and "Your verdict"
 
-**How do I teach Audioyam my taste?**
+**How do I teach AudioYam my taste?**
 On any book page, **Your verdict**: ❤️ Loved it · 👍 Liked it · 😐 It's OK · 👎 Not for me · 🚫 Didn't finish. Optionally rate the **Story** and the **Narration** (Great / OK / Weak), and for books that didn't work, pick reasons (Narration, Too slow, Too long…). Verdicts sync across devices.
 
 **What uses my verdicts?**
@@ -333,7 +333,7 @@ Sending to qBittorrent, the in-app tracker browser, offline downloads, read-alou
 
 ## 16. Privacy
 
-- Audioyam has **no server of its own** and no analytics. It talks directly to the services you connect (and your own relay/sync if you set them up).
+- AudioYam has **no server of its own** and no analytics. It talks directly to the services you connect (and your own relay/sync if you set them up).
 - Keys and passwords are stored on the device; with sync, in your own Supabase project.
 - AI requests go to the AI provider whose key you added.
 - The relay forwards only to an allow-list of services and stores nothing.

@@ -1,6 +1,6 @@
 {
-  "name": "Audioyam",
-  "short_name": "Audioyam",
+  "name": "AudioYam",
+  "short_name": "AudioYam",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#101012",

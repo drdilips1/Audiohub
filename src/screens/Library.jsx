@@ -536,7 +536,7 @@ function PhoneManage() {
             <div class="set-row">
               <div>
                 <b>Added files</b>
-                <small>{count(added)} · opened with or shared to Audioyam</small>
+                <small>{count(added)} · opened with or shared to AudioYam</small>
               </div>
             </div>
           )}

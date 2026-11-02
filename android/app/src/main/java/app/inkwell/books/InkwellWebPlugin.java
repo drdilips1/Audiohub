@@ -139,7 +139,7 @@ public class InkwellWebPlugin extends Plugin {
         Intent send = new Intent(Intent.ACTION_SEND);
         send.setType("text/plain");
         send.putExtra(Intent.EXTRA_TEXT, text);
-        send.putExtra(Intent.EXTRA_SUBJECT, call.getString("subject", "Audioyam"));
+        send.putExtra(Intent.EXTRA_SUBJECT, call.getString("subject", "AudioYam"));
         Intent chooser = Intent.createChooser(send, title);
         chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         getActivity().runOnUiThread(() -> {
@@ -192,7 +192,7 @@ public class InkwellWebPlugin extends Plugin {
                 if (email != null && !email.isEmpty()) {
                     // Only e-mail apps, addressed to the Kindle.
                     send.putExtra(Intent.EXTRA_EMAIL, new String[] { email });
-                    send.putExtra(Intent.EXTRA_TEXT, "Sent from Audioyam");
+                    send.putExtra(Intent.EXTRA_TEXT, "Sent from AudioYam");
                     send.setSelector(new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")));
                 }
                 Intent chooser = Intent.createChooser(send, title);

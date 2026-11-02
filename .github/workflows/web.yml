@@ -45,10 +45,10 @@ jobs:
             mkdir -p dist/app
             gh release download "$tag" -R "$GITHUB_REPOSITORY" --pattern '*.apk' --dir dist/app --clobber
             f=$(ls dist/app/*.apk | head -1)
-            mv "$f" dist/app/Audioyam.apk
+            mv "$f" dist/app/AudioYam.apk
             ver="${tag#v}"
             gh_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$(basename "$f")"
-            printf '{"version":"%s","apk":"app/Audioyam.apk","github":"%s"}\n' "$ver" "$gh_url" > dist/app/latest.json
+            printf '{"version":"%s","apk":"app/AudioYam.apk","github":"%s"}\n' "$ver" "$gh_url" > dist/app/latest.json
             ls -la dist/app; cat dist/app/latest.json
           fi
       - uses: actions/configure-pages@v5

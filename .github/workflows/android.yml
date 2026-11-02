@@ -102,11 +102,11 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
           mkdir -p ../out
-          cp app/build/outputs/apk/release/app-release.apk "../out/Audioyam-v${VERSION_NAME}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "../out/AudioYam-v${VERSION_NAME}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Audioyam-v${{ env.VERSION_NAME }}
+          name: AudioYam-v${{ env.VERSION_NAME }}
           path: out/*.apk
 
       # Test builds: one download link to try before releasing. Not "v…", so the in-app
@@ -116,22 +116,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp "out/Audioyam-v${VERSION_NAME}.apk" out/Audioyam-test.apk
+          cp "out/AudioYam-v${VERSION_NAME}.apk" out/AudioYam-test.apk
           gh release view test-build -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create test-build -R "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --prerelease --title "Test build (not an update)" \
             --notes "For testing only. Install the latest release instead: https://github.com/$GITHUB_REPOSITORY/releases/latest"
-          gh release upload test-build -R "$GITHUB_REPOSITORY" out/Audioyam-test.apk --clobber
+          gh release upload test-build -R "$GITHUB_REPOSITORY" out/AudioYam-test.apk --clobber
 
       - name: Publish GitHub release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
-          name: Audioyam v${{ env.VERSION_NAME }}
+          name: AudioYam v${{ env.VERSION_NAME }}
           target_commitish: ${{ github.sha }}
           files: out/*.apk
           body: |
-            Audioyam for Android — download the APK below and open it on your phone
+            AudioYam for Android — download the APK below and open it on your phone
             (allow "Install unknown apps" for your browser or file manager when asked).
 
             Built from ${{ github.sha }} on `${{ github.ref_name }}`.
@@ -143,8 +143,8 @@ jobs:
         run: |
           rm -rf pages && cp -r dist pages
           mkdir -p pages/app
-          cp "out/Audioyam-v${VERSION_NAME}.apk" pages/app/Audioyam.apk
-          printf '{"version":"%s","apk":"app/Audioyam.apk","github":"https://github.com/%s/releases/download/v%s/Audioyam-v%s.apk"}\n' "$VERSION_NAME" "$GITHUB_REPOSITORY" "$VERSION_NAME" "$VERSION_NAME" > pages/app/latest.json
+          cp "out/AudioYam-v${VERSION_NAME}.apk" pages/app/AudioYam.apk
+          printf '{"version":"%s","apk":"app/AudioYam.apk","github":"https://github.com/%s/releases/download/v%s/AudioYam-v%s.apk"}\n' "$VERSION_NAME" "$GITHUB_REPOSITORY" "$VERSION_NAME" "$VERSION_NAME" > pages/app/latest.json
           cat pages/app/latest.json
 
       - uses: actions/configure-pages@v5

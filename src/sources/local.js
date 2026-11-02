@@ -212,7 +212,7 @@ export function useLocalCover(book) {
   return cfg.books.find((b) => b.uid === book.uid)?.cover || '';
 }
 
-// ---- ebooks opened with / shared to Audioyam from other apps -----------------
+// ---- ebooks opened with / shared to AudioYam from other apps -----------------
 // Android hands over the file; the app keeps its own copy (files/books) and lists it
 // under Library → Ebooks → On this phone.
 let openHandler = null;
@@ -267,7 +267,7 @@ export async function pickBooks(opts = {}) {
   return opts.books ? added : added.length;
 }
 
-/** Remove a book that was opened with / shared to Audioyam (its copy too). */
+/** Remove a book that was opened with / shared to AudioYam (its copy too). */
 export async function removeImported(uid) {
   const b = (localCfg.get().imported || []).find((x) => x.uid === uid);
   if (!b) return false;

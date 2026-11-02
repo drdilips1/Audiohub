@@ -258,7 +258,7 @@ export function exportOpml() {
     .get()
     .subs.map((s) => `    <outline type="rss" text="${esc(s.title)}" title="${esc(s.title)}" xmlUrl="${esc(s.feedUrl)}"/>`)
     .join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head><title>Audioyam podcasts</title></head>\n  <body>\n${body}\n  </body>\n</opml>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head><title>AudioYam podcasts</title></head>\n  <body>\n${body}\n  </body>\n</opml>\n`;
 }
 
 export async function importOpml(text, onProgress) {

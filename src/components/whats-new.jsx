@@ -13,14 +13,14 @@ const seen = persisted('whatsNewSeen', '');
 const STEPS = [
   {
     icon: 'sparkle',
-    title: 'Audiohub is now Audioyam',
+    title: 'Audiohub is now AudioYam',
     bold: 'Same app, new name — your library, progress, settings and connections are all here.',
     text: 'Another audiobook app already used the name Audiohub, so this one now has a name of its own. Updates keep coming as before.',
   },
   {
     icon: 'headphones',
     title: 'Plays the copy on your phone first',
-    text: 'Resume a book (Continue, the mini player, Library) and Audioyam plays the copy in your phone folders when it has one — offline, no buffering, from the same place. Tapping a TorBox or Audiobookshelf copy on the book page still plays that copy.',
+    text: 'Resume a book (Continue, the mini player, Library) and AudioYam plays the copy in your phone folders when it has one — offline, no buffering, from the same place. Tapping a TorBox or Audiobookshelf copy on the book page still plays that copy.',
   },
   {
     icon: 'covers',
@@ -41,7 +41,7 @@ const STEPS = [
   {
     icon: 'upload',
     title: 'Share a quote',
-    text: 'Share any highlight, bookmark or transcript line as a quote card with a short link. Whoever has Audioyam opens it straight at that passage (or that moment of the audiobook); everyone else sees the quote on a web page.',
+    text: 'Share any highlight, bookmark or transcript line as a quote card with a short link. Whoever has AudioYam opens it straight at that passage (or that moment of the audiobook); everyone else sees the quote on a web page.',
   },
   {
     icon: 'list',
@@ -51,12 +51,12 @@ const STEPS = [
   {
     icon: 'server',
     title: 'In step with Audiobookshelf',
-    text: 'Listened further in Absorb or the web player? Audioyam carries on from there — when you open the book and when you press play after a break, even if you play it here from TorBox or a download. Your place here goes back to your server too.',
+    text: 'Listened further in Absorb or the web player? AudioYam carries on from there — when you open the book and when you press play after a break, even if you play it here from TorBox or a download. Your place here goes back to your server too.',
   },
   {
     icon: 'cloud',
     title: 'Server down? It plays from TorBox',
-    text: 'If your Audiobookshelf doesn’t answer within a few seconds, Audioyam plays the same book from your copy on the phone, in your TorBox / Real-Debrid — or, if a source has it cached there, straight from that — and starts from your place.',
+    text: 'If your Audiobookshelf doesn’t answer within a few seconds, AudioYam plays the same book from your copy on the phone, in your TorBox / Real-Debrid — or, if a source has it cached there, straight from that — and starts from your place.',
     tip: 'It also finds the book when the server’s title is wrong, from the names of its files.',
   },
   {
@@ -170,7 +170,7 @@ export function WhatsNew() {
         }}
       >
         <div class="sheet-handle" />
-        <small class="wn-kicker">What’s new in Audioyam · {i + 1} of {STEPS.length}</small>
+        <small class="wn-kicker">What’s new in AudioYam · {i + 1} of {STEPS.length}</small>
         <div class="wn-icon">
           <Icon name={st.icon} size={30} />
         </div>

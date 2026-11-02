@@ -612,7 +612,7 @@ export function Home() {
           </svg>
           <div class="home-hello">
             <small>{me ? `${greeting()}, ${me}` : greeting()}</small>
-            <b>Audioyam</b>
+            <b>AudioYam</b>
           </div>
         </div>
         <div class="home-top-actions">

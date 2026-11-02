@@ -80,7 +80,7 @@ async function openInstaller() {
   await Updater.install();
 }
 
-/** Open Android's "Install unknown apps" switch for Audioyam; install resumes on return. */
+/** Open Android's "Install unknown apps" switch for AudioYam; install resumes on return. */
 export async function allowInstalls() {
   await Updater.allowInstall();
 }
@@ -127,7 +127,7 @@ export function UpdatePrompt() {
         <div class="update-head">
           <Icon name="download" size={22} />
           <div>
-            <b>Audioyam {u.latest} is ready</b>
+            <b>AudioYam {u.latest} is ready</b>
             <small>You have {APP_VERSION}. Installs over this one — your books, progress and settings stay.</small>
           </div>
         </div>
@@ -141,7 +141,7 @@ export function UpdatePrompt() {
         ) : r.phase === 'permission' ? (
           <div class="update-step">
             <p>
-              Android needs your OK once: switch on <b>Allow from this source</b> for Audioyam, then come back — the install continues by itself.
+              Android needs your OK once: switch on <b>Allow from this source</b> for AudioYam, then come back — the install continues by itself.
             </p>
             <button class="btn primary big" onClick={() => allowInstalls().catch((e) => toast(e.message))}>
               Open the setting
@@ -149,7 +149,7 @@ export function UpdatePrompt() {
           </div>
         ) : r.phase === 'installing' ? (
           <div class="update-step">
-            <p>Tap <b>Update</b> (or Install) on Android's screen. Audioyam restarts with the new version.</p>
+            <p>Tap <b>Update</b> (or Install) on Android's screen. AudioYam restarts with the new version.</p>
             <button class="btn secondary" onClick={() => installUpdate()}>
               Open the installer again
             </button>
@@ -181,7 +181,7 @@ export function UpdateCard() {
       <section class="set-section">
         <div class="update-card">
           <div>
-            <b>Audioyam web app</b>
+            <b>AudioYam web app</b>
             <small>Always the latest version — just reopen it.</small>
           </div>
         </div>
@@ -192,7 +192,7 @@ export function UpdateCard() {
     <section class="set-section">
       <div class={'update-card' + (avail ? ' avail' : '')}>
         <div>
-          <b>{avail ? `Update available: ${u.latest}` : `Audioyam ${APP_VERSION}`}</b>
+          <b>{avail ? `Update available: ${u.latest}` : `AudioYam ${APP_VERSION}`}</b>
           <small>{avail ? 'Installs over this version — your data stays.' : u.checkedAt ? 'You have the latest version' : 'Check for a newer build'}</small>
         </div>
         {avail ? (

@@ -1,4 +1,4 @@
-# Audioyam
+# AudioYam
 
 **An audiobook, ebook and podcast app for Android (and the web) that plays from your own
 Audiobookshelf server and your own cloud storage — with smart recommendations, ratings,
@@ -82,13 +82,13 @@ Built with Preact + Vite, packaged for Android with Capacitor 8.
 
 **Optional: add-ons and trackers (at your own risk)**
 - You can add **source add-ons** (your own search sources) and your own **tracker site** (the app opens it in a built-in browser and sends downloads you tap to your qBittorrent).
-- Audioyam **ships with no sources or trackers**. What you add, and what you download through it, is your choice and your responsibility. Respect copyright, your tracker's rules, and the laws where you live.
+- AudioYam **ships with no sources or trackers**. What you add, and what you download through it, is your choice and your responsibility. Respect copyright, your tracker's rules, and the laws where you live.
 
 ---
 
 ## Install
 
-Download the latest `Audioyam-v….apk` from **[Releases](../../releases)**, open it on your phone and allow "Install unknown apps" when asked.
+Download the latest `AudioYam-v….apk` from **[Releases](../../releases)**, open it on your phone and allow "Install unknown apps" when asked.
 
 The web version (for iPhone/iPad/desktop) is published on GitHub Pages by the *Web app* workflow.
 
@@ -129,7 +129,7 @@ VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon key>
 ```
 
-Leave them empty to use Audioyam without sync.
+Leave them empty to use AudioYam without sync.
 
 ### Optional: web relay (for the web version)
 

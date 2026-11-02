@@ -264,9 +264,9 @@ export function importBackup(text) {
   try {
     backup = JSON.parse(String(text).trim());
   } catch {
-    throw new Error('That isn’t an Audioyam backup (copy the whole text)');
+    throw new Error('That isn’t an AudioYam backup (copy the whole text)');
   }
-  if (backup?.app !== 'inkwell') throw new Error('That isn’t an Audioyam backup');
+  if (backup?.app !== 'inkwell') throw new Error('That isn’t an AudioYam backup');
   // Older backups: a few stores, merged into what's here.
   const data = backup.data || {
     settings: { ...settings.get(), ...(backup.settings || {}) },

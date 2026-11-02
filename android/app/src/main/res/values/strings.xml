@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Audioyam</string>
-    <string name="title_activity_main">Audioyam</string>
+    <string name="app_name">AudioYam</string>
+    <string name="title_activity_main">AudioYam</string>
     <string name="package_name">app.inkwell.books</string>
     <string name="custom_url_scheme">app.inkwell.books</string>
     <string name="shortcut_ask">Ask AI</string>
