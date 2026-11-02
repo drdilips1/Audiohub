@@ -15,7 +15,12 @@ const STEPS = [
     icon: 'sparkle',
     title: 'Audiohub is now AudioYam',
     bold: 'Same app, new name — your library, progress, settings and connections are all here.',
-    text: 'Another audiobook app already used the name Audiohub, so this one now has a name of its own. Updates keep coming as before.',
+    text: 'Another audiobook app already used the name Audiohub, so this one now has a name of its own — with a new icon: a Y with headphones. Updates keep coming as before.',
+  },
+  {
+    icon: 'link',
+    title: 'AudioYam on your computer',
+    text: 'The web version is at listen.audiohubapp.com — open it in any browser on your PC or Mac (on iPhone: Safari → Share → Add to Home Screen). Sign into the same account and your library and progress follow you between phone and computer.',
   },
   {
     icon: 'headphones',
@@ -25,7 +30,17 @@ const STEPS = [
   {
     icon: 'covers',
     title: 'Your own cover pictures',
-    text: 'Don’t like a cover? Press and hold a book → Find a better cover & details → Or choose your own picture from the phone. It shows everywhere: cards, the book page and the player.',
+    text: 'Don’t like a cover? Press and hold a book → Find a better cover & details → Or choose your own picture from the phone. A cover you choose stays, and shows everywhere — cards, the book page, the player and Home.',
+  },
+  {
+    icon: 'text',
+    title: 'The ebook for the transcript, faster',
+    text: 'Finding a book’s ebook (for the transcript and Ask AI) now searches only sources that have ebooks and attaches the first clear match straight away, instead of waiting for every source.',
+  },
+  {
+    icon: 'target',
+    title: 'The real book first',
+    text: 'In search, unrated copycats of a book (“12 Rules for Life In English” by someone else) now sit below the real one, and the stray “0” under some cards is gone.',
   },
   {
     icon: 'palette',
