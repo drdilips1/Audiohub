@@ -37,10 +37,20 @@ export function searchTitle(t) {
 }
 
 // Degrees, titles and suffixes that end an author's name but aren't it ("Bruce H. Lipton PhD").
-const NOT_SURNAME = /^(phd|ph|d|md|m\.?d|dr|prof|professor|jr|sr|ii|iii|iv|mba|msc|ma|bsc|dphil|psyd|edd|rn|esq|obe|cbe|frs|mrs|mr|ms)$/i;
+const NOT_SURNAME = /^(phd|ph|d|md|m\.?d|dr|prof|professor|jr|sr|ii|iii|iv|mba|msc|bsc|dphil|psyd|edd|rn|esq|obe|cbe|frs|mrs|mr|ms)$/i;
 /** An author's surname: the first author's last real name word (lower case), '' if none. */
+// Degrees and titles around an author's name ("Brené Brown PhD LMSW", "Dr. Joe Dispenza"):
+// not part of the name, so they never count as the surname.
+const CREDENTIALS = /\b(dr|prof|ph\.?\s?d|m\.?d|lmsw|lcsw|lpc|lmft|mba|msc|bsc|dphil|psyd|edd|rn|esq|obe|cbe|frs|dsc|mph|jd|dds|cpa|cfa|faan)\b\.?/gi;
+export const cleanAuthor = (a) =>
+  String(a || '')
+    .replace(CREDENTIALS, ' ')
+    .replace(/\s+,/g, ',')
+    .replace(/,\s*(?=,|$)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 export function surname(author) {
-  const first = String(author || '').split(/,|&|;|\/|\band\b/)[0] || '';
+  const first = cleanAuthor(author).split(/,|&|;|\/|\band\b/)[0] || '';
   const w = first.replace(/[().]/g, ' ').split(/\s+/).filter(Boolean).filter((x) => !NOT_SURNAME.test(x.replace(/\.$/, '')));
   return (w[w.length - 1] || '').toLowerCase();
 }

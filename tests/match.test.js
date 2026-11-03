@@ -1,6 +1,6 @@
 // Title matching: phone copies, search titles, copycats, "another book".
 import { describe, it, expect } from 'vitest';
-import { words, mainTitle, searchTitle, surname, matches, otherBook, samePhoneBook, sinkCopycats } from '../src/lib/match.js';
+import { words, mainTitle, searchTitle, surname, cleanAuthor, matches, otherBook, samePhoneBook, sinkCopycats } from '../src/lib/match.js';
 
 describe('words / mainTitle', () => {
   it('ignores case, accents, punctuation and small words', () => {
@@ -102,5 +102,18 @@ describe('sinkCopycats (Audible copycats below the real book)', () => {
 
   it('leaves the list as it is without a rated book', () => {
     expect(sinkCopycats([copycat, fresh])).toEqual([copycat, fresh]);
+  });
+});
+
+describe('author names with degrees', () => {
+  it('drops degrees and titles, keeps real names', () => {
+    expect(cleanAuthor('Brené Brown PhD LMSW')).toBe('Brené Brown');
+    expect(cleanAuthor('Dr. Joe Dispenza')).toBe('Joe Dispenza');
+    expect(cleanAuthor('Peter Attia MD, Bill Gifford')).toBe('Peter Attia, Bill Gifford');
+    expect(cleanAuthor('Ma Jian')).toBe('Ma Jian');
+  });
+  it('finds the real surname', () => {
+    expect(surname('Brené Brown PhD LMSW')).toBe('brown');
+    expect(surname('Gabor Maté MD')).toBe('maté');
   });
 });

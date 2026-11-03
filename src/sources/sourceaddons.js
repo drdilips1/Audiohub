@@ -5,7 +5,7 @@
 import { getJson, sendJson } from '../lib/http.js';
 import { addons, persisted } from '../lib/store.js';
 import { logError, redact } from '../lib/report.js';
-import { words, matches, otherBook, searchTitle } from '../lib/match.js';
+import { words, matches, cleanAuthor, otherBook, searchTitle } from '../lib/match.js';
 import { infoHash, torboxCached } from './debrid.js';
 
 export const isSourceManifest = (m) => !!(m && typeof m === 'object' && m.id && m.name && m.adapters?.source?.request?.url);
@@ -251,7 +251,7 @@ function names(author) {
   const last = [];
   const first = [];
   for (const a of String(author).split(/,|&|\band\b|;/)) {
-    const w = words(a).filter((x) => x.length >= 3 && !NOT_NAMES.has(x));
+    const w = words(cleanAuthor(a)).filter((x) => x.length >= 3 && !NOT_NAMES.has(x));
     if (!w.length) continue;
     last.push(w[w.length - 1]);
     if (w.length > 1) first.push(w[0]);
