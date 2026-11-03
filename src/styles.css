@@ -11324,3 +11324,42 @@ button.notes-book-head {
 .fix-row .own-cover {
   cursor: pointer;
 }
+
+/* Banner for a book with no cover: a title tile instead of an empty space, and on light
+   themes the text in the theme's ink (white text was meant for a darkened cover behind it,
+   and vanished on the pale background). */
+.feature-poster-empty {
+  height: min(260px, 62vw);
+  aspect-ratio: 1;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  text-align: center;
+  color: #fff;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1.15;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 35%, #1c1830));
+  box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.55);
+}
+.feature-poster-empty span {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+:root[data-mode='light'] .feature-slide.no-art {
+  & .feature-title {
+    color: var(--text);
+    text-shadow: none;
+    background: none;
+  }
+  & .feature-author,
+  & .feature-meta,
+  & .feature-why,
+  & .feature-from {
+    color: var(--muted);
+  }
+}

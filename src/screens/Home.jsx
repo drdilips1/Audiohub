@@ -190,10 +190,18 @@ function FeatureSlide({ book: raw, active }) {
     b.duration ? fmtDuration(b.duration) : '',
   ].filter(Boolean);
   return (
-    <div class={'feature-slide' + (active ? ' on' : '')} aria-hidden={!active}>
+    <div class={'feature-slide' + (active ? ' on' : '') + (b.cover ? '' : ' no-art')} aria-hidden={!active}>
       <div class="feature-art">{b.cover ? <BgImage url={heroCover} /> : <div class="feature-art-empty" />}</div>
       <div class="feature-content">
-        <div class="feature-poster">{b.cover && <BgImage url={heroCover} />}</div>
+        <div class="feature-poster">
+          {b.cover ? (
+            <BgImage url={heroCover} />
+          ) : (
+            <div class="feature-poster-empty">
+              <span>{b.title}</span>
+            </div>
+          )}
+        </div>
       {active && (
         <div class="feature-body">
           <div class="feature-badges">
