@@ -195,7 +195,19 @@ export async function findEbookInSources(book, query = '') {
     new Promise((res) => setTimeout(res, 25000)),
   ]);
   const rank = { EPUB: 0, PDF: 1, '?': 2 };
-  return found.sort((a, b) => rank[a.file.format] - rank[b.file.format]);
+  return found.sort((a, b) => titleFit(a, t) - titleFit(b, t) || rank[a.file.format] - rank[b.file.format]);
+}
+
+// How well a found ebook is the book itself (lower is better): its name starts with the
+// title (0), has it a little way in — publisher or series words first (1), or not at all
+// (2). Summaries, study guides, "30 minute expert" and the like come after the real book.
+const COMPANION = /\b(summary|summaries|study guide|workbook|analysis|key takeaways|takeaways|cliff'?s ?notes|sparknotes|quicklet|book review|insights from|conversation starters|lessons from|unofficial|30 minute|in \d+ minutes|expert series|companion|abridged)\b/i;
+const plain = (x) => ` ${String(x || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
+export function titleFit(hit, title) {
+  const name = plain(`${hit.r?.title || ''} ${hit.file?.name || ''}`);
+  const t = plain(title).trim();
+  const at = t ? name.indexOf(` ${t}`) : -1;
+  return (COMPANION.test(name) ? 3 : 0) + (at === 0 ? 0 : at > 0 && at < 60 ? 1 : 2);
 }
 
 /** A found ebook ready to open: one of unknown type is fetched and checked first (EPUB / PDF only). */
