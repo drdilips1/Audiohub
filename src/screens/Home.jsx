@@ -15,10 +15,9 @@ import { ia, gb, ol, absSrc, addonSrc, cloud, localSrc, hc, gr, enabled, sourceO
 import { Fragment } from 'preact';
 import { sameWork } from '../lib/works.js';
 import { progress, settings, addons, abs, debrid, hardcover, goodreads, useStore, persisted, library, toggleLibrary, hideFromContinue } from '../lib/store.js';
-import { greeting, firstName, fmtDuration, hiResCover } from '../lib/format.js';
+import { fmtDuration, hiResCover } from '../lib/format.js';
 import { useSquareCover } from '../lib/meta.js';
 import { UpNextRow, PlanRow } from '../components/up-next.jsx';
-import { account } from '../lib/sync.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { GENRES } from './genres.js';
 import { HINDI_ALL } from './hindi.js';
@@ -531,7 +530,6 @@ export function GenreChips() {
 
 export function Home() {
   const st = useStore(settings);
-  const acct = useStore(account);
   const addonList = useStore(addons);
   const absCfg = useStore(abs);
   const deb = useStore(debrid);
@@ -593,7 +591,6 @@ export function Home() {
         </>
       ),
   };
-  const me = firstName(st.myName, acct);
   return (
     <div class="screen home">
       <header class="home-top">
@@ -606,8 +603,12 @@ export function Home() {
 <g fill="none" stroke="url(#ay-g1)" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round"><path d="M150 208 L256 318 L362 208"/><path d="M256 318 V420"/></g>
 <rect x="96" y="172" width="62" height="94" rx="28" fill="url(#ay-cup)"/><rect x="354" y="172" width="62" height="94" rx="28" fill="url(#ay-cup)"/></g></svg>
           <div class="home-hello">
-            <small>{me ? `${greeting()}, ${me}` : greeting()}</small>
-            <b>AudioYam</b>
+            <b>
+              Audio<span class="ay-y">Y</span>am
+            </b>
+            <small class="home-tagline">
+              <span class="ay-y">Y</span>our books, <span class="ay-y">Y</span>our way
+            </small>
           </div>
         </div>
         <div class="home-top-actions">

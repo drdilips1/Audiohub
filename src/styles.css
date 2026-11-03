@@ -5206,6 +5206,27 @@ textarea {
   color: rgba(244, 241, 251, 0.7);
   white-space: nowrap;
 }
+/* The Y of AudioYam and of the tag line, in the logo's colours. (The old ".home-logo span"
+   rules for the text logo would otherwise restyle it — hence !important.) */
+.home-logo .ay-y {
+  background: linear-gradient(135deg, #22c3e6, #8b5cf6 50%, #ec4899);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  font: inherit !important;
+  font-weight: 800 !important;
+  letter-spacing: inherit !important;
+}
+.home-hello b {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.home-tagline {
+  font-weight: 500;
+  margin-top: 1px;
+}
 .links-toggle {
   display: flex;
   align-items: center;
