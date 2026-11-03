@@ -10,7 +10,6 @@ import { useStore, bookmarks } from '../lib/store.js';
 import { MODELS, transcriptAvailable, subscribeTranscript, follow, installedModels, downloadModel, restartTranscript, findEbook, takeEbook, ebooksOnPhone, takeOnPhone, heardLines, fixHeard, stopLooking, transcriptCfg } from '../lib/transcript.js';
 import { cachedXray } from '../lib/xray.js';
 import { fmtTime } from '../lib/format.js';
-import { surname } from '../lib/match.js';
 
 // Wrap known character names in tappable spans.
 function withNames(text, names, onTap) {
@@ -49,6 +48,8 @@ function EbookStatus({ b }) {
   const run = useRef(0); // the latest search: one from a closed sheet mustn't reopen it
   const search = async (q = '') => {
     const my = ++run.current;
+    // You're choosing: the automatic search stops, so the two don't fight.
+    if (b?.state === 'loading') stopLooking();
     setSheetOpen(true);
     setBusy('search');
     const onPhone = await ebooksOnPhone(q);
@@ -56,12 +57,8 @@ function EbookStatus({ b }) {
     setMine(onPhone);
     try {
       const found = await findEbook(q);
+      // The list to choose from (the book itself first) — nothing is attached until you tap one.
       if (my === run.current) setHits(found);
-      // Nothing attached yet and a clear match in your sources: attach it straight away.
-      if (my === run.current && !q && b?.state !== 'on' && found[0] && clearMatch(found[0])) {
-        toast(`Attaching “${found[0].r.title || found[0].file.name}”…`);
-        return take(found[0]);
-      }
     } catch (e) {
       if (my === run.current) (toast(e?.message || String(e)), setHits([]));
     }
@@ -93,13 +90,6 @@ function EbookStatus({ b }) {
       toast(e?.message || String(e));
     }
     setBusy('');
-  };
-  // The audiobook's title words and its author's surname both in the result.
-  const clearMatch = (h) => {
-    const ps = player.getState().book;
-    const sn = surname(ps?.author);
-    const hay = `${h.r.title || ''} ${h.r.author || ''} ${h.file.name || ''}`.toLowerCase();
-    return h.file.format !== '?' && (!sn || hay.includes(sn));
   };
   const [allPhone, setAllPhone] = useState(false);
   const showAllPhone = async () => {

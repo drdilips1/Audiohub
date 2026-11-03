@@ -292,15 +292,21 @@ async function lookEverywhere(book) {
         const eb = ebookFor(book);
         if (eb) return eb;
       } else if (place === 'sources') {
-        // The first that really is an EPUB / PDF (files of unknown type are checked, a few at most).
-        let tries = 0;
-        for (const hit of await findEbookInSources(book)) {
-          if (hit.file.format === '?' && ++tries > 3) break;
-          try {
-            const eb = await readyHit(hit, book);
-            await loadCloudEbook(eb);
-            return eb;
-          } catch {}
+        // By itself, only clear EPUBs of the book itself (title match, no summaries), smaller
+        // first — PDFs are heavy to read on a phone, so they're only used when you pick one.
+        // One at a time, two at most; one that's too slow ends the search (no second download
+        // running alongside it — that kept the phone busy and hot).
+        const t0 = mainTitle(book.title || '');
+        const hits = (await findEbookInSources(book))
+          .filter((h) => h.file.format === 'EPUB' && titleFit(h, t0) <= 1)
+          .sort((a, b) => titleFit(a, t0) - titleFit(b, t0) || (Number(a.file.size || a.r.size) || 1e12) - (Number(b.file.size || b.r.size) || 1e12))
+          .slice(0, 2);
+        for (const hit of hits) {
+          let slow = false;
+          const timer = new Promise((res) => setTimeout(() => res((slow = true)), 25000));
+          const got = await Promise.race([loadCloudEbook(hit.book).then(() => hit.book, () => null), timer]);
+          if (got && got !== true) return got;
+          if (slow) break;
         }
       } else if (place === 'debrid' || place === 'abs') {
         const o = await mine();
