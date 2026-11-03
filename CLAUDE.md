@@ -9,9 +9,10 @@ and the tests are the project's memory**. Read this before changing anything.
 
 1. `npm test` must pass (Vitest, `tests/`). Don't delete, skip or loosen a test to make it pass.
    If a test is truly wrong, say so and explain why before changing it.
-2. `npx vite build` must succeed.
-3. If you changed a rule listed under "Behaviour that must not regress", add or update a test.
-4. Pushing to `main` **publishes**: the web app deploys and an Android release goes out to
+2. `npm run lint` must show no problems (it catches names that don't exist and unused code).
+3. `npx vite build` must succeed.
+4. If you changed a rule listed under "Behaviour that must not regress", add or update a test.
+5. Pushing to `main` **publishes**: the web app deploys and an Android release goes out to
    everyone's in-app updater. `test` only builds an APK to try. Never push to `main` unless asked.
 
 ## Layout

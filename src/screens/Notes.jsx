@@ -4,7 +4,7 @@ import { Icon } from '../components/icons.jsx';
 import { useStore } from '../lib/store.js';
 import { nav } from '../lib/nav.js';
 import { highlights, allHighlights, removeHighlight, toMarkdown } from '../lib/highlights.js';
-import { Native as Files, available as files, saveTextFile } from '../sources/local.js';
+import { available as files, saveTextFile } from '../sources/local.js';
 import { AllBookmarks } from '../components/bookmarks.jsx';
 import { shareQuote } from '../lib/quoteshare.js';
 

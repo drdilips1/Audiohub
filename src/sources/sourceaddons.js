@@ -5,7 +5,7 @@
 import { getJson, sendJson } from '../lib/http.js';
 import { addons, persisted } from '../lib/store.js';
 import { logError, redact } from '../lib/report.js';
-import { words, matches, mainTitle, otherBook, searchTitle } from '../lib/match.js';
+import { words, matches, otherBook, searchTitle } from '../lib/match.js';
 import { infoHash, torboxCached } from './debrid.js';
 
 export const isSourceManifest = (m) => !!(m && typeof m === 'object' && m.id && m.name && m.adapters?.source?.request?.url);
@@ -13,8 +13,6 @@ export const isSourceManifest = (m) => !!(m && typeof m === 'object' && m.id && 
 // No sources come with the app: every source is an addon you add (Settings → Addons),
 // shown by its own name.
 export const sourceLabel = (name) => name;
-// Leading tags some sources put on titles: "[EPUB] …", "M4B • Standard • ABB • …".
-const cleanTitle = (t) => String(t).replace(/^\s*\[[^\]]{1,24}\]\s*/, '').replace(/^(?:[A-Za-z0-9+]{2,10}\s*•\s*){2,4}/, '').trim() || String(t);
 
 export const sourceAddons = () => addons.get().filter((a) => a.kind === 'source');
 

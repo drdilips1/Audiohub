@@ -366,7 +366,6 @@ function Hero() {
 }
 
 /** Date line under the greeting, e.g. "Friday, 26 September". */
-const today = () => new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 
 // "Audiobooks in your folders / cloud" rows: audiobooks only (ebooks are in Library → Ebooks).
 const audioOnly = (load) => () => load().then((list) => (list || []).filter((b) => b.kind !== 'text'));

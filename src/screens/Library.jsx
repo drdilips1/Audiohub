@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Grid, Empty, Cover, BookCover, toast, AskButton, BookCard } from '../components/common.jsx';
+import { Grid, Empty, BookCover, toast, AskButton, BookCard } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
 import { library, progress, useStore, forgetBook, persisted, clearPodcastHistory, bookTags } from '../lib/store.js';
 import { allTags } from '../components/book-tags.jsx';

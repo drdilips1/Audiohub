@@ -17,7 +17,7 @@ import { Answer } from '../screens/Ask.jsx';
 import { aiReady } from '../lib/ai.js';
 import { TranscriptView } from './transcript-view.jsx';
 import { StorySheet } from './story-sheet.jsx';
-import { XrayStrip, XraySheet } from './xray.jsx';
+import { XraySheet } from './xray.jsx';
 import { SceneButton } from './scene-cmd.jsx';
 import { Rows as BookmarkRows } from './bookmarks.jsx';
 import { HighlightCards, AudioNotes, useBookNoteCount } from './book-notes.jsx';

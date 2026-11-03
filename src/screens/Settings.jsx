@@ -10,7 +10,7 @@ import { clearHttpCache, isWeb, relayUrl, setRelayUrl, probeRelay, defaultRelayU
 import { searchSources, sourceAddons } from '../sources/sourceaddons.js';
 import { ai, PROVIDERS as AI_PROVIDERS, testProvider } from '../lib/ai.js';
 import relayCode from '../../relay/index.ts?raw';
-import { ACCENTS, PALETTES, resolvedMode, activePalette, isInk } from '../lib/theme.js';
+import { ACCENTS, PALETTES, activePalette, isInk } from '../lib/theme.js';
 import { WALLPAPERS, wallpaperUrl, saveCustom, useCustomWallpaper } from '../lib/wallpaper.js';
 import { APP_VERSION } from '../components/update.jsx';
 import { ReportCard, SupportLinks } from '../components/report.jsx';
@@ -18,7 +18,6 @@ import { PROVIDERS, clearMetaCache } from '../lib/meta.js';
 import { AccountCard, NameRow, VoicesCard, DownloadsCard, FindOrderCard } from './settings-extra.jsx';
 import { UpdateCard } from '../components/update.jsx';
 import { showWhatsNew } from '../components/whats-new.jsx';
-import { nav } from '../lib/nav.js';
 import * as qb from '../sources/qbit.js';
 import { QbitListActions } from '../components/qbit-actions.jsx';
 import { TrackerCard } from './Tracker.jsx';
@@ -1000,7 +999,6 @@ function AddonLogo({ m }) {
 
 function AddonsCard() {
   const list = useStore(addons);
-  const [badLogo, setBadLogo] = useState({}); // addon id -> its picture doesn't load
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [raw, setRaw] = useState(null);

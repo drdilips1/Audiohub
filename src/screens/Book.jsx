@@ -16,7 +16,6 @@ import {
   ia,
   hc,
   sourceOf,
-  localSrc,
 } from "../sources/index.js";
 import { library, progress, toggleLibrary, useStore } from "../lib/store.js";
 import { BookTags } from "../components/book-tags.jsx";
@@ -28,8 +27,6 @@ import { cloudReaderBook } from "../lib/epub.js";
 import { openSearch } from "./Discover.jsx";
 import { mainTitle, searchTitle } from "../lib/match.js";
 import { STARTERS } from "../lib/askbook.js";
-import { setFix } from "../lib/meta.js";
-import { audible as audibleCat, googleBooks } from "../sources/catalogs.js";
 import { SourceResults } from "../components/source-results.jsx";
 import { FixDetails } from "../components/fix-details.jsx";
 import { Available } from "../components/available.jsx";
@@ -58,14 +55,7 @@ import { sourceAddons } from "../sources/sourceaddons.js";
 import * as player from "../lib/player.js";
 import { usePlayerBasics, useCoverColor } from "../components/player-ui.jsx";
 import { RelatedRows } from "../components/related.jsx";
-import {
-  openUrl,
-  openExternal,
-  keyIdeas,
-  savedSummary,
-  summaryBook,
-  aiReady,
-} from "../sources/summaries.js";
+import { openExternal } from "../sources/summaries.js";
 import { useStoryShots, chooseStoryShots } from "../sources/storyshots.js";
 
 // Books you already have (cloud, server, addons) can still show other copies from source addons.
@@ -650,101 +640,6 @@ function StoryShotsLink({ book }) {
       <span class={"ss-badge" + (ss.ep ? "" : " outline")}>S</span>{" "}
       {ss.ep ? "StoryShots audio summary" : "Summary in StoryShots"}
     </button>
-  );
-}
-
-/** Blinks (Blinkist-style key ideas): made by your AI service, then kept. */
-function Summaries({ book, description }) {
-  const [sum, setSum] = useState(() => savedSummary(book));
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  useEffect(() => {
-    const have = savedSummary(book);
-    setSum(have);
-    setErr("");
-    // Written straight away when an AI service is set up (then kept, so only once per book).
-    if (!have && aiReady()) make();
-  }, [book.uid]);
-  const make = async () => {
-    setBusy(true);
-    setErr("");
-    try {
-      setSum(await keyIdeas(book, { description }));
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const sb = summaryBook(book);
-  return (
-    <section class="pad summaries">
-      <h3 class="section-label">
-        <Icon name="text" size={16} /> Blinks
-      </h3>
-
-      <div class="sum-card">
-        {sum ? (
-          <>
-            <div class="sum-head">
-              <b>{sum.tagline || "The book in a few minutes"}</b>
-              <small>
-                {sum.ideas.length} blinks · {sum.minutes} min read
-                {sum.fromDescription
-                  ? " · from the publisher’s description"
-                  : ""}
-              </small>
-            </div>
-            <p class="sum-about">{sum.about}</p>
-            <ol class="sum-ideas">
-              {sum.ideas.map((i) => (
-                <li>{i.title}</li>
-              ))}
-            </ol>
-            <div class="sum-actions">
-              <button
-                class="btn primary"
-                onClick={() => nav.push("reader", { book: sb })}
-              >
-                <Icon name="book" size={16} /> Read
-              </button>
-              <button
-                class="btn secondary"
-                onClick={() =>
-                  nav.push("reader", { book: sb, readAloud: true })
-                }
-              >
-                <Icon name="headphones" size={16} /> Listen
-              </button>
-            </div>
-          </>
-        ) : aiReady() ? (
-          <>
-            <p class="muted">
-              The main ideas of this book in about 10 minutes — to read, or to
-              listen to with your voice.
-            </p>
-            {err && <p class="err">{err}</p>}
-            <button class="btn primary" disabled={busy} onClick={make}>
-              {busy ? (
-                <span class="spinner" />
-              ) : (
-                <Icon name="ai" size={16} />
-              )}{" "}
-              {busy ? "Writing the blinks…" : "Get blinks"}
-            </button>
-          </>
-        ) : (
-          <p class="muted">
-            Blinks are written by a free AI service —{" "}
-            <button class="link-btn" onClick={() => nav.tab("settings")}>
-              add a Groq key in Settings → AI
-            </button>
-            .
-          </p>
-        )}
-      </div>
-    </section>
   );
 }
 

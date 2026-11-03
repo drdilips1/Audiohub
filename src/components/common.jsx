@@ -8,7 +8,7 @@ import { nav } from '../lib/nav.js';
 import { progress as progressStore, useStoreKey, persisted, useStore, settings } from '../lib/store.js';
 import { useImage, coverFrame, frameStyle, frameTall } from '../lib/image.js';
 import { longPress } from './book-actions.jsx';
-import { useSquareCover, squareNow, fixFor } from '../lib/meta.js';
+import { useSquareCover, fixFor } from '../lib/meta.js';
 import { activePalette, isInk } from '../lib/theme.js';
 import { useMeta } from '../lib/meta.js';
 import { useTileRating } from '../lib/ratings.js';

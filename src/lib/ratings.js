@@ -353,13 +353,6 @@ export function useRatings(book) {
     let alive = true;
     setR({ audible: null, goodreads: null, hardcover: null, why: '' });
     const timers = [];
-    // A service that couldn't be reached (undefined) is asked again a little later.
-    const get = (fn, key, tries = 2) =>
-      fn(book).then((v) => {
-        if (!alive) return;
-        if (v) setR((x) => ({ ...x, [key]: v }));
-        else if (v === undefined && tries > 0) timers.push(setTimeout(() => get(fn, key, tries - 1), 8000));
-      });
     // Audible's rating too, as a second badge (book page only; tiles use Goodreads).
     audibleStars(book).then((v) => alive && v && setR((x) => ({ ...x, audible: v })));
     // When Goodreads has nothing, say why, so a missing rating can be explained.

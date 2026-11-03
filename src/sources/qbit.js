@@ -7,7 +7,7 @@ import { persisted } from '../lib/store.js';
 import { requestText, requestFull, cleanUrl } from '../lib/http.js';
 import { readTorrent } from '../lib/torrentfile.js';
 import * as absSrc from './audiobookshelf.js';
-import { words, matches, mainTitle, surname } from '../lib/match.js';
+import { words, matches, mainTitle } from '../lib/match.js';
 import { infoHash, magnetFor, torboxLibrary, realdebridLibrary, tbConnected, rdConnected, hasAudio, forget as forgetCloud } from './debrid.js';
 
 export const qbit = persisted('qbit', { url: '', lanUrl: '', username: '', password: '', apiKey: '', savePath: '', ebookPath: '', category: 'audiobooks', auto: false });
@@ -593,7 +593,6 @@ export async function openTracker(query = '', filtered = false, ebook = false) {
 /** What happened to the last download tapped in the tracker browser. */
 export const lastCapture = persisted('qbitLastCapture', { at: 0, ok: true, text: '' });
 
-const nativeToast = (text) => (canBrowse ? Web.toast({ text }).catch(() => {}) : Promise.resolve());
 
 // Downloads caught in the in-app browser: the browser screen already sent them to
 // qBittorrent; here we only note them so they show under "Downloads at home".
