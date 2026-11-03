@@ -34,7 +34,6 @@ async function list(params) {
 }
 
 export const popular = (lang = 'en') => list({ languages: lang });
-export const byTopic = (topic, lang = 'en') => list({ topic, languages: lang });
 export const search = (term) => (term.trim() ? list({ search: term.trim() }) : Promise.resolve([]));
 
 export async function details(book) {

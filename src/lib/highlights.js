@@ -7,8 +7,6 @@ export { highlights }; // uid -> [{ id, parts: [{ a, t }], text, note, at, book 
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-export const forBook = (uid) => highlights.get()[uid] || [];
-
 /**
  * Highlights to show in this ebook: its own, and those made in another copy of the same
  * book (opened from a source, then from Downloads, re-downloaded…), found by their words.

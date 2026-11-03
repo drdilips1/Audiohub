@@ -43,7 +43,6 @@ export const popular = () => query('collection:librivoxaudio', { rows: 24 });
 export const newest = () => query('collection:librivoxaudio', { sort: 'addeddate desc', rows: 24 });
 /** Free Hindi audio (stories, poetry, talks) across all Internet Archive collections. */
 export const hindi = (topic = '') => query(`language:(hin OR hindi OR Hindi)${topic ? ` AND (${topic})` : ''}`, { rows: 40, anyCollection: true });
-export const bySubject = (s) => query(`subject:(${s}) OR title:(${s})`, { rows: 30 });
 
 export function search(term) {
   const t = term.replace(/[():"]/g, ' ').trim();

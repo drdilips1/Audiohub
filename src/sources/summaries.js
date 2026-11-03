@@ -18,13 +18,6 @@ export async function openExternal(url) {
   window.open(url, '_blank');
 }
 
-/** Open a page inside the app (sign-ins are remembered); external browser only as a fallback. */
-export async function openUrl(url, title = '') {
-  if (inAppWeb) return Web.open({ url, title });
-  if (Capacitor.isNativePlatform()) return Browser.open({ url });
-  window.open(url, '_blank');
-}
-
 const esc = (t) => String(t || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const keyFor = (book) => `${words(mainTitle(book.title)).join(' ')}|${words(String(book.author || '').split(/,|&| and /)[0]).join(' ')}`;
 
@@ -32,9 +25,6 @@ const keyFor = (book) => `${words(mainTitle(book.title)).join(' ')}|${words(Stri
 const store = persisted('bookSummaries', {});
 
 export { aiReady };
-
-/** The saved summary for a book, if one was made. */
-export const savedSummary = (book) => store.get()[keyFor(book)]?.data || null;
 
 /**
  * Key ideas for a book: { tagline, about, forWho, ideas: [{ title, text }], quote, takeaway, minutes }.

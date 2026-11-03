@@ -225,9 +225,6 @@ async function signInOrCreate(email, password) {
   return 'Account created — you are signed in';
 }
 
-export const signUp = continueWith;
-export const signIn = continueWith;
-
 /** Which sign-in methods the server has switched on, e.g. { email: true, google: false }. */
 export async function providers() {
   try {

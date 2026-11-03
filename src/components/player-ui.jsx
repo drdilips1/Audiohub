@@ -670,18 +670,6 @@ export function FullPlayer() {
   );
 }
 
-export function Waveform({ playing }) {
-  const ref = useRef();
-  return (
-    <span ref={ref} class={'eq' + (playing ? ' on' : '')}>
-      <i />
-      <i />
-      <i />
-      <i />
-    </span>
-  );
-}
-
 /** The full player's backdrop, as chosen in Settings → Appearance. */
 function PlayerBackground({ book, st }) {
   const kind = st.playerBg || 'cover';

@@ -216,7 +216,6 @@ export function enqueue(ep, podcast, { next = false } = {}) {
   });
 }
 export const dequeue = (uid) => podcasts.set((p) => ({ ...p, queue: p.queue.filter((q) => q.uid !== uid) }));
-export const inQueue = (uid) => podcasts.get().queue.some((q) => q.uid === uid);
 
 /** An episode as a playable "book" for the player (and downloads). */
 export function asBook(ep, podcast) {

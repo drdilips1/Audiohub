@@ -37,11 +37,6 @@ const names = (s) =>
     .filter(Boolean);
 export const rateKey = (b) => `${words(mainTitle(b?.title)).join(' ')}|${lastName(b?.author)}`;
 
-export const ratingOf = (b) => {
-  const r = myRatings.get()[rateKey(b)];
-  return r?.verdict ? r : null;
-};
-
 export function rateBook(book, patch) {
   const k = rateKey(book);
   if (!k.split('|')[0]) return;
@@ -122,7 +117,6 @@ export function knownTitles() {
   Object.values(notInterested.get()).forEach(add);
   return t;
 }
-export const isKnown = (b, known = knownTitles()) => known.has(words(mainTitle(b?.title)).join(' '));
 
 // ---- scoring ------------------------------------------------------------------
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));

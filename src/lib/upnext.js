@@ -30,7 +30,6 @@ export function moveUpNext(id, dir) {
     return next;
   });
 }
-export const isUpNext = (book) => !!book?.uid && upNext.get().some((x) => x.book.uid === book.uid);
 
 /** Play an item of the queue (taken off it). A source that's gone moves on to the next one. */
 export async function playUpNext(item = upNext.get()[0]) {

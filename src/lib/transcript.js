@@ -4,7 +4,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { persisted } from './store.js';
 import { getText } from './http.js';
-import { installedIds, download as downloadPackage, remove as removePackage, builtinAvailable } from './voices.js';
+import { installedIds, download as downloadPackage, builtinAvailable } from './voices.js';
 import * as player from './player.js';
 import { isHindi } from '../screens/hindi.js';
 
@@ -264,7 +264,6 @@ export async function installedModels() {
 export function downloadModel(m, onProgress) {
   return downloadPackage(m, onProgress).then(() => (installed = null));
 }
-export const removeModel = (m) => removePackage(m.id).then(() => (installed = null));
 
 function languageOf(book) {
   return book && isHindi(book) ? 'hi' : 'en';

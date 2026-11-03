@@ -344,7 +344,6 @@ export const savedEbooks = persisted('savedEbooks', {}); // uid -> { book, forma
 export const badEbooks = persisted('badEbooks', {});
 export const markBadEbook = (uid) => uid && badEbooks.set((all) => ({ ...Object.fromEntries(Object.entries(all).slice(-300)), [uid]: Date.now() }));
 export const isBadEbook = (b) => !!(b?.uid && badEbooks.get()[b.uid]);
-export const savedEbook = (uid) => savedEbooks.get()[uid] || null;
 // Ebooks kept before this list existed: add them (with what the reading history knows).
 setTimeout(async () => {
   try {

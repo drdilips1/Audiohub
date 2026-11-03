@@ -12,7 +12,6 @@ let active = '';
 let checkedAt = 0;
 const trim = (u) => (u || '').replace(/\/+$/, '');
 const base = () => trim(active || cfg().server);
-export const activeServer = () => base();
 
 async function reachable(url) {
   try {

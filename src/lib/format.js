@@ -75,14 +75,6 @@ export function greeting() {
   return 'Good evening';
 }
 
-export function debounce(fn, ms) {
-  let t;
-  return (...a) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...a), ms);
-  };
-}
-
 /**
  * The largest version of a cover the host offers (Audible/Amazon, Apple,
  * Open Library, Google Books), so a big banner isn't a blown-up thumbnail.

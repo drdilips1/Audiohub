@@ -11,65 +11,12 @@ import { fmtTime } from '../lib/format.js';
 
 const share = (uid, data) => knownCharacters.set({ uid, at: data.at, list: data.people });
 
-/** Keeps the X-Ray for the playing book up to date (one AI request per chapter reached). */
-function useXray(s) {
-  const uid = s.book?.uid;
-  const [data, setData] = useState(() => (uid ? cachedXray(uid) : null));
-  let ci = -1;
-  try {
-    const g = player.globalTime();
-    ci = player.chapters().findIndex((c) => g >= c.start && g < (c.end || Infinity));
-  } catch {}
-  useEffect(() => {
-    if (!uid) return;
-    setData(cachedXray(uid));
-    if (!aiReady() || !s.tracks.length || s.book.source === 'pod') return;
-    let alive = true;
-    const t = setTimeout(() => {
-      loadXray()
-        .then((d) => alive && (setData(d), share(uid, d)))
-        .catch(() => {});
-    }, 4000); // after the chapter has settled (skipping through doesn't ask each time)
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [uid, ci, s.tracks.length]);
-  return data;
-}
-
 /** Lines heard in the last few minutes of the current part. */
 function useRecent(s) {
   const [t, setT] = useState(null);
   useEffect(() => subscribeTranscript(setT), []);
   const segs = t?.segments || [];
   return segs.filter((g) => g.start != null && g.start <= s.time + 1 && g.start >= s.time - 180).map((g) => (t?.bookText?.state === 'on' && g.book) || g.text);
-}
-
-export function XrayStrip({ s, open }) {
-  const data = useXray(s);
-  const recent = useRecent(s);
-  if (!data) return null;
-  const now = inScene(data, recent);
-  let ci = -1;
-  try {
-    const g = player.globalTime();
-    ci = player.chapters().findIndex((c) => g >= c.start && g < (c.end || Infinity));
-  } catch {}
-  const topic = data.topics?.[ci];
-  if (!topic && !now.people.length && !now.places.length) return null;
-  return (
-    <button class="xray-strip" onClick={open} aria-label="X-Ray">
-      <b>X-Ray</b>
-      {topic && <span class="xray-topic">{topic}</span>}
-      {now.people.slice(0, 4).map((x) => (
-        <span class="xray-chip">{x.name}</span>
-      ))}
-      {now.places.slice(0, 2).map((x) => (
-        <span class="xray-chip place">📍 {x.name}</span>
-      ))}
-    </button>
-  );
 }
 
 export function XraySheet({ s }) {
