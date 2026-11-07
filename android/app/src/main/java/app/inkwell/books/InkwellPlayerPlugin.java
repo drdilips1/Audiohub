@@ -54,6 +54,8 @@ public class InkwellPlayerPlugin extends Plugin {
     private static final Map<String, String> requestHeaders = new HashMap<>();
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    // The running app (for Android Auto: a book picked in the car is prepared by the app).
+    private static InkwellPlayerPlugin instance;
     private ExoPlayer player;
     private MediaSession session;
     private boolean ticking = false;
@@ -190,6 +192,17 @@ public class InkwellPlayerPlugin extends Plugin {
                     super.isCommandAvailable(command);
             }
 
+            // A book the car asked for was just loaded by the app: the session would set the same
+            // items again (and start over) — keep what's playing.
+            @Override
+            public void setMediaItems(@NonNull java.util.List<MediaItem> items, int startIndex, long startPositionMs) {
+                if (CarLibrary.skipNextSet) {
+                    CarLibrary.skipNextSet = false;
+                    return;
+                }
+                super.setMediaItems(items, startIndex, startPositionMs);
+            }
+
             @Override
             public void seekToNext() {
                 remote("next");
@@ -222,9 +235,9 @@ public class InkwellPlayerPlugin extends Plugin {
 
         // A library session: the same player, also browsable from Android Auto (CarLibrary).
         androidx.media3.session.MediaLibraryService.MediaLibrarySession lib =
-            new androidx.media3.session.MediaLibraryService.MediaLibrarySession.Builder(getContext(), forwarding, new CarLibrary()).setSessionActivity(activity).build();
+            new androidx.media3.session.MediaLibraryService.MediaLibrarySession.Builder(getContext(), forwarding, new CarLibrary(getContext())).setSessionActivity(activity).build();
         session = lib;
-        PlaybackService.session = lib;
+        PlaybackService.useAppSession(lib); // the car-only player (app was closed) steps aside
         getContext().startService(new Intent(getContext(), PlaybackService.class));
     }
 
@@ -346,6 +359,7 @@ public class InkwellPlayerPlugin extends Plugin {
             player.setVolume(1f);
             player.prepare();
             player.setPlayWhenReady(c.getBoolean("autoplay", true));
+            CarLibrary.loaded(player); // a book the car asked for: now it plays there too
             c.resolve();
         });
     }
@@ -608,7 +622,50 @@ public class InkwellPlayerPlugin extends Plugin {
     }
 
     @Override
+    public void load() {
+        super.load();
+        instance = this;
+    }
+
+    /**
+     * Android Auto picked a book: the app prepares it (as when you tap Play). False when the
+     * app isn't running — then the car plays downloaded books by itself.
+     */
+    static boolean carPlay(String id) {
+        InkwellPlayerPlugin p = instance;
+        if (p == null || p.getBridge() == null) return false;
+        JSObject o = new JSObject();
+        o.put("id", id);
+        p.main.post(() -> p.notifyListeners("carPlay", o, true));
+        return true;
+    }
+
+    /** The car connected and the app is running: give it the app's player (made now if needed). */
+    static boolean ensureForCar() {
+        InkwellPlayerPlugin p = instance;
+        if (p == null || p.getBridge() == null) return false;
+        p.ensurePlayer();
+        return p.session != null;
+    }
+
+    /** The books Android Auto lists (Continue listening, Recently played, Downloaded). */
+    @PluginMethod
+    public void setCarCatalog(PluginCall call) {
+        CarCatalog.save(getContext(), call.getString("json", "{}"));
+        call.resolve();
+    }
+
+    /** Where books got to when played from the car with the app closed: { json }. */
+    @PluginMethod
+    public void takeCarProgress(PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("json", CarCatalog.takeProgress(getContext()));
+        call.resolve(o);
+    }
+
+    @Override
     protected void handleOnDestroy() {
+        if (instance == this) instance = null;
         main.removeCallbacks(tick);
         if (watching && sensors != null) sensors.unregisterListener(motion);
         main.removeCallbacks(stillCheck);
