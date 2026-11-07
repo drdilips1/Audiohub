@@ -81,7 +81,7 @@ function needsRelay(url) {
   }
 }
 
-async function request(url, { timeout = 15000, headers, method = 'GET', body, feed = false } = {}) {
+async function request(url, { timeout = 15000, headers, method = 'GET', body, feed = false, hops = 0 } = {}) {
   const ctrl = new AbortController();
   let timer;
   // Android's native HTTP ignores abort signals, so also race a timer:
@@ -150,6 +150,22 @@ async function request(url, { timeout = 15000, headers, method = 'GET', body, fe
         if (r.ok) res = r;
       } catch (e) {
         if (e.timeout) throw e;
+      }
+    }
+    // A server that moved the request elsewhere (301/302/303/307/308) and wasn't followed —
+    // the phone's native HTTP doesn't follow some (e.g. to a new host): follow it here, a few times.
+    if (res.status >= 301 && res.status <= 308 && res.status !== 304 && hops < 4) {
+      let to = res.headers.get('Location') || '';
+      if (!to) {
+        try {
+          to = /redirecting to\s+(https?:\/\/\S+)/i.exec(await res.clone().text())?.[1] || '';
+        } catch {}
+      }
+      if (to) {
+        to = new URL(to.replace(/[.,;)]+$/, ''), url).href;
+        const again = res.status === 303 ? { method: 'GET', body: undefined } : { method, body };
+        clearTimeout(timer);
+        return request(to, { timeout, headers, feed, hops: hops + 1, ...again });
       }
     }
     if (!res.ok) {
