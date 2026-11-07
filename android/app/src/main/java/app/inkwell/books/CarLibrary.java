@@ -54,6 +54,8 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
     // A book playing from the car without the app (its id, for saving the place it reaches).
     @Nullable
     static String carBook = null;
+    // Saved stream links start at the part you were on: add this to the player's part number.
+    static int carTrackOffset = 0;
 
     CarLibrary(Context context) {
         this.context = context.getApplicationContext();
@@ -250,10 +252,37 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
             }, 30000);
             return f;
         }
-        // The app is closed: a downloaded book plays from its files on the phone.
+        // The app is closed: a downloaded book plays from its files on the phone; else from the
+        // stream links saved when it last played in the app (they may have expired).
         JSONArray parts = book.optJSONArray("parts");
+        boolean saved = false;
+        int offset = 0; // the book's part number of the first saved link
+        int track0 = book.optInt("track", 0);
         if (parts == null || parts.length() == 0) {
-            CarCatalog.log(context, "picked “" + title + "” with the app closed — not downloaded, so it can't start without the app");
+            JSONObject st = book.optJSONObject("stream");
+            JSONArray sp = st != null ? st.optJSONArray("parts") : null;
+            if (sp != null && sp.length() > 0) {
+                parts = new JSONArray();
+                int first = -1;
+                for (int i = 0; i < sp.length(); i++) {
+                    JSONObject x = sp.optJSONObject(i);
+                    if (x == null) continue;
+                    // From the part you were on, onwards (earlier parts aren't needed to resume).
+                    if (x.optInt("i", i) < track0) continue;
+                    if (first < 0) first = x.optInt("i", i);
+                    parts.put(x);
+                }
+                if (parts.length() > 0) {
+                    saved = true;
+                    offset = first;
+                    PlaybackService.carHeaders = st.optJSONObject("headers");
+                    // Positions count from the first saved part now.
+                    track0 = first == book.optInt("track", 0) ? 0 : -1;
+                }
+            }
+        }
+        if (parts == null || parts.length() == 0) {
+            CarCatalog.log(context, "picked “" + title + "” with the app closed — not downloaded and no saved links yet, so it needs the app once");
             return Futures.immediateFailedFuture(new IllegalStateException("Open AudioYam on your phone once to stream this book"));
         }
         List<MediaItem> items = new ArrayList<>();
@@ -269,10 +298,13 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
             items.add(new MediaItem.Builder().setMediaId(PART + i).setUri(t.optString("url")).setMediaMetadata(m.build()).build());
         }
         if (items.isEmpty()) return Futures.immediateFailedFuture(new IllegalStateException("This book's files weren't found"));
-        int track = Math.max(0, Math.min(items.size() - 1, book.optInt("track", 0)));
-        long at = (long) (book.optDouble("time", 0) * 1000);
+        int track = saved ? 0 : Math.max(0, Math.min(items.size() - 1, book.optInt("track", 0)));
+        long at = saved && track0 < 0 ? 0 : (long) (book.optDouble("time", 0) * 1000);
         carBook = id;
-        CarCatalog.log(context, "picked “" + title + "” with the app closed — playing its downloaded files (" + items.size() + " parts)");
+        carTrackOffset = saved ? offset : 0;
+        if (!saved) PlaybackService.carHeaders = null;
+        CarCatalog.touch(context, id, book.optInt("track", 0), book.optDouble("time", 0));
+        CarCatalog.log(context, "picked “" + title + "” with the app closed — " + (saved ? "playing from its saved stream links (" + items.size() + " parts)" : "playing its downloaded files (" + items.size() + " parts)"));
         return Futures.immediateFuture(new MediaSession.MediaItemsWithStartPosition(items, track, at));
     }
 

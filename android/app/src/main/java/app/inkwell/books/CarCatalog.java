@@ -104,6 +104,33 @@ final class CarCatalog {
         return best != null && bestScore * 2 >= Math.max(1, words.length) ? best : null;
     }
 
+    /**
+     * A book played from the car without the app: to the top of Continue listening and Recently
+     * played, at the place it reached (the app does this itself when it's running).
+     */
+    static void touch(Context c, String id, int track, double time) {
+        try {
+            JSONObject o = find(c, id);
+            if (o == null) return;
+            JSONObject b = new JSONObject(o.toString());
+            b.put("track", track);
+            b.put("time", time);
+            JSONObject all = get(c);
+            for (String n : new String[] { "continue", "recent" }) {
+                JSONArray a = list(c, n);
+                JSONArray out = new JSONArray();
+                out.put(b);
+                for (int i = 0; i < a.length(); i++) {
+                    JSONObject x = a.optJSONObject(i);
+                    if (x != null && !id.equals(x.optString("id"))) out.put(x);
+                }
+                all.put(n, out);
+            }
+            prefs(c).edit().putString("catalog", all.toString()).apply();
+            cached = all;
+        } catch (Exception ignored) {}
+    }
+
     /** Where a book got to when it played from the car without the app. */
     static void saveProgress(Context c, String id, int track, double time) {
         try {

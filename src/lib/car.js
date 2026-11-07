@@ -3,11 +3,30 @@
 // prepares a book the car picks (as when you tap Play), and takes back the places books
 // reached when they played from the car with the app closed.
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { progress, library } from './store.js';
+import { progress, library, persisted } from './store.js';
 import { downloads } from './downloads.js';
 
 const ON = Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('InkwellPlayer');
 const Native = registerPlugin('InkwellPlayer');
+
+// Stream links of books played in the app (the last 10): with the app closed, the car can
+// play them from these until they expire (TorBox's after some hours; Audiobookshelf's last).
+const streams = persisted('carStreams', {}); // uid -> { at, headers, parts: [{ i, url, title }] }
+async function keepStreams() {
+  const { getState } = await import('./player.js');
+  const st = getState();
+  const b = st.book;
+  if (!b?.uid || /^pod:/.test(b.uid) || !st.tracks?.length) return;
+  const parts = st.tracks.map((t, i) => (/^https?:/i.test(t.url || '') ? { i, url: t.url, title: t.title || `Part ${i + 1}` } : null)).filter(Boolean);
+  if (!parts.length) return;
+  const old = streams.get()[b.uid];
+  if (old && old.parts.length === parts.length && old.parts.every((p, k) => p.url === parts[k].url)) return;
+  streams.set((all) => {
+    const next = { ...all, [b.uid]: { at: Date.now(), headers: st.tracks.find((t) => t.headers)?.headers || {}, parts } };
+    const keep = Object.entries(next).sort((x, y) => y[1].at - x[1].at).slice(0, 10);
+    return Object.fromEntries(keep);
+  });
+}
 
 const https = (u) => (/^https:\/\//i.test(u || '') ? u : '');
 const item = (uid, b, p) => ({
@@ -29,8 +48,8 @@ function catalog() {
     return d?.status === 'done' && d.tracks?.length ? d.tracks.map((t, i) => ({ url: t.uri, title: t.title || `Part ${i + 1}` })) : undefined;
   };
   return {
-    continue: recent.filter(([, p]) => !p.finished).slice(0, 15).map(([uid, p]) => ({ ...item(uid, p.book, p), parts: parts(uid) })),
-    recent: recent.slice(0, 25).map(([uid, p]) => item(uid, p.book, p)),
+    continue: recent.filter(([, p]) => !p.finished).slice(0, 15).map(([uid, p]) => ({ ...item(uid, p.book, p), parts: parts(uid), stream: streams.get()[uid] })),
+    recent: recent.slice(0, 25).map(([uid, p]) => ({ ...item(uid, p.book, p), parts: parts(uid), stream: streams.get()[uid] })),
     downloaded: Object.entries(dls)
       .filter(([, d]) => d?.status === 'done' && d.tracks?.length && d.book)
       .sort((a, b) => (b[1].finishedAt || 0) - (a[1].finishedAt || 0))
@@ -72,6 +91,9 @@ if (ON) {
   setInterval(takeLog, 60000);
   progress.subscribe(push);
   downloads.subscribe(push);
+  streams.subscribe(push);
+  // Keep the playing book's links (checked now and then; only stored when they change).
+  setInterval(() => keepStreams().catch(() => {}), 20000);
   push();
 
   // Places reached in the car with the app closed: newer than what the app has → taken.

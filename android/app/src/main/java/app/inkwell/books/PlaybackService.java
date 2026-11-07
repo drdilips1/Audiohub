@@ -9,7 +9,16 @@ import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DefaultDataSource;
+import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.ResolvingDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import org.json.JSONObject;
 import androidx.media3.session.MediaLibraryService;
 import androidx.media3.session.MediaSession;
 
@@ -35,6 +44,9 @@ public class PlaybackService extends MediaLibraryService {
     @Nullable
     private static MediaLibrarySession ownSession;
     private final Handler main = new Handler(Looper.getMainLooper());
+    // Headers a book's saved stream links need (e.g. a server's sign-in), for the car-only player.
+    @Nullable
+    static JSONObject carHeaders;
 
     // While a downloaded book plays from the car without the app: note where it is, for the app.
     private final Runnable keepPlace = new Runnable() {
@@ -68,7 +80,19 @@ public class PlaybackService extends MediaLibraryService {
     }
 
     private void makeOwn() {
+        DataSource.Factory upstream = new DefaultDataSource.Factory(this, new DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true).setUserAgent("Inkwell/1.2 (Android) ExoPlayer"));
+        DataSource.Factory withHeaders = new ResolvingDataSource.Factory(upstream, spec -> {
+            JSONObject h = carHeaders;
+            if (h == null || h.length() == 0) return spec;
+            Map<String, String> m = new HashMap<>();
+            for (Iterator<String> k = h.keys(); k.hasNext(); ) {
+                String n = k.next();
+                m.put(n, h.optString(n));
+            }
+            return spec.withAdditionalHeaders(m);
+        });
         ownPlayer = new ExoPlayer.Builder(this)
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(withHeaders))
             .setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .build();
@@ -77,6 +101,11 @@ public class PlaybackService extends MediaLibraryService {
             public void onIsPlayingChanged(boolean isPlaying) {
                 savePlace();
                 if (isPlaying) main.postDelayed(keepPlace, 15000);
+            }
+
+            @Override
+            public void onPlayerError(@androidx.annotation.NonNull androidx.media3.common.PlaybackException error) {
+                CarCatalog.log(PlaybackService.this, "couldn't play (" + error.getErrorCodeName() + ") — saved links may have expired: open the app once");
             }
         });
         ownSession = new MediaLibrarySession.Builder(this, ownPlayer, new CarLibrary(this)).build();
@@ -87,7 +116,10 @@ public class PlaybackService extends MediaLibraryService {
         ExoPlayer p = ownPlayer;
         PlaybackService s = running;
         if (p == null || s == null || CarLibrary.carBook == null || p.getMediaItemCount() == 0) return;
-        CarCatalog.saveProgress(s, CarLibrary.carBook, p.getCurrentMediaItemIndex(), p.getCurrentPosition() / 1000.0);
+        int track = p.getCurrentMediaItemIndex() + CarLibrary.carTrackOffset;
+        double time = p.getCurrentPosition() / 1000.0;
+        CarCatalog.saveProgress(s, CarLibrary.carBook, track, time);
+        CarCatalog.touch(s, CarLibrary.carBook, track, time);
     }
 
     /** The app started its own player: the car-only one stops and lets go. */
