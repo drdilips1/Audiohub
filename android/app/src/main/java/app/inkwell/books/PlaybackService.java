@@ -3,18 +3,21 @@ package app.inkwell.books;
 import android.content.Intent;
 import androidx.annotation.Nullable;
 import androidx.media3.common.Player;
+import androidx.media3.session.MediaLibraryService;
 import androidx.media3.session.MediaSession;
-import androidx.media3.session.MediaSessionService;
 
 /**
  * Keeps audiobook playback alive in the background and owns the media
  * notification / lock-screen controls. The player and session are created by
  * {@link InkwellPlayerPlugin}; this service only publishes the session.
+ *
+ * A library service (not a plain session service), so Android Auto can show the app and
+ * browse the book that's playing — see {@link CarLibrary}.
  */
-public class PlaybackService extends MediaSessionService {
+public class PlaybackService extends MediaLibraryService {
 
     @Nullable
-    static MediaSession session;
+    static MediaLibrarySession session;
 
     @Override
     public void onCreate() {
@@ -26,7 +29,7 @@ public class PlaybackService extends MediaSessionService {
 
     @Nullable
     @Override
-    public MediaSession onGetSession(MediaSession.ControllerInfo controllerInfo) {
+    public MediaLibrarySession onGetSession(MediaSession.ControllerInfo controllerInfo) {
         return session;
     }
 

@@ -163,7 +163,7 @@ export function App() {
         <>
           <MiniPlayer />
           <nav class="tabbar">
-            {TABS.map(([k, label, icon]) => (
+            {TABS.filter(([k]) => k !== 'podcasts' || st.podcastsTab !== false).map(([k, label, icon]) => (
               <button class={route.tab === k ? 'on' : ''} onClick={() => nav.tab(k)}>
                 <Icon name={icon} size={22} />
                 <span>{label}</span>

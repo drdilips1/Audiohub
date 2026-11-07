@@ -6,6 +6,7 @@ import * as ol from './openlibrary.js';
 import * as absSrc from './audiobookshelf.js';
 import * as addonSrc from './addons.js';
 import * as cloud from './debrid.js';
+import * as itunes from './itunes.js';
 import * as localSrc from './local.js';
 import * as hc from './hardcover.js';
 import * as gr from './goodreads.js';
@@ -23,6 +24,8 @@ export const SOURCES = {
   lv: { name: 'LibriVox', short: 'LibriVox', hue: 350, kind: 'Listen', blurb: '20,000+ volunteer-read public-domain audiobooks', impl: lv, hidden: true, free: true },
   se: { name: 'Standard Ebooks', short: 'Standard Ebooks', hue: 205, kind: 'Read', blurb: 'Beautifully made free classics — read in-app or send to Kindle', impl: se, hidden: true, free: true },
   gb: { name: 'Project Gutenberg', short: 'Gutenberg', hue: 150, kind: 'Read', blurb: '75,000+ free classic ebooks, read in-app', impl: gb, hidden: true, free: true },
+  // Apple's audiobook catalogue: the Top / New rows in Discover open here (not searched — Audible is).
+  it: { name: 'Audiobook catalogue', short: 'Apple Books', hue: 330, kind: 'Discover', blurb: 'Audiobook listings from Apple Books', impl: itunes, hidden: true },
   ol: { name: 'Open Library', short: 'Open Library', hue: 210, kind: 'Discover', blurb: 'Trending books, rich descriptions & covers', impl: ol, hidden: true, free: true },
   au: { name: 'Audible catalog', short: 'Audible', hue: 32, kind: 'Discover', blurb: 'Audiobook listings with narrators, series & covers', impl: audible },
   gbk: { name: 'Google Books', short: 'Google Books', hue: 220, kind: 'Discover', blurb: 'Listings for almost every book in print', impl: googleBooks },

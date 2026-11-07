@@ -220,8 +220,11 @@ public class InkwellPlayerPlugin extends Plugin {
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
-        session = new MediaSession.Builder(getContext(), forwarding).setSessionActivity(activity).build();
-        PlaybackService.session = session;
+        // A library session: the same player, also browsable from Android Auto (CarLibrary).
+        androidx.media3.session.MediaLibraryService.MediaLibrarySession lib =
+            new androidx.media3.session.MediaLibraryService.MediaLibrarySession.Builder(getContext(), forwarding, new CarLibrary()).setSessionActivity(activity).build();
+        session = lib;
+        PlaybackService.session = lib;
         getContext().startService(new Intent(getContext(), PlaybackService.class));
     }
 

@@ -1286,6 +1286,7 @@ export function Settings() {
           </div>
         </div>}
         <SsToggle />
+        <Toggle label="Podcasts tab" hint="Show Podcasts in the bar at the bottom (off: hidden; podcasts you follow stay)" on={st.podcastsTab !== false} onChange={(v) => settings.patch({ podcastsTab: v })} />
         <Toggle label="Dynamic colour" hint="Tint the player and book pages from the cover art" on={st.dynamicColor} onChange={(v) => settings.patch({ dynamicColor: v })} />
         <PlayerBackgroundPicker st={st} />
       </Section>

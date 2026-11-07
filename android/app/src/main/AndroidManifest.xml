@@ -83,6 +83,11 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_scene_info" />
         </receiver>
 
+        <!-- Android Auto: shows the app with the book that's playing (see CarLibrary) -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <!-- Background audiobook playback (Media3) -->
         <service
             android:name=".PlaybackService"
@@ -90,6 +95,8 @@
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import * as itunes from '../sources/itunes.js';
 import { memo } from 'preact/compat';
 import { Grid, Empty, Skeleton, AskButton, Row, Cover, cachedRow } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
@@ -298,6 +299,9 @@ export function Discover() {
           <MoodTiles />
           <GenreTiles />
           <Row title="Trending this week" subtitle="Best sellers in your topics" cacheKey="discTrend" load={trending} deps={[]} onMore={() => nav.push('shelf', { title: 'Trending this week', subtitle: 'Best sellers in your topics', load: trending })} />
+          {/* Top lists from Apple's audiobook catalogue (charts, newest), each opening in full. */}
+          <Row title="Top audiobooks" subtitle="Apple Books charts" icon="flame" cacheKey="itTop" load={() => itunes.top()} deps={[]} onMore={() => nav.push('shelf', { title: 'Top audiobooks', subtitle: 'Apple Books charts', load: () => itunes.top() })} />
+          <Row title="New audiobooks" subtitle="Released this year" icon="sparkle" cacheKey="itNew" load={() => itunes.newest()} deps={[]} onMore={() => nav.push('shelf', { title: 'New audiobooks', subtitle: 'Released this year', load: () => itunes.newest() })} />
         </>
       ) : (
         <Results results={results} filter={filter} setFilter={setFilter} term={term} pending={pending} />

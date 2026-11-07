@@ -12,7 +12,10 @@ const TTL = 10 * 60 * 1000;
 // inkwell/relay/). The Android app talks to everything directly.
 const WEB = !Capacitor.isNativePlatform();
 const RELAY_HOSTS = /^(api\.hardcover\.app|api\.audible\.[a-z.]+|www\.goodreads\.com|(www\.)?getstoryshots\.com|itunes\.apple\.com)$/i;
-const DEFAULT_RELAY = import.meta.env.VITE_RELAY_URL || (import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/relay` : '');
+// The web app's relay for services a browser can't call directly (TorBox, Real-Debrid…):
+// your own address if set, else the Supabase one, else the app's own (api.audiohubapp.com/relay).
+const DEFAULT_RELAY =
+  import.meta.env.VITE_RELAY_URL || (import.meta.env.VITE_SUPABASE_URL ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/relay` : WEB ? 'https://api.audiohubapp.com/relay' : '');
 
 export function relayUrl() {
   try {

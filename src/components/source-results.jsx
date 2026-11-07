@@ -649,7 +649,8 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
       </div>
       <div class="src-meta">
         {r.size > 0 && <span>{fmtSize(r.size)}</span>}
-        {hasMagnet && (r.seeders == null ? <span class="seeds">seeds ?</span> : <span class={'seeds ' + seedClass(r.seeders)}>{r.seeders} seed{r.seeders === 1 ? '' : 's'}</span>)}
+        {/* Unknown seeds (AudiobookBay doesn't list them; TorBox fills them in when it can): nothing shown, not a '?'. */}
+        {hasMagnet && r.seeders != null && <span class={'seeds ' + seedClass(r.seeders)}>{r.seeders} seed{r.seeders === 1 ? '' : 's'}</span>}
         {r.language && <span>{r.language}</span>}
         <span>{sourceLabel(r.addon)}</span>
       </div>
