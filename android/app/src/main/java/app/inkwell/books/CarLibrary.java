@@ -204,6 +204,12 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
         if (id.startsWith(BOOK)) book = CarCatalog.find(context, id.substring(BOOK.length()));
         else if (want != null && want.requestMetadata.searchQuery != null) book = CarCatalog.search(context, want.requestMetadata.searchQuery);
         else if (id.isEmpty()) book = CarCatalog.search(context, "");
+        // Said in the car and not in the lists: the app (when running) looks wider — your Library.
+        if (book == null && want != null && want.requestMetadata.searchQuery != null && InkwellPlayerPlugin.isRunning()) {
+            CarCatalog.log(context, "voice in the car: “" + want.requestMetadata.searchQuery + "” — the app is looking in your library");
+            InkwellPlayerPlugin.voicePlay(context, want.requestMetadata.searchQuery);
+            return waitForApp(want.requestMetadata.searchQuery);
+        }
         if (book == null) {
             CarCatalog.log(context, "picked something that isn't one of your books (" + (id.isEmpty() && want != null ? "search: " + want.requestMetadata.searchQuery : id) + ")");
             return Futures.immediateFailedFuture(new IllegalArgumentException("Not one of your books"));
@@ -240,17 +246,7 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
         String title = book.optString("title", id);
         if (InkwellPlayerPlugin.carPlay(id)) {
             CarCatalog.log(context, "picked “" + title + "” — the app is preparing it");
-            if (pending != null) pending.setException(new IllegalStateException("Another book was picked"));
-            SettableFuture<MediaSession.MediaItemsWithStartPosition> f = SettableFuture.create();
-            pending = f;
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                if (pending == f) {
-                    pending = null;
-                    CarCatalog.log(context, "“" + title + "” didn't start within 30 s");
-                    f.setException(new IllegalStateException("The book didn't load in time"));
-                }
-            }, 30000);
-            return f;
+            return waitForApp(title);
         }
         // The app is closed: a downloaded book plays from its files on the phone; else from the
         // stream links saved when it last played in the app (they may have expired).
@@ -306,6 +302,21 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
         CarCatalog.touch(context, id, book.optInt("track", 0), book.optDouble("time", 0));
         CarCatalog.log(context, "picked “" + title + "” with the app closed — " + (saved ? "playing from its saved stream links (" + items.size() + " parts)" : "playing its downloaded files (" + items.size() + " parts)"));
         return Futures.immediateFuture(new MediaSession.MediaItemsWithStartPosition(items, track, at));
+    }
+
+    /** Until the app has started the book (it calls loaded()), at most 30 s. */
+    private ListenableFuture<MediaSession.MediaItemsWithStartPosition> waitForApp(String title) {
+        if (pending != null) pending.setException(new IllegalStateException("Another book was picked"));
+        SettableFuture<MediaSession.MediaItemsWithStartPosition> f = SettableFuture.create();
+        pending = f;
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (pending == f) {
+                pending = null;
+                CarCatalog.log(context, "“" + title + "” didn't start within 30 s");
+                f.setException(new IllegalStateException("The book didn't load in time"));
+            }
+        }, 30000);
+        return f;
     }
 
     /** The app finished loading the book the car asked for: play exactly that. */

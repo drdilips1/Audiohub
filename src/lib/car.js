@@ -115,23 +115,43 @@ if (ON) {
     .catch(() => {});
 
   // A book picked in the car: open it and play from your place.
-  Native.addListener('carPlay', async ({ id }) => {
-    setTimeout(takeLog, 35000);
-    const book = bookFor(id);
-    if (!book) {
-      const { logError } = await import('./report.js');
-      logError('Android Auto', `the car picked a book the app doesn't have in its lists (${id})`);
-      return;
-    }
-    try {
-      const [{ getDetails }, player] = await Promise.all([import('../sources/index.js'), import('./player.js')]);
-      const details = await getDetails(book);
-      await player.playBook(details);
-      // Started (whichever way it got there): the car plays it too.
-      await Native.carReady().catch(() => {});
-    } catch (e) {
-      const { logError } = await import('./report.js');
-      logError('Android Auto', `${e?.message || e} — “${book.title || id}”`);
-    }
+  Native.addListener('carPlay', ({ id }) => playId(id));
+
+  // "Hey Google, play … on AudioYam": a match from the car's lists (id), else any book of yours
+  // whose title / author has the words, else the search opens with them.
+  Native.addListener('voicePlay', async ({ id, query }) => {
+    if (id) return playId(id);
+    const words = String(query || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+    if (!words.length) return;
+    const pool = [...Object.values(progress.get()).map((p) => p?.book), ...Object.values(library.get()), ...Object.values(downloads.get()).map((d) => d?.book)].filter((b) => b?.uid && !/^pod:/.test(b.uid));
+    const score = (b) => words.filter((w) => `${b.title || ''} ${b.author || ''}`.toLowerCase().includes(w)).length;
+    const best = pool.map((b) => [b, score(b)]).sort((a, b) => b[1] - a[1])[0];
+    if (best && best[1] * 2 >= words.length) return playBook(best[0]);
+    const { openSearch } = await import('../screens/Discover.jsx');
+    openSearch(query);
   });
+}
+
+async function playId(id) {
+  setTimeout(takeLog, 35000);
+  const book = bookFor(id);
+  if (!book) {
+    const { logError } = await import('./report.js');
+    logError('Android Auto', `the car picked a book the app doesn't have in its lists (${id})`);
+    return;
+  }
+  return playBook(book);
+}
+
+async function playBook(book) {
+  try {
+    const [{ getDetails }, player] = await Promise.all([import('../sources/index.js'), import('./player.js')]);
+    const details = await getDetails(book);
+    await player.playBook(details);
+    // Started (whichever way it got there): the car plays it too.
+    await Native.carReady().catch(() => {});
+  } catch (e) {
+    const { logError } = await import('./report.js');
+    logError('Android Auto', `${e?.message || e} — “${book.title || book.uid}”`);
+  }
 }

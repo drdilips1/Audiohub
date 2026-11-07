@@ -625,6 +625,38 @@ public class InkwellPlayerPlugin extends Plugin {
     public void load() {
         super.load();
         instance = this;
+        // A voice request that came while the app was starting.
+        if (pendingVoice != null) {
+            String q = pendingVoice;
+            pendingVoice = null;
+            voicePlay(getContext(), q);
+        }
+    }
+
+    private static String pendingVoice;
+
+    /** The app is running (its screen was opened and not closed). */
+    static boolean isRunning() {
+        InkwellPlayerPlugin p = instance;
+        return p != null && p.getBridge() != null;
+    }
+
+    /**
+     * "Play … on Audiohub": a book of yours that matches plays (Continue listening, Recently
+     * played, Downloaded); otherwise the app looks wider (your Library, then a search).
+     */
+    static void voicePlay(Context context, String query) {
+        InkwellPlayerPlugin p = instance;
+        if (p == null || p.getBridge() == null) {
+            pendingVoice = query;
+            return;
+        }
+        org.json.JSONObject book = CarCatalog.search(context, query);
+        CarCatalog.log(context, "voice: “" + query + "” → " + (book != null ? "“" + book.optString("title") + "”" : "not in your lists, looking wider"));
+        JSObject o = new JSObject();
+        o.put("query", query);
+        if (book != null) o.put("id", book.optString("id"));
+        p.main.post(() -> p.notifyListeners("voicePlay", o, true));
     }
 
     /**

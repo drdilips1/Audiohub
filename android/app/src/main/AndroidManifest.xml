@@ -29,6 +29,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- "Hey Google, play … on AudioYam" (phone and Android Auto): Assistant only offers
+                 apps that take this; the book is found in yours and played. -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
             <!-- Sign-in redirect (Supabase OAuth) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
