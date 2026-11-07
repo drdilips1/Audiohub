@@ -58,7 +58,12 @@ public class PlaybackService extends MediaLibraryService {
     @Override
     public MediaLibrarySession onGetSession(MediaSession.ControllerInfo controllerInfo) {
         // The app is running: its own player serves the car. Else (app closed) a car-only one.
-        if (session == null && !InkwellPlayerPlugin.ensureForCar()) makeOwn();
+        if (session == null && !InkwellPlayerPlugin.ensureForCar()) {
+            makeOwn();
+            CarCatalog.log(this, controllerInfo.getPackageName() + " connected — app closed, car-only player");
+        } else if (session != null && session != ownSession && !getPackageName().equals(controllerInfo.getPackageName())) {
+            CarCatalog.log(this, controllerInfo.getPackageName() + " connected — using the app's player");
+        }
         return session;
     }
 

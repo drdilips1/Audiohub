@@ -648,6 +648,23 @@ public class InkwellPlayerPlugin extends Plugin {
         return p.session != null;
     }
 
+    /** The app started the book the car asked for (however it got there): play it in the car. */
+    @PluginMethod
+    public void carReady(PluginCall call) {
+        onMain(call, c -> {
+            if (player != null) CarLibrary.loaded(player);
+            c.resolve();
+        });
+    }
+
+    /** What the car asked for and what happened, for Report a problem: { json } (then cleared). */
+    @PluginMethod
+    public void takeCarLog(PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("json", CarCatalog.takeLog(getContext()));
+        call.resolve(o);
+    }
+
     /** The books Android Auto lists (Continue listening, Recently played, Downloaded). */
     @PluginMethod
     public void setCarCatalog(PluginCall call) {

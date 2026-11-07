@@ -117,6 +117,22 @@ final class CarCatalog {
         } catch (Exception ignored) {}
     }
 
+    /** What the car asked for and what happened (the last 20), for Report a problem. No addresses. */
+    static void log(Context c, String what) {
+        try {
+            org.json.JSONArray a = new org.json.JSONArray(prefs(c).getString("log", "[]"));
+            a.put(new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date()) + " " + what);
+            while (a.length() > 20) a.remove(0);
+            prefs(c).edit().putString("log", a.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    static String takeLog(Context c) {
+        String s = prefs(c).getString("log", "[]");
+        prefs(c).edit().remove("log").apply();
+        return s;
+    }
+
     /** Those places, for the app to take in (then forgotten here). */
     static String takeProgress(Context c) {
         String s = prefs(c).getString("progress", "{}");

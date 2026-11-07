@@ -202,7 +202,10 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
         if (id.startsWith(BOOK)) book = CarCatalog.find(context, id.substring(BOOK.length()));
         else if (want != null && want.requestMetadata.searchQuery != null) book = CarCatalog.search(context, want.requestMetadata.searchQuery);
         else if (id.isEmpty()) book = CarCatalog.search(context, "");
-        if (book == null) return Futures.immediateFailedFuture(new IllegalArgumentException("Not one of your books"));
+        if (book == null) {
+            CarCatalog.log(context, "picked something that isn't one of your books (" + (id.isEmpty() && want != null ? "search: " + want.requestMetadata.searchQuery : id) + ")");
+            return Futures.immediateFailedFuture(new IllegalArgumentException("Not one of your books"));
+        }
         return start(p, book);
     }
 
@@ -232,13 +235,16 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
     private ListenableFuture<MediaSession.MediaItemsWithStartPosition> start(Player p, JSONObject book) {
         String id = book.optString("id");
         // The app is running: it prepares the book (links, your place), then we play what it loaded.
+        String title = book.optString("title", id);
         if (InkwellPlayerPlugin.carPlay(id)) {
+            CarCatalog.log(context, "picked “" + title + "” — the app is preparing it");
             if (pending != null) pending.setException(new IllegalStateException("Another book was picked"));
             SettableFuture<MediaSession.MediaItemsWithStartPosition> f = SettableFuture.create();
             pending = f;
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (pending == f) {
                     pending = null;
+                    CarCatalog.log(context, "“" + title + "” didn't start within 30 s");
                     f.setException(new IllegalStateException("The book didn't load in time"));
                 }
             }, 30000);
@@ -246,8 +252,10 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
         }
         // The app is closed: a downloaded book plays from its files on the phone.
         JSONArray parts = book.optJSONArray("parts");
-        if (parts == null || parts.length() == 0)
+        if (parts == null || parts.length() == 0) {
+            CarCatalog.log(context, "picked “" + title + "” with the app closed — not downloaded, so it can't start without the app");
             return Futures.immediateFailedFuture(new IllegalStateException("Open AudioYam on your phone once to stream this book"));
+        }
         List<MediaItem> items = new ArrayList<>();
         for (int i = 0; i < parts.length(); i++) {
             JSONObject t = parts.optJSONObject(i);
@@ -264,6 +272,7 @@ public class CarLibrary implements MediaLibraryService.MediaLibrarySession.Callb
         int track = Math.max(0, Math.min(items.size() - 1, book.optInt("track", 0)));
         long at = (long) (book.optDouble("time", 0) * 1000);
         carBook = id;
+        CarCatalog.log(context, "picked “" + title + "” with the app closed — playing its downloaded files (" + items.size() + " parts)");
         return Futures.immediateFuture(new MediaSession.MediaItemsWithStartPosition(items, track, at));
     }
 

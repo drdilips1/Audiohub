@@ -56,7 +56,20 @@ function bookFor(uid) {
   return progress.get()[uid]?.book || library.get()[uid] || downloads.get()[uid]?.book || null;
 }
 
+// What the car asked for and what happened → Report a problem (as "Android Auto" lines).
+async function takeLog() {
+  try {
+    const { json } = await Native.takeCarLog();
+    const lines = JSON.parse(json || '[]');
+    if (!lines.length) return;
+    const { logError } = await import('./report.js');
+    for (const l of lines) logError('Android Auto', l);
+  } catch {}
+}
+
 if (ON) {
+  takeLog();
+  setInterval(takeLog, 60000);
   progress.subscribe(push);
   downloads.subscribe(push);
   push();
@@ -81,12 +94,19 @@ if (ON) {
 
   // A book picked in the car: open it and play from your place.
   Native.addListener('carPlay', async ({ id }) => {
+    setTimeout(takeLog, 35000);
     const book = bookFor(id);
-    if (!book) return;
+    if (!book) {
+      const { logError } = await import('./report.js');
+      logError('Android Auto', `the car picked a book the app doesn't have in its lists (${id})`);
+      return;
+    }
     try {
       const [{ getDetails }, player] = await Promise.all([import('../sources/index.js'), import('./player.js')]);
       const details = await getDetails(book);
       await player.playBook(details);
+      // Started (whichever way it got there): the car plays it too.
+      await Native.carReady().catch(() => {});
     } catch (e) {
       const { logError } = await import('./report.js');
       logError('Android Auto', `${e?.message || e} — “${book.title || id}”`);
