@@ -11363,3 +11363,22 @@ button.notes-book-head {
     color: var(--muted);
   }
 }
+
+/* Transcript following the book by the audio's time: paragraphs of the book, the sentence
+   being read lit (the rest dimmed; read sentences dimmer). Theme colours: light and dark. */
+.transcript .tl.tb-para {
+  cursor: default;
+}
+.transcript .tb-s {
+  cursor: pointer;
+  transition: color 0.3s, background 0.3s;
+  border-radius: 6px;
+}
+.transcript .tb-s.past {
+  color: color-mix(in srgb, var(--text) 38%, transparent);
+}
+.transcript .tb-s.on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}

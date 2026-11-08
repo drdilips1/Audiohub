@@ -191,7 +191,7 @@ function align() {
     if (prev) {
       const mid = segs.slice(prevI + 1, i);
       const gap = segs[i].at[0] - prev.at[1];
-      if (mid.length && gap > 0 && gap <= 25 * mid.length + 20) {
+      if (mid.length && gap > 0 && gap <= 40 * mid.length + 40) {
         const weights = mid.map((m) => Math.max(1, m.text.split(/\s+/).length));
         const total = weights.reduce((x, y) => x + y, 0);
         let at = prev.at[1];
@@ -201,7 +201,7 @@ function align() {
           m.fill = true;
           at = m.at[1];
         });
-      } else if (!mid.length && ((gap > 0 && gap <= 12) || (gap < 0 && segs[i].at[0] > prev.at[0]))) prev.at = [prev.at[0], segs[i].at[0]];
+      } else if (!mid.length && ((gap > 0 && gap <= 60) || (gap < 0 && segs[i].at[0] > prev.at[0]))) prev.at = [prev.at[0], segs[i].at[0]]; // words the recognizer skipped: the book's, not dropped
     }
     prevI = i;
   }
@@ -218,6 +218,31 @@ function align() {
       else if (prev?.at && near1(s, prev.at[1], prev.at[1] + k)) s.at = [prev.at[1], prev.at[1] + k];
     }
     if (s.at) s.fill = true;
+  }
+  // 4. Lines after the last one found (the newest, not matched yet) and before the first:
+  //    the book carries on from there — about as many words as each line had — once at
+  //    least two lines agree on where we are. The next line that's found corrects it.
+  const foundIdx = segs.map((x, i) => (x.at && !x.fill ? i : -1)).filter((i) => i >= 0);
+  if (foundIdx.length >= 2) {
+    const wordsIn = (x) => Math.max(1, x.text.split(/\s+/).filter(Boolean).length);
+    const lastI = foundIdx[foundIdx.length - 1];
+    let at = segs[lastI].at[1];
+    for (let i = lastI + 1, k = 0; i < segs.length && k < 8 && at < bt.tokens.length; i++, k++) {
+      if (segs[i].at) break;
+      const n = Math.round(wordsIn(segs[i]) * 1.05);
+      segs[i].at = [at, Math.min(bt.tokens.length, at + n)];
+      segs[i].fill = true;
+      at = segs[i].at[1];
+    }
+    const firstI = foundIdx[0];
+    let end = segs[firstI].at[0];
+    for (let i = firstI - 1, k = 0; i >= 0 && k < 4 && end > 0; i--, k++) {
+      if (segs[i].at) break;
+      const n = Math.round(wordsIn(segs[i]) * 1.05);
+      segs[i].at = [Math.max(0, end - n), end];
+      segs[i].fill = true;
+      end = segs[i].at[0];
+    }
   }
   for (const s of segs) s.book = s.at && s.at[1] > s.at[0] ? bt.tokens.slice(s.at[0], s.at[1]).join(' ') : undefined;
   set({ segments: segs.slice() });
@@ -622,4 +647,84 @@ export function fixHeard(text, names) {
 export function stopLooking() {
   btRun++;
   set({ bookText: { state: 'none' } });
+}
+
+import { wordAtTime, paceOf } from './booksync.js';
+
+// ---- Following the book by the audio's time -------------------------------------------
+// With the ebook attached, where you are in the book is worked out from the audio time:
+// between two lines that were found in the book, by how far along you are; after the last
+// one, at the reader's own pace (words a second, from the lines found). So the book's text
+// follows the audio even when the speech recognition is behind or misheard a line.
+
+/** The audio-time ↔ book-word points from the lines found in the book (this part), in order. */
+function anchors() {
+  if (!bt || state.published || state.bookText?.state !== 'on' || !state.key.startsWith(btUid + '#')) return [];
+  const pts = [];
+  for (const s of state.segments) {
+    if (!s.at || s.fill || s.start == null) continue;
+    pts.push([s.start, s.at[0]]);
+    if (s.end != null && s.end > s.start) pts.push([s.end, s.at[1]]);
+  }
+  pts.sort((a, b) => a[0] - b[0]);
+  // Keep them moving forward through the book.
+  const out = [];
+  for (const p of pts) if (!out.length || p[1] >= out[out.length - 1][1]) out.push(p);
+  return out;
+}
+
+/**
+ * Where the audio is in the book: { word, total } — or null while there isn't enough to go
+ * on (no ebook, or fewer than two lines found).
+ */
+export function bookAt(time, { global = null, total = null } = {}) {
+  const pts = anchors();
+  if (pts.length >= 3) return { word: wordAtTime(pts, time, bt.tokens.length), total: bt.tokens.length };
+  // Not enough found yet (the opening credits, a new part): from how far through the audiobook
+  // you are, as a share of the book's words — the book shows at once, and moves to the exact
+  // spot as soon as lines are found in it.
+  if (!bt || state.published || state.bookText?.state !== 'on' || !(total > 0) || global == null) return null;
+  const share = Math.max(0, Math.min(1, global / total));
+  return { word: Math.min(bt.tokens.length - 1, Math.floor(share * bt.tokens.length)), total: bt.tokens.length, rough: true };
+}
+
+/** The audio time for a word of the book (tapping a sentence plays from there). */
+export function timeAtWord(word) {
+  const pts = anchors();
+  if (pts.length < 3) return null;
+  const pace = paceOf(pts);
+  if (word <= pts[0][1]) return Math.max(0, pts[0][0] - (pts[0][1] - word) / pace);
+  if (word >= pts[pts.length - 1][1]) return pts[pts.length - 1][0] + (word - pts[pts.length - 1][1]) / pace;
+  let i = 1;
+  while (pts[i][1] < word) i++;
+  const [t0, w0] = pts[i - 1];
+  const [t1, w1] = pts[i];
+  return w1 > w0 ? t0 + ((word - w0) / (w1 - w0)) * (t1 - t0) : t0;
+}
+
+/**
+ * The book's paragraphs around a word, split into sentences: [{ sentences: [{ from, to, text }] }].
+ * `before` / `after`: how many words either side.
+ */
+export function bookAround(word, before = 250, after = 600) {
+  if (!bt) return [];
+  const lo = Math.max(0, word - before);
+  const hi = Math.min(bt.tokens.length, word + after);
+  const starts = bt.starts || [0];
+  const out = [];
+  for (let p = 0; p < starts.length; p++) {
+    const from = starts[p];
+    const to = p + 1 < starts.length ? starts[p + 1] : bt.tokens.length;
+    if (to <= lo || from >= hi || to <= from) continue;
+    const sentences = [];
+    let s = from;
+    for (let k = from; k < to; k++) {
+      if (/[.!?…]["'”’)]*$/.test(bt.tokens[k]) || k === to - 1) {
+        sentences.push({ from: s, to: k + 1, text: bt.tokens.slice(s, k + 1).join(' ') });
+        s = k + 1;
+      }
+    }
+    out.push({ key: from, sentences });
+  }
+  return out;
 }

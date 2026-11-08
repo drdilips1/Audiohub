@@ -8,6 +8,8 @@ import * as player from '../lib/player.js';
 import { knownCharacters, CharacterCard } from './story-sheet.jsx';
 import { useStore, bookmarks } from '../lib/store.js';
 import { MODELS, transcriptAvailable, subscribeTranscript, follow, installedModels, downloadModel, restartTranscript, findEbook, takeEbook, ebooksOnPhone, takeOnPhone, heardLines, fixHeard, stopLooking, transcriptCfg } from '../lib/transcript.js';
+import { bookAt, bookAround, timeAtWord } from '../lib/transcript.js';
+import { fixCredit } from '../lib/booksync.js';
 import { cachedXray } from '../lib/xray.js';
 import { fmtTime } from '../lib/format.js';
 
@@ -273,7 +275,19 @@ export function TranscriptView({ s }) {
   // Everyone the book has (X-Ray's cast and places too): misheard names are put right.
   const xr = s.book?.uid ? cachedXray(s.book.uid) : null;
   const allNames = [...names, ...(xr ? [...xr.people, ...xr.places].flatMap((x) => [x.name, ...(x.aliases || [])]) : [])];
-  const heard = (text) => (typeof text === 'string' ? fixHeard(text, allNames) : text);
+  // Words heard from the audio read as sentences: a capital to start, a full stop to end.
+  const tidy = (x) => {
+    const t = String(x || '').replace(/\s+([,.!?;:])/g, '$1').replace(/\s+/g, ' ').trim();
+    if (!t) return t;
+    const c = t[0].toUpperCase() + t.slice(1);
+    return /[.!?…"'”’)]$/.test(c) ? c : c + '.';
+  };
+  // Opening credits (first part, before the ebook's text starts): a misheard title is put right;
+  // "Chapter One" heard as "Shop to one" anywhere.
+  const credTitles = [s.book?.title, t?.bookText?.title, t?.bookText?.name].filter(Boolean);
+  const firstBook = (t?.segments || []).findIndex((g) => g.book && !g.fill);
+  const inCredits = (i) => s.index === 0 && i != null && i < 15 && (firstBook < 0 || i < firstBook);
+  const heard = (text, i) => (typeof text === 'string' ? tidy(fixCredit(fixHeard(text, allNames), credTitles, { credits: inCredits(i) })) : text);
   const box = useRef();
   const userScroll = useRef(0);
   useEffect(() => subscribeTranscript(setT), []);
@@ -289,8 +303,28 @@ export function TranscriptView({ s }) {
       break;
     }
   }
+  // With the ebook attached: the book's own text, following the audio by its time (see bookAt) —
+  // placed by how far through the audiobook you are until lines are found in it, then exactly;
+  // the sentence being read is lit and kept in the middle.
+  const durs = (s.tracks || []).map((x) => Number(x.duration) || 0);
+  const allKnown = durs.length > 0 && durs.every((d) => d > 0);
+  const globalT = allKnown ? durs.slice(0, s.index).reduce((a, d) => a + d, 0) + (s.time || 0) : null;
+  const totalT = allKnown ? durs.reduce((a, d) => a + d, 0) : Number(s.book?.duration) || null;
+  // Part lengths not all known yet (cloud files report theirs when played): the part's share.
+  const guessT = globalT ?? (s.tracks?.length === 1 ? s.time || 0 : totalT && s.tracks?.length ? (s.index / s.tracks.length) * totalT + (s.time || 0) : null);
+  const at = !t?.published && t?.bookText?.state === 'on' ? bookAt(s.time, { global: guessT, total: totalT }) : null;
+  const paras = at ? bookAround(at.word) : null;
+  let litFrom = -1;
+  if (paras) for (const pg of paras) for (const se of pg.sentences) if (se.from <= at.word && at.word < se.to) litFrom = se.from;
   useEffect(() => {
-    if (active < 0 || Date.now() - userScroll.current < 4000) return;
+    if (litFrom < 0 || Date.now() - userScroll.current < 4000) return;
+    const el = box.current?.querySelector(`[data-w="${litFrom}"]`);
+    if (!el) return;
+    const b = box.current;
+    b.scrollTo({ top: el.offsetTop - b.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
+  }, [litFrom]);
+  useEffect(() => {
+    if (paras || active < 0 || Date.now() - userScroll.current < 4000) return;
     const el = box.current?.querySelector(`[data-i="${active}"]`);
     if (!el) return;
     const b = box.current;
@@ -345,18 +379,36 @@ export function TranscriptView({ s }) {
           </div>
         )}
         {t?.published && segs.length > 0 && <p class="tl-source">Transcript from the podcast</p>}
-        {segs.map((g, i) => (
+        {paras && at.rough && <p class="tl-source">Roughly here — finding the exact place as the narrator reads on…</p>}
+        {paras &&
+          paras.map((pg) => (
+            <p class="tl tb-para" key={pg.key}>
+              {pg.sentences.map((se) => (
+                <span
+                  data-w={se.from}
+                  class={'tb-s' + (se.from === litFrom ? ' on' : se.to <= at.word ? ' past' : '')}
+                  onClick={() => {
+                    const tt = timeAtWord(se.from);
+                    if (tt != null) player.seek(Math.max(0, tt));
+                  }}
+                >
+                  {withNames(se.text, names, (n) => setCard(lookup.get(n)))}{' '}
+                </span>
+              ))}
+            </p>
+          ))}
+        {!paras && segs.map((g, i) => (
           <p
             data-i={i}
             class={'tl' + (i === active ? ' on' : i < active ? ' past' : '') + (t?.bookText?.state === 'on' && !g.book && !t?.published ? ' heard' : '') + (g.start != null && quoted(i) ? ' hl' : '')}
             onClick={() => (press.current.fired ? (press.current.fired = false) : g.start != null && player.seek(g.start))}
             onContextMenu={(e) => e.preventDefault()}
-            onPointerDown={() => g.start != null && hold(g.start, !t?.published && t?.bookText?.state === 'on' && g.book ? g.book : heard(g.text))}
+            onPointerDown={() => g.start != null && hold(g.start, !t?.published && t?.bookText?.state === 'on' && g.book ? g.book : heard(g.text, i))}
             onPointerUp={release}
             onPointerLeave={release}
             onPointerCancel={release}
           >
-            {withNames(!t?.published && t?.bookText?.state === 'on' && g.book ? g.book : heard(g.text), names, (n) => setCard(lookup.get(n)))}
+            {withNames(!t?.published && t?.bookText?.state === 'on' && g.book ? g.book : heard(g.text, i), names, (n) => setCard(lookup.get(n)))}
           </p>
         ))}
         {segs.length > 0 && t?.status === 'error' && <p class="err small">{t.error}</p>}
