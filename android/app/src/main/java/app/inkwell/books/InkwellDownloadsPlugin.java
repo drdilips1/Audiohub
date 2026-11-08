@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -13,12 +14,14 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -219,5 +222,119 @@ public class InkwellDownloadsPlugin extends Plugin {
         } catch (Exception e) {
             call.reject(e.getMessage());
         }
+    }
+
+    // ---------------------------------------------------------------- Audiobookshelf upload
+
+    private final ExecutorService uploads = Executors.newSingleThreadExecutor();
+
+    /**
+     * Upload downloaded files into an Audiobookshelf library folder (its /api/upload): streamed
+     * from storage, never held in memory. { url, token, fields: { title, author, series,
+     * library, folder }, files: [{ uri, name, size }], job } → progress events "uploadProgress".
+     */
+    @PluginMethod
+    public void uploadAbs(PluginCall call) {
+        String url = call.getString("url");
+        String token = call.getString("token", "");
+        JSObject fields = call.getObject("fields", new JSObject());
+        JSArray files = call.getArray("files", new JSArray());
+        String job = call.getString("job", "");
+        if (url == null || files.length() == 0) {
+            call.reject("Nothing to upload");
+            return;
+        }
+        uploads.execute(() -> {
+            HttpURLConnection conn = null;
+            try {
+                long total = 0;
+                for (int i = 0; i < files.length(); i++) total += files.getJSONObject(i).optLong("size", 0);
+                String boundary = "----Audiohub" + System.currentTimeMillis();
+                conn = (HttpURLConnection) new URL(url).openConnection();
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setConnectTimeout(20000);
+                conn.setReadTimeout(10 * 60 * 1000); // the server writes the files before answering
+                conn.setChunkedStreamingMode(256 * 1024);
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                OutputStream out = conn.getOutputStream();
+                byte[] crlf = "\r\n".getBytes("UTF-8");
+                for (Iterator<String> k = fields.keys(); k.hasNext(); ) {
+                    String name = k.next();
+                    String value = fields.optString(name, "");
+                    if (value.isEmpty()) continue;
+                    out.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + name + "\"\r\n\r\n").getBytes("UTF-8"));
+                    out.write(value.getBytes("UTF-8"));
+                    out.write(crlf);
+                }
+                long sent = 0;
+                long lastNote = 0;
+                byte[] buf = new byte[128 * 1024];
+                for (int i = 0; i < files.length(); i++) {
+                    org.json.JSONObject f = files.getJSONObject(i);
+                    String uri = f.optString("uri");
+                    String fname = f.optString("name", "part" + (i + 1)).replace("\"", "'");
+                    out.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + i + "\"; filename=\"" + fname + "\"\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes("UTF-8"));
+                    try (InputStream in = open(uri)) {
+                        int n;
+                        while ((n = in.read(buf)) > 0) {
+                            if (cancelled.contains(job)) throw new Exception("cancelled");
+                            out.write(buf, 0, n);
+                            sent += n;
+                            long now = System.currentTimeMillis();
+                            if (now - lastNote > 700) {
+                                lastNote = now;
+                                JSObject e = new JSObject();
+                                e.put("job", job);
+                                e.put("sent", sent);
+                                e.put("total", total);
+                                notifyListeners("uploadProgress", e);
+                            }
+                        }
+                    }
+                    out.write(crlf);
+                }
+                out.write(("--" + boundary + "--\r\n").getBytes("UTF-8"));
+                out.flush();
+                out.close();
+                int code = conn.getResponseCode();
+                if (code >= 400) {
+                    String msg = "";
+                    try (InputStream es = conn.getErrorStream()) {
+                        if (es != null) msg = new String(readAll(es), "UTF-8").trim();
+                    } catch (Exception ignored) {}
+                    if (code == 403) msg = "your Audiobookshelf user isn't allowed to upload (Settings → Users → Can upload)" + (msg.isEmpty() ? "" : " — " + msg);
+                    call.reject("Audiobookshelf said HTTP " + code + (msg.isEmpty() ? "" : ": " + (msg.length() > 200 ? msg.substring(0, 200) : msg)));
+                    return;
+                }
+                JSObject r = new JSObject();
+                r.put("sent", sent);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject("cancelled".equals(e.getMessage()) ? "cancelled" : "Upload failed: " + e.getMessage());
+            } finally {
+                if (conn != null) conn.disconnect();
+                cancelled.remove(job);
+            }
+        });
+    }
+
+    private InputStream open(String uri) throws Exception {
+        if (uri.startsWith("content:")) {
+            InputStream in = getContext().getContentResolver().openInputStream(Uri.parse(uri));
+            if (in == null) throw new Exception("can't open " + uri);
+            return new BufferedInputStream(in);
+        }
+        String path = uri.startsWith("file:") ? Uri.parse(uri).getPath() : uri;
+        return new BufferedInputStream(new FileInputStream(path));
+    }
+
+    private static byte[] readAll(InputStream in) throws Exception {
+        java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) > 0 && b.size() < 4096) b.write(buf, 0, n);
+        return b.toByteArray();
     }
 }

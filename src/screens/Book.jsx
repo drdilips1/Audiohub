@@ -57,9 +57,23 @@ import { usePlayerBasics, useCoverColor } from "../components/player-ui.jsx";
 import { RelatedRows } from "../components/related.jsx";
 import { openExternal } from "../sources/summaries.js";
 import { useStoryShots, chooseStoryShots } from "../sources/storyshots.js";
+import { finishLine } from "../lib/stats.js";
+import { absUploads } from "../lib/absupload.js";
 
 // Books you already have (cloud, server, addons) can still show other copies from source addons.
 const OTHER_SOURCES = new Set(["tb", "rd", "abs", "addon"]);
+
+/** "Send to Audiobookshelf" under way (or failed) for this book. */
+function AbsSending({ uid }) {
+  const u = useStore(absUploads)[uid];
+  if (!u || (u.status === 'done' && Date.now() - (u.at || 0) > 6 * 3600e3)) return null;
+  const text =
+    u.status === 'downloading' ? 'Sending to Audiobookshelf: downloading to the phone first…'
+    : u.status === 'uploading' ? `Sending to Audiobookshelf: uploading ${Math.round((u.pct || 0) * 100)}%`
+    : u.status === 'done' ? `On your Audiobookshelf${u.library ? ` (${u.library})` : ''} ✓`
+    : `Couldn't send to Audiobookshelf: ${u.error || 'unknown error'}`;
+  return <p class={'book-finish' + (u.status === 'error' ? ' bad' : '')}>{text}</p>;
+}
 
 export function Book({ book: initial }) {
   const [book, setBook] = useState(initial);
@@ -436,6 +450,8 @@ export function Book({ book: initial }) {
           <div style={{ width: pct + "%" }} />
         </div>
       )}
+      <AbsSending uid={initial.uid} />
+      {pct > 0 && !prog.finished && !canRead && finishLine(initial.uid) && <p class="book-finish">{finishLine(initial.uid)}</p>}
 
       {error &&
         (book.source === 'abs' ? (

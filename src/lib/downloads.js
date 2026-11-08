@@ -91,12 +91,12 @@ export async function downloadBook(details, { resume = false } = {}) {
           const url = t.url || (t.resolve ? await t.resolve() : null);
           if (!url) throw new Error(`No link for part ${i + 1}`);
           if (/^file:|^content:/.test(url)) {
-            r = { uri: url, size: t.size || 0, local: true };
+            r = { uri: url, size: t.size || 0, local: true, name: decodeURIComponent(url.split('?')[0].split('/').pop() || '') };
             break;
           }
           const ext = ((EXT.exec(url) || [])[1] || (EXT.exec(t.title || '') || [])[1] || 'mp3').toLowerCase();
           const name = `${String(i + 1).padStart(3, '0')} - ${safe(t.title).slice(0, 60)}.${ext}`;
-          r = await Native.download({ url, headers: t.headers || {}, name, folder, target, job, mime: MIME[ext] || 'audio/mpeg' });
+          r = { ...(await Native.download({ url, headers: t.headers || {}, name, folder, target, job, mime: MIME[ext] || 'audio/mpeg' })), name };
         } catch (e) {
           if (stopped() || e.message === 'cancelled') throw new Error('stopped');
           if (attempt === 2) throw e;
@@ -112,7 +112,7 @@ export async function downloadBook(details, { resume = false } = {}) {
         }
       }
       bytes += r.size || 0;
-      saved.push({ title: t.title, uri: r.uri, duration: t.duration, offset: t.offset, size: r.size });
+      saved.push({ title: t.title, uri: r.uri, duration: t.duration, offset: t.offset, size: r.size, name: r.name });
       patch(uid, { done: i + 1, bytes, location: r.location || downloads.get()[uid]?.location, tracks: saved.slice(), current: 0, currentTotal: 0, error: '', tries: 0 });
     }
     patch(uid, { status: 'done', tracks: saved, bytes, finishedAt: Date.now(), error: '' });

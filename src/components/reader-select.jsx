@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { askAi, aiReady } from '../lib/ai.js';
+import { askAi, aiReady, aiHint, aiOn } from '../lib/ai.js';
 import { toast } from './common.jsx';
 import { spoilerRule } from '../lib/askbook.js';
 import { Answer } from '../screens/Ask.jsx';
@@ -40,10 +40,14 @@ export function SelectionBar({ sel, onAction, onGrow }) {
         <button class="hl-btn" onClick={() => onAction('highlight')}>
           Highlight
         </button>
-        <button onClick={() => onAction('explain')}>Explain</button>
-        <button onClick={() => onAction('define')}>{single ? 'Define' : 'Meaning'}</button>
-        <button onClick={() => onAction('ask')}>Ask</button>
-        <button onClick={() => onAction('translate')}>Translate</button>
+        {aiOn() && (
+          <>
+            <button onClick={() => onAction('explain')}>Explain</button>
+            <button onClick={() => onAction('define')}>{single ? 'Define' : 'Meaning'}</button>
+            <button onClick={() => onAction('ask')}>Ask</button>
+            <button onClick={() => onAction('translate')}>Translate</button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -59,7 +63,7 @@ export function AiSheet({ kind, text, context, book, onClose, onKeep }) {
   const [speaking, setSpeaking] = useState(false);
   useEffect(() => () => speaking && stopSpeakingText(), [speaking]);
   const run = async (q = '', into = to) => {
-    if (!aiReady()) return toast('Add an AI key in Settings → AI first');
+    if (!aiReady()) return toast(aiHint());
     setBusy(true);
     try {
       if (kind === 'translate') return setAnswer(await translateText(text, into));

@@ -14,6 +14,13 @@ export function markNotInterested(b) {
   notInterested.set((all) => ({ ...all, [rateKey(b)]: { title: mainTitle(b.title), author: b.author || '', genres: (b.genres || []).slice(0, 6), at: Date.now() } }));
 }
 export const isNotInterested = (b, all = notInterested.get()) => !!all[rateKey(b)];
+// Books you've already read or heard elsewhere: never recommended, but they don't count against
+// what's like them (unlike Not interested).
+export const alreadyRead = persisted('alreadyRead', {}); // rateKey -> { title, author, at }
+export function markAlreadyRead(b) {
+  alreadyRead.set((all) => ({ ...all, [rateKey(b)]: { title: mainTitle(b.title), author: b.author || '', at: Date.now() } }));
+}
+export const isHiddenRec = (b, hidden = notInterested.get(), read = alreadyRead.get()) => !!(hidden[rateKey(b)] || read[rateKey(b)]);
 
 export const VERDICTS = [
   ['love', '❤️', 'Loved it'],
@@ -115,6 +122,7 @@ export function knownTitles() {
   Object.values(progress.get()).forEach((p) => add(p?.book));
   Object.values(myRatings.get()).forEach((r) => r?.verdict && add(r));
   Object.values(notInterested.get()).forEach(add);
+  Object.values(alreadyRead.get()).forEach(add);
   return t;
 }
 

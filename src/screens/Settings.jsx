@@ -4,11 +4,13 @@ import { ssBadges } from '../sources/storyshots.js';
 import { Icon } from '../components/icons.jsx';
 import { toast, AskButton } from '../components/common.jsx';
 import { settings, addons, abs, debrid, hardcover, goodreads, useStore, exportBackup, importBackup, kindle } from '../lib/store.js';
-import { notInterested } from '../lib/taste.js';
+import { notInterested, alreadyRead } from '../lib/taste.js';
+import { importReadList, takeGoodreadsReads } from '../lib/readlists.js';
+import { aiVoiceOn, stopAnswer } from '../lib/voiceask.js';
 import { SOURCES, absSrc, addonSrc, cloud, hc, gr, sourceOrder } from '../sources/index.js';
 import { clearHttpCache, isWeb, relayUrl, setRelayUrl, probeRelay, defaultRelayUrl } from '../lib/http.js';
 import { searchSources, sourceAddons } from '../sources/sourceaddons.js';
-import { ai, PROVIDERS as AI_PROVIDERS, testProvider } from '../lib/ai.js';
+import { ai, PROVIDERS as AI_PROVIDERS, testProvider, aiOff, aiOn } from '../lib/ai.js';
 import relayCode from '../../relay/index.ts?raw';
 import { ACCENTS, PALETTES, activePalette, isInk } from '../lib/theme.js';
 import { WALLPAPERS, wallpaperUrl, saveCustom, useCustomWallpaper } from '../lib/wallpaper.js';
@@ -74,6 +76,107 @@ function SsToggle() {
         setOn(v);
       }}
     />
+  );
+}
+
+/** Paste the list of books you've read (from your notes): ratings for recommendations, never suggested back. */
+function ReadImport() {
+  const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <div class="set-row">
+        <div>
+          <b>Import books you've read</b>
+          <small>Paste a list from your notes, one book a line, with your rating if you have one — they shape recommendations, are never suggested back, and show in Library → Finished</small>
+        </div>
+        <button class="pill small" onClick={() => setOpen(true)}>
+          Paste list
+        </button>
+      </div>
+    );
+  return (
+    <div class="read-import">
+      <textarea
+        rows={8}
+        placeholder={'Dune by Frank Herbert ★★★★★\nSapiens - Yuval Noah Harari - 4/5\nProject Hail Mary, Andy Weir\nAtomic Habits | James Clear | 3 stars'}
+        value={text}
+        onInput={(e) => setText(e.currentTarget.value)}
+      />
+      <small class="muted">Title and author, any way you wrote them. Ratings: stars (★★★★), 4/5, 8/10 or “4 stars”. Books without one count as read, not rated.</small>
+      <div class="row-btns">
+        <button class="btn" disabled={!text.trim()} onClick={() => {
+          const r = importReadList(text);
+          toast(r.total ? `Added ${r.total} book${r.total > 1 ? 's' : ''} · ${r.rated} rated` : 'No books found in that');
+          if (r.total) (setText(''), setOpen(false));
+        }}>
+          Import
+        </button>
+        <button class="btn ghost" onClick={() => (setText(''), setOpen(false))}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AiSwitch() {
+  const off = useStore(aiOff);
+  return (
+    <Toggle
+      label="AI features"
+      hint="Off: Ask, X-Ray, Story, recaps, chapter summaries, Explain / Translate in the reader and the bookseller are all hidden, and nothing is ever sent to an AI. Recommendations still work without it."
+      on={!off}
+      onChange={(v) => {
+        aiOff.set(!v);
+        if (!v) stopAnswer();
+      }}
+    />
+  );
+}
+
+function VoiceToggle() {
+  const on = useStore(aiVoiceOn) !== false;
+  return (
+    <Toggle
+      label="Voice with AI"
+      hint="Off: no mic buttons to ask by voice and answers are never read aloud — text only"
+      on={on}
+      onChange={(v) => {
+        aiVoiceOn.set(v);
+        if (!v) stopAnswer();
+      }}
+    />
+  );
+}
+
+/** Where "Send to Audiobookshelf" puts books: one of your library folders. */
+function AbsUploadTo() {
+  const cfg = useStore(abs);
+  const [targets, setTargets] = useState(null);
+  const key = (t) => `${t.library}|${t.folder}`;
+  const cur = cfg.uploadTo ? key(cfg.uploadTo) : '';
+  return (
+    <div class="set-row">
+      <div>
+        <b>Send books to</b>
+        <small>Press and hold a TorBox / Real-Debrid book → Send to Audiobookshelf: it's downloaded, uploaded into this folder on your server, then removed from the phone. Your user needs “Can upload”.</small>
+      </div>
+      {targets ? (
+        <select value={cur || (targets[0] ? key(targets[0]) : '')} onChange={(e) => {
+          const t = targets.find((x) => key(x) === e.currentTarget.value);
+          if (t) abs.patch({ uploadTo: { library: t.library, folder: t.folder } });
+        }}>
+          {targets.map((t) => (
+            <option value={key(t)}>{t.label}</option>
+          ))}
+        </select>
+      ) : (
+        <button class="pill small" onClick={() => absSrc.uploadTargets().then((t) => (t.length ? setTargets(t) : toast('No library folders found'))).catch((e) => toast(e.message))}>
+          Choose…
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -351,7 +454,6 @@ function AiCard() {
         </div>
         <input type="checkbox" class="switch" checked={useStore(settings).aiNoSpoilers !== false} onChange={(e) => settings.patch({ aiNoSpoilers: e.currentTarget.checked })} />
       </label>
-      <HiddenRecs />
       <p class="muted small">
         <b>What leaves your phone:</b> only when you use an AI feature, the question and what it needs — the book's title and author, where you are in it, and (for questions about
         what you're hearing) the last few minutes of the transcript — go to the service you set up here, under your own key. Playback, downloads, your library, bookmarks and
@@ -639,6 +741,7 @@ function AbsCard() {
             </button>
           )}
         </div>
+        <AbsUploadTo />
         <div class="set-row">
           <div>
             <b>Ebooks library</b>
@@ -971,7 +1074,9 @@ function GoodreadsCard() {
               const f = e.currentTarget.files?.[0];
               if (!f) return;
               try {
-                toast(`Imported ${gr.importCsv(await f.text())} books`);
+                const n = gr.importCsv(await f.text());
+                const r = takeGoodreadsReads(goodreads.get().books);
+                toast(`Imported ${n} books · ${r.total} read (${r.rated} rated) count for recommendations`);
               } catch (err) {
                 toast(err.message);
               }
@@ -1159,6 +1264,7 @@ function PreferredDebrid() {
 
 export function Settings() {
   const st = useStore(settings);
+  useStore(aiOff); // AI switched on / off: show or hide its settings
   const setSource = (k, v) => settings.patch({ sources: { ...st.sources, [k]: v } });
   return (
     <div class="screen settings">
@@ -1297,8 +1403,15 @@ export function Settings() {
         <Toggle label="Play Up next by itself" hint="When a book ends, the next one in Up next starts (press and hold a book → Add to Up next)" on={st.upNextAuto !== false} onChange={(v) => settings.patch({ upNextAuto: v })} />
       </Section>
 
+      <Section icon="book" title="Books you've read">
+        <ReadImport />
+        <HiddenRecs />
+      </Section>
+
       <Section icon="ai" title="AI (bookseller & story helper)">
-        <AiCard />
+        <AiSwitch />
+        {aiOn() && <AiCard />}
+        {aiOn() && <VoiceToggle />}
       </Section>
 
 
@@ -1528,9 +1641,26 @@ function PlayerBackgroundPicker({ st }) {
 /** Books you marked "Not interested" on recommendations: count, and show them again. */
 function HiddenRecs() {
   const all = useStore(notInterested);
+  const read = useStore(alreadyRead);
   const n = Object.keys(all || {}).length;
-  if (!n) return null;
+  const r = Object.keys(read || {}).length;
+  if (!n && !r) return null;
   return (
+    <>
+    {r > 0 && (
+      <div class="set-row">
+        <div>
+          <b>Already read</b>
+          <small>
+            {r} book{r > 1 ? 's' : ''} you've read elsewhere, never recommended
+          </small>
+        </div>
+        <button class="pill small" onClick={() => (alreadyRead.set({}), toast('Cleared'))}>
+          Clear
+        </button>
+      </div>
+    )}
+    {n > 0 && (
     <div class="set-row">
       <div>
         <b>Not interested</b>
@@ -1542,6 +1672,8 @@ function HiddenRecs() {
         Show again
       </button>
     </div>
+    )}
+    </>
   );
 }
 

@@ -147,6 +147,34 @@ export async function libraries() {
   return libs;
 }
 
+// ---- Send to Audiobookshelf (a book from your cloud, uploaded into one of your folders) ----
+
+/** Where uploads can go: every folder of your book libraries, as { library, folder, label }. */
+export async function uploadTargets() {
+  const libs = await libraries();
+  const out = [];
+  for (const l of libs.filter((x) => x.mediaType !== 'podcast')) {
+    for (const f of l.folders || []) out.push({ library: l.id, folder: f.id, label: (l.folders.length > 1 ? `${l.name} › ${f.fullPath}` : l.name) });
+  }
+  return out;
+}
+
+/** The chosen place (Settings → Audiobookshelf → Send books to), else the first one. */
+export async function uploadTarget() {
+  const want = cfg().uploadTo;
+  const all = await uploadTargets();
+  return all.find((t) => want && t.library === want.library && t.folder === want.folder) || all[0] || null;
+}
+
+/** The upload address and a fresh sign-in (short-lived tokens are renewed first). */
+export async function uploadAuth() {
+  await call('/api/me', { fresh: true }); // renews an expired access token if needed
+  return { url: base() + '/api/upload', token: cfg().token };
+}
+
+/** Look for new books in a library now (after an upload). */
+export const scanLibrary = (id) => call(`/api/libraries/${id}/scan`, { method: 'POST' }).catch(() => {});
+
 /** Why a list came back empty: which library, on which address. */
 export function emptyHint() {
   const name = libNames[cfg().libraryId];

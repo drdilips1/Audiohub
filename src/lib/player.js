@@ -209,11 +209,19 @@ let emitQueued = false;
 function emit() {
   if (emitQueued) return;
   emitQueued = true;
-  requestAnimationFrame(() => {
+  const run = () => {
+    if (!emitQueued) return; // already done (frame or the fallback below)
     emitQueued = false;
     const snap = { ...state };
     subs.forEach((f) => f(snap));
-  });
+  };
+  // Screen hidden (app in the background, the car playing): animation frames never come, so
+  // everything listening (the car, Up next, saving) would wait until the app is opened.
+  if (typeof document !== 'undefined' && document.hidden) Promise.resolve().then(run);
+  else {
+    requestAnimationFrame(run);
+    setTimeout(run, 300); // hidden before the frame came: still delivered
+  }
 }
 // Called when a book (or podcast episode) plays to the very end.
 const finishedSubs = new Set();
@@ -441,7 +449,7 @@ async function loadTrack(i, startAt = 0, autoplay = true) {
       autoplay,
       rate: state.rate,
       headers: t.headers,
-      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '' },
+      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '', bookId: b.uid },
     });
     if (!autoplay) set({ loading: false, phase: '' });
     // One long file with chapter marks inside (M4B): read them, for the chapter list,
@@ -1048,6 +1056,7 @@ function saveProgress(force = false) {
   progress.set((p) => ({
     ...p,
     [uid]: {
+      startedAt: p[uid]?.startedAt || (p[uid]?.global > 60 ? undefined : now),
       kind: 'audio',
       track: state.index,
       time: state.time || 0,

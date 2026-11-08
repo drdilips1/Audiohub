@@ -19,6 +19,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(InkwellListenPlugin.class);
         registerPlugin(InkwellLocalPlugin.class);
         super.onCreate(savedInstanceState);
+        keepAwakeInBackground();
         voice(getIntent());
     }
 
@@ -28,7 +29,21 @@ public class MainActivity extends BridgeActivity {
         voice(intent);
     }
 
-    /** "Play … on Audiohub" from Google Assistant: hand the words to the player. */
+    /**
+     * The app's screen is a web page in its own process, which Android lowers (and can freeze)
+     * once it isn't visible. The car (or a voice request) then asks a sleeping app to prepare a
+     * book, and nothing happens until the app is opened. Keep that process as important as the
+     * app itself — which, while playing or connected to the car, Android keeps running.
+     */
+    private void keepAwakeInBackground() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 26 && getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().setRendererPriorityPolicy(android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, false);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** "Play … on AudioYam" from Google Assistant: hand the words to the player. */
     private void voice(Intent intent) {
         if (intent == null || !"android.media.action.MEDIA_PLAY_FROM_SEARCH".equals(intent.getAction())) return;
         String q = intent.getStringExtra(android.app.SearchManager.QUERY);

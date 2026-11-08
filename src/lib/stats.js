@@ -123,22 +123,34 @@ export function summary(kind = 'listen') {
     weekdays[(new Date(k + 'T12:00:00').getDay() + 6) % 7] += d.s;
     for (const [uid, s] of Object.entries(d.b || {})) perBook[uid] = (perBook[uid] || 0) + s;
   }
+  // Finished books come from your progress (it has them from before the log began too).
+  // Ebooks (kind 'text') for reading stats, everything else for listening.
+  const progAll = progress.get() || {};
+  const prog = Object.values(progAll).filter((p) => p?.book && (p.kind === 'text' || p.book.kind === 'text') === reading);
+  // Listening from before the log began (or on another device / app, synced in) is only in
+  // your places in the books: a book counts at least as far as you've got into it — the same
+  // as the Library's "hours listened".
+  const meta = { ...books };
+  if (!reading)
+    for (const [uid, p] of Object.entries(progAll)) {
+      if (!p?.book || p.kind === 'text' || p.book.kind === 'text' || !(p.global > 0)) continue;
+      if (p.global > (perBook[uid] || 0)) perBook[uid] = p.global;
+      if (!meta[uid]) meta[uid] = { title: p.book.title, author: p.book.author, cover: p.book.cover, source: p.book.source };
+    }
+  const allTime = Math.max(total, Object.values(perBook).reduce((a, x) => a + x, 0));
   const topBooks = Object.entries(perBook)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([uid, s]) => ({ book: { uid, ...books[uid] }, s }));
+    .map(([uid, s]) => ({ book: { uid, ...meta[uid] }, s }));
   const perAuthor = {};
   for (const [uid, s] of Object.entries(perBook)) {
-    const a = String(books[uid]?.author || '').split(',')[0].trim();
+    const a = String(meta[uid]?.author || '').split(',')[0].trim();
     if (a) perAuthor[a] = (perAuthor[a] || 0) + s;
   }
   const topAuthors = Object.entries(perAuthor)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
 
-  // Finished books come from your progress (it has them from before the log began too).
-  // Ebooks (kind 'text') for reading stats, everything else for listening.
-  const prog = Object.values(progress.get() || {}).filter((p) => p?.book && (p.kind === 'text' || p.book.kind === 'text') === reading);
   const finished = prog.filter((p) => p.finished).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   const year = new Date().getFullYear();
 
@@ -148,6 +160,7 @@ export function summary(kind = 'listen') {
     week: sum(week),
     month: sum(month),
     total,
+    allTime, // logged, or your places in the books where they're further (all time)
     saved: Math.max(0, covered - total), // time saved by listening faster than 1×
     avgSpeed: total ? covered / total : 1,
     streak,
@@ -164,4 +177,49 @@ export function summary(kind = 'listen') {
     started: prog.length,
     coveredAll: prog.reduce((a, p) => a + (p.global || 0), 0), // from progress, all time
   };
+}
+
+/** Hours listened, all time: as far as you've got into each book, or what the log counted where more. */
+export const hoursListened = () => summary('listen').allTime;
+
+/**
+ * When a book was started and, from how you've been listening to it lately, about when
+ * you'll finish: { started (ms), days (to go) } — either may be missing.
+ */
+export function finishGuess(uid) {
+  const p = progress.get()[uid];
+  if (!p || p.finished || p.kind === 'text') return null;
+  const { days } = listenLog.get();
+  const keys = Object.keys(days).filter((k) => days[k].b?.[uid] > 0).sort();
+  const first = keys.length ? Date.parse(keys[0] + 'T12:00:00') : 0;
+  // The log's first day for it only says when you started if the log was already running then.
+  const since = listenLog.get().since || 0;
+  const started = p.startedAt || (first && first > since + DAY ? first : 0);
+  if (!started && !first) return null;
+  // Pace: book time covered over the last 3 weeks, spread over the days since then (or
+  // since you started it, if later). Needs a little listening to say anything.
+  const from = Math.max(started || first, Date.now() - 21 * DAY);
+  let covered = 0;
+  for (const k of keys) {
+    if (Date.parse(k + 'T23:59:59') < from) continue;
+    const d = days[k];
+    covered += d.b[uid] * (d.s > 0 ? (d.c || d.s) / d.s : 1);
+  }
+  const span = Math.max(1, (Date.now() - from) / DAY);
+  const pace = covered / span; // book-seconds a day
+  const left = (p.total || 0) - (p.global || 0);
+  const out = started ? { started } : {};
+  if (pace >= 300 && left > 0 && covered >= 1800) out.days = Math.max(1, Math.round(left / pace));
+  return out;
+}
+
+/** "Started 5 days ago · likely to finish in about 8 days" (or part of it). */
+export function finishLine(uid) {
+  const g = finishGuess(uid);
+  if (!g || (!g.started && !g.days)) return '';
+  const ago = Math.floor((Date.now() - g.started) / DAY);
+  const a = !g.started ? '' : ago <= 0 ? 'Started today' : ago === 1 ? 'Started yesterday' : `Started ${ago} days ago`;
+  if (!g.days) return a;
+  const f = g.days === 1 ? 'likely to finish tomorrow' : g.days <= 60 ? `likely to finish in about ${g.days} days` : `likely to finish in about ${Math.round(g.days / 30)} months`;
+  return a ? `${a} · ${f}` : f[0].toUpperCase() + f.slice(1);
 }

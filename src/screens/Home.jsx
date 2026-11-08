@@ -26,6 +26,7 @@ import { waitlist, cancel, playNow } from '../lib/waitlist.js';
 import { toast, Cover } from '../components/common.jsx';
 import { getDetails } from '../sources/index.js';
 import * as player from '../lib/player.js';
+import { rollTheme, previousLook } from '../lib/theme.js';
 
 // Picks for the banner: the user's own services first; free classics only as a fallback.
 // Shows the last banner instantly, then merges each service as it answers
@@ -536,6 +537,39 @@ export function GenreChips() {
   );
 }
 
+/** One tap: a random theme (light or dark, palette and accent). Long-press: back to the previous one. */
+function ThemeDice() {
+  const timer = useRef(0);
+  const held = useRef(false);
+  const roll = () => {
+    const { name, ...look } = rollTheme(settings.get());
+    settings.patch(look);
+    toast(`${name} — long-press to go back`);
+  };
+  return (
+    <button
+      class="icon-btn glass"
+      aria-label="Surprise me with a theme"
+      onPointerDown={() => {
+        held.current = false;
+        timer.current = setTimeout(() => {
+          held.current = true;
+          const prev = previousLook();
+          if (prev) {
+            settings.patch(prev);
+            toast('Back to your previous theme');
+          }
+        }, 600);
+      }}
+      onPointerUp={() => clearTimeout(timer.current)}
+      onPointerLeave={() => clearTimeout(timer.current)}
+      onClick={() => !held.current && roll()}
+    >
+      <Icon name="palette" />
+    </button>
+  );
+}
+
 export function Home() {
   const st = useStore(settings);
   const addonList = useStore(addons);
@@ -625,6 +659,7 @@ export function Home() {
           </button>
           <SceneButton />
           <AskButton glass />
+          <ThemeDice />
           <button class="icon-btn glass home-search" onClick={() => nav.tab('discover')} aria-label="Search">
             <Icon name="search" />
           </button>

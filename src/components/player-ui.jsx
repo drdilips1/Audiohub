@@ -14,7 +14,7 @@ import { metaFixes, fixFor } from '../lib/meta.js';
 import { openDrive } from './drive-mode.jsx';
 import { COMPANION, rememberHere, chapterSummary, chapterSummaries } from '../lib/askbook.js';
 import { Answer } from '../screens/Ask.jsx';
-import { aiReady } from '../lib/ai.js';
+import { aiReady, aiHint, aiOn } from '../lib/ai.js';
 import { TranscriptView } from './transcript-view.jsx';
 import { StorySheet } from './story-sheet.jsx';
 import { XraySheet } from './xray.jsx';
@@ -265,7 +265,7 @@ export function FullPlayer() {
               </button>
             )
           )}
-          {s.book.source !== 'pod' && (
+          {aiOn() && s.book.source !== 'pod' && (
             <button class="fp-chapters" onClick={() => setSheet('xray')}>
               <Icon name="xray" size={15} />
               <span>X-Ray</span>
@@ -355,16 +355,18 @@ export function FullPlayer() {
           <span>
             👋 Welcome back — {s.awayDays >= 60 ? `${Math.round(s.awayDays / 30)} months` : s.awayDays >= 21 ? `${Math.round(s.awayDays / 7)} weeks` : `${s.awayDays} days`} since you listened.
           </span>
-          <button class="pill small" onClick={() => (setAwayDone(true), setSheet('recap'))}>
-            Recap
-          </button>
+          {aiOn() && (
+            <button class="pill small" onClick={() => (setAwayDone(true), setSheet('recap'))}>
+              Recap
+            </button>
+          )}
           <button class="icon-btn" aria-label="No thanks" onClick={() => setAwayDone(true)}>
             <Icon name="close" size={16} />
           </button>
         </div>
       )}
 
-      <Signature book={s.book} openXray={() => setSheet('xray')} />
+      {aiOn() && <Signature book={s.book} openXray={() => setSheet('xray')} />}
 
       {/* One row of the everyday buttons; the rest under More. */}
       <div class="fp-actions one-row">
@@ -475,21 +477,25 @@ export function FullPlayer() {
                 <UpNextList onPlay={() => setSheet(null)} />
               </>
             )}
-            {sheet === 'more' && <Companion book={s.book} />}
+            {aiOn() && sheet === 'more' && <Companion book={s.book} />}
             {sheet === 'more' && (
               <div class="fp-more">
                 <button onClick={() => (setSheet(null), openDrive())}>
                   <Icon name="car" size={22} />
                   Drive
                 </button>
-                <button onClick={() => setSheet('xray')}>
-                  <Icon name="xray" size={22} />
-                  X-Ray
-                </button>
-                <button onClick={() => setSheet('story')}>
-                  <Icon name="ai" size={22} />
-                  Story
-                </button>
+                {aiOn() && (
+                  <button onClick={() => setSheet('xray')}>
+                    <Icon name="xray" size={22} />
+                    X-Ray
+                  </button>
+                )}
+                {aiOn() && (
+                  <button onClick={() => setSheet('story')}>
+                    <Icon name="ai" size={22} />
+                    Story
+                  </button>
+                )}
                 <button onClick={() => setSheet('chapters')}>
                   <Icon name="list" size={22} />
                   Chapters · {chapters.length}
@@ -638,7 +644,7 @@ export function FullPlayer() {
                           <span class="ch-time">{c.end > c.start ? (c.estimated ? '≈ ' : '') + fmtTime(c.end - c.start) : ''}</span>
                         </button>
                         {/* Chapters you've reached: a short AI summary (kept for next time). */}
-                        {s.book.source !== 'pod' && c.start <= g && <ChapterSummary book={s.book} chapters={chapters} i={i} total={total} />}
+                        {aiOn() && s.book.source !== 'pod' && c.start <= g && <ChapterSummary book={s.book} chapters={chapters} i={i} total={total} />}
                       </li>
                     );
                   })}
@@ -734,7 +740,7 @@ function ChapterSummary({ book, chapters, i, total }) {
 function Signature({ book, openXray }) {
   if (!book || book.source === 'pod') return null;
   const ask = (question) => {
-    if (!aiReady()) return toast('Add an AI key in Settings → AI first');
+    if (!aiReady()) return toast(aiHint());
     player.pause();
     nav.closeOverlay();
     nav.push('ask', { book, description: book.description || '', question, here: !!question, askId: question ? `${Date.now()}` : '' });
@@ -767,7 +773,7 @@ function Companion({ book }) {
   if (!book || book.source === 'pod') return null;
   const go = (question) => {
     if (!aiReady()) {
-      toast('Add an AI key in Settings → AI first');
+      toast(aiHint());
       return;
     }
     player.pause();

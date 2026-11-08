@@ -15,9 +15,13 @@ import { nav } from '../lib/nav.js';
 import { podcasts } from '../sources/podcasts.js';
 import { ShowGrid } from './Podcasts.jsx';
 import { EbookSearchBox, EbookSearchResults } from '../components/ebook-search.jsx';
+import { hoursListened } from '../lib/stats.js';
+import { readLater, readElsewhere } from '../lib/readlists.js';
+import { myRatings, alreadyRead } from '../lib/taste.js';
 
 const TABS = [
   ['progress', 'Continue'],
+  ['later', 'Read later'],
   ['audio', 'Audiobooks'],
   ['text', 'Ebooks'],
   ['podcasts', 'Podcasts'],
@@ -141,6 +145,9 @@ export function Library() {
   const dls = useStore(downloads);
   const pods = useStore(podcasts);
   const kept = useStore(savedEbooks);
+  const later = useStore(readLater);
+  const rated = useStore(myRatings);
+  const readList = useStore(alreadyRead);
   const tab = TABS.some(([k]) => k === view.tab) ? view.tab : 'progress';
   const where = view.where || 'all';
   const mode = view.mode || (view.list ? 'list' : 'grid');
@@ -193,19 +200,21 @@ export function Library() {
     };
     return {
       progress: started.filter((p) => !p.finished).map((p) => p.book),
-      finished: started.filter((p) => p.finished).map((p) => p.book),
+      // Finished in the app, then read elsewhere (your imported list, "Already read it").
+      finished: [...started.filter((p) => p.finished).map((p) => p.book), ...readElsewhere()],
+      later: Object.values(later || {}).filter((x) => ok(x?.book)).sort((a, b) => b.at - a.at).map((x) => x.book),
       // Episodes you've started and not finished.
       podcasts: started.filter((p) => !p.finished && p.book.source === 'pod').map((p) => p.book),
       audio: byKind('audio'),
       text: byKind('text'),
     };
-  }, [lib, prog, dls, local, kept]);
+  }, [lib, prog, dls, local, kept, later, rated, readList]);
   const subs = tab === 'audio' || tab === 'text' ? groups[tab] : null;
   // Your tags: one more filter row under Audiobooks / Ebooks ("tag:Psychology").
   const tagMap = useStore(bookTags);
   const tagsHere = subs ? allTags(Object.fromEntries(subs.all.filter((b) => tagMap[b.uid]).map((b) => [b.uid, tagMap[b.uid]]))) : [];
   const tagged = (t) => subs.all.filter((b) => (tagMap[b.uid] || []).includes(t));
-  const fresh = subs ? (where.startsWith('tag:') ? tagged(where.slice(4)) : subs[where] || subs.all) : groups[tab];
+  const fresh = subs ? (where.startsWith('tag:') ? tagged(where.slice(4)) : subs[where] || subs.all) : groups[tab] || [];
   // Phone books are listed once a folder has been scanned.
   useEffect(() => {
     if ((tab === 'audio' || tab === 'text') && localSrc.connected() && !local.scannedAt) localSrc.rescan().catch(() => {});
@@ -228,7 +237,7 @@ export function Library() {
 
   const stats = useMemo(() => {
     const vals = Object.values(prog || {}).filter((p) => p && typeof p === 'object');
-    const seconds = vals.reduce((a, p) => a + (p.global || 0), 0);
+    const seconds = hoursListened(); // the same as Stats' All time
     return { books: vals.length, hours: Math.round(seconds / 360) / 10, done: vals.filter((p) => p.finished).length };
   }, [prog]);
 
@@ -407,6 +416,15 @@ export function Library() {
       ) : items.length ? (
         mode === 'shelves' ? <Shelves items={items} by={view.sort === 'series' ? 'series' : 'author'} /> : view.sort === 'series' ? <SeriesGroups items={items} mode={mode} prog={prog} /> : <Books items={items} mode={mode} prog={prog} />
       ) : (
+        tab === 'later' ? (
+          <Empty icon="bookmark" title="Nothing to read later yet">
+            Press and hold any book → Read later. It leaves this list once you start it.
+          </Empty>
+        ) : tab === 'finished' ? (
+          <Empty icon="check" title="No finished books yet">
+            Books you finish show here — and the ones you've read elsewhere: Settings → Books you've read → Paste list.
+          </Empty>
+        ) : (
         <Empty icon="library" title="Your shelf is empty">
           Tap the heart on any book to save it, or{' '}
           <a href="#" onClick={(e) => (e.preventDefault(), nav.tab('discover'))}>
@@ -414,6 +432,7 @@ export function Library() {
           </a>
           .
         </Empty>
+        )
       )}
         </>
       )}

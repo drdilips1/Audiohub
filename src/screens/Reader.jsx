@@ -20,6 +20,7 @@ import { HighlightCards, AudioNotes, hasAudioNotes } from '../components/book-no
 import { highlights, forWork, addHighlight, updateHighlight, removeHighlight, markText, unmark, selectionParts, growSelection } from '../lib/highlights.js';
 import { SelectionBar, AiSheet, HighlightSheet } from '../components/reader-select.jsx';
 import { FollowAudio } from '../components/follow-audio.jsx';
+import { aiOn } from '../lib/ai.js';
 
 // Reading fonts (bundled, so they work offline). Literata is the default serif.
 const FONTS = [
@@ -71,24 +72,28 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
   const [pct, setPct] = useState(0);
   const scroller = useRef();
   const [aloud, setAloud] = useState(null); // { playing, index }
-  // Reading stats: time with the book open and in use (a touch or scroll in the last two
-  // minutes), or being read aloud — not a book left open on the table.
+  // Reading stats: time with the book open and in use (any tap, swipe, page turn, scroll or
+  // key in the last three minutes), being read aloud, or following its audiobook as it plays —
+  // not a book left open on the table.
   const aloudOn = useRef(false);
   aloudOn.current = !!aloud?.playing;
   useEffect(() => {
     let lastUse = Date.now();
     const used = () => (lastUse = Date.now());
-    const el = scroller.current;
-    el?.addEventListener('scroll', used, { passive: true });
-    el?.addEventListener('touchstart', used, { passive: true });
+    const evs = ['pointerdown', 'touchstart', 'keydown', 'wheel', 'scroll'];
+    // On the whole page (captured): page turns by tap zones, buttons and volume keys count too.
+    evs.forEach((e) => document.addEventListener(e, used, { passive: true, capture: true }));
+    const following = () => {
+      const ps = player.getState();
+      return ps.playing && ps.book && ps.book.kind !== 'text' && sameWork(ps.book, book);
+    };
     const iv = setInterval(() => {
       if (document.hidden) return;
-      if (aloudOn.current || Date.now() - lastUse < 120e3) import('../lib/stats.js').then((m) => m.readTick(book, 10));
+      if (aloudOn.current || Date.now() - lastUse < 180e3 || following()) import('../lib/stats.js').then((m) => m.readTick(book, 10));
     }, 10e3);
     return () => {
       clearInterval(iv);
-      el?.removeEventListener('scroll', used);
-      el?.removeEventListener('touchstart', used);
+      evs.forEach((e) => document.removeEventListener(e, used, { capture: true }));
     };
   }, [book.uid, !!doc]);
   const ctl = useRef(null);
@@ -157,7 +162,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
 
   // ---- the book in another language: translated as you read (and kept) --------------
   const tr = useStore(trCfg);
-  const trTo = tr.books?.[book.uid] || null;
+  const trTo = aiOn() ? tr.books?.[book.uid] || null : null; // translation needs AI
   const trRef = useRef(null); // { to, store } while the book is shown translated
   const originals = useRef(new Map()); // paragraph -> its original HTML
   const trBusy = useRef(new Set());
@@ -830,7 +835,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
               <small>When reading aloud or making an audiobook</small>
             </span>
           </label>
-          <div class="reader-tr">
+          {aiOn() && (<div class="reader-tr">
             <label class="reader-toggle">
               <input
                 type="checkbox"
@@ -861,7 +866,7 @@ export function Reader({ book, readAloud: autoAloud, at = null }) {
                 Male
               </button>
             </div>
-          </div>
+          </div>)}
           <div class="reader-row themes">
             {THEMES.map(([k, label]) => (
               <button class={`theme-swatch t-${k}` + (st.readerTheme === k ? ' active' : '')} onClick={() => settings.patch({ readerTheme: k })}>

@@ -137,7 +137,12 @@ const policyHelp = (name) => `${name} is blocking its free models: open openrout
 
 // Your own AI may need no key (Ollama): it's ready once it has an address and a model.
 const keyOf = (p) => (p.custom ? (ai.get().customUrl?.trim() && ai.get().customModel?.trim() ? ai.get().customKey?.trim() || 'none' : '') : (ai.get()[p.keyField] || '').trim());
-export const aiReady = () => PROVIDERS.some(keyOf);
+// AI off (Settings → AI): every AI feature is hidden and nothing is ever sent to an AI.
+export const aiOff = persisted('aiOff', false);
+export const aiOn = () => aiOff.get() !== true;
+export const aiReady = () => aiOn() && PROVIDERS.some(keyOf);
+/** What to tell you when an AI feature can't run. */
+export const aiHint = () => (aiOn() ? 'Add an AI key in Settings → AI first' : 'AI is off (Settings → AI)');
 
 const cache = persisted('aiCache', {}); // prompt key -> { t, v }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -223,6 +228,7 @@ export function parseJson(text) {
  * to the next model and the next service.
  */
 export async function askAi(prompt, { json = false, skip = [] } = {}) {
+  if (!aiOn()) throw new Error('AI is off (Settings → AI)');
   const prefer = ai.get().prefer;
   const ready = PROVIDERS.filter(keyOf).sort((a, b) => Number(b.id === prefer) - Number(a.id === prefer));
   if (!ready.length) throw new Error('Add an AI key (Groq, Gemini, OpenRouter or Claude) in Settings → AI first');

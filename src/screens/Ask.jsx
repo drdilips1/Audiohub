@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { TopBar, Cover, toast } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
 import { nav } from '../lib/nav.js';
-import { aiReady } from '../lib/ai.js';
+import { aiReady, aiHint } from '../lib/ai.js';
 import { MODES, STARTERS, LIBRARY_ASKS, ask, quiz, threadFor, clearThread, hearing, ideas, forgetIdea, spoilerLimit, answerSource, hasBookText, keepAnswer } from '../lib/askbook.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { copyText } from '../lib/report.js';
@@ -22,7 +22,7 @@ import { mainTitle } from '../lib/match.js';
 import { usePlayer } from '../components/player-ui.jsx';
 import { useStore, settings } from '../lib/store.js';
 import * as player from '../lib/player.js';
-import { canListen, listen, speakAnswer, stopAnswer, voiceLang, LANGS, askVoice, canPickVoice, ASK_VOICES, autoRead } from '../lib/voiceask.js';
+import { canListen, listen, speakAnswer, stopAnswer, voiceLang, LANGS, askVoice, canPickVoice, ASK_VOICES, autoRead, aiVoiceOn } from '../lib/voiceask.js';
 
 /**
  * Ask AI about one book (params.book) or about your whole library (no book).
@@ -42,6 +42,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
   const lang = useStore(voiceLang);
   const voiceId = useStore(askVoice);
   const readAloud = useStore(autoRead);
+  const voiceOn = useStore(aiVoiceOn) !== false;
   const [speaking, setSpeaking] = useState(-1); // index of the answer being read aloud
   const say = (i, t) => {
     stopAnswer();
@@ -65,7 +66,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
   const run = async (q, extra = {}) => {
     if (!q.trim() || busy) return;
     if (!aiReady()) {
-      toast('Add an AI key in Settings → AI first');
+      toast(aiHint());
       return nav.tab('settings');
     }
     const shown = extra.where ? `🎧 ${q} (at ${extra.where.label})` : extra.voice ? `🎙 ${q}` : q;
@@ -79,7 +80,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
       setMsgs([...before, { role: 'user', text: shown }, { role: 'ai', text: a, from: answerSource() }]);
       if (answerSource() === 'ebook') setUsing('ebook');
       // Answers are read aloud (always for spoken questions); the audiobook pauses meanwhile.
-      if (extra.voice || autoRead.get()) {
+      if (voiceOn && (extra.voice || autoRead.get())) {
         if (player.getState().playing) player.pause();
         say(before.length + 1, a);
       }
@@ -191,7 +192,7 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
         )}
         {settingsOpen && (
           <div class="ask-settings">
-        {canPickVoice && (
+        {voiceOn && canPickVoice && (
           <label class="ask-voice">
             🔊 Answer voice
             <select
@@ -212,10 +213,12 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
             </select>
           </label>
         )}
-        <label class="ask-voice ask-autoread">
-          🔊 Read answers aloud
-          <input type="checkbox" class="switch" checked={readAloud} onChange={(e) => (autoRead.set(e.currentTarget.checked), e.currentTarget.checked || (stopAnswer(), setSpeaking(-1)))} />
-        </label>
+        {voiceOn && (
+          <label class="ask-voice ask-autoread">
+            🔊 Read answers aloud
+            <input type="checkbox" class="switch" checked={readAloud} onChange={(e) => (autoRead.set(e.currentTarget.checked), e.currentTarget.checked || (stopAnswer(), setSpeaking(-1)))} />
+          </label>
+        )}
             {lim && (
               <button class="ask-spoiler" onClick={() => (settings.patch({ aiNoSpoilers: false }), toast('Spoilers allowed — switch back in Settings → AI'))}>
                 🙈 No spoilers past {lim.pct}% · tap to allow
@@ -290,9 +293,11 @@ export function Ask({ book = null, description = '', genres = [], mode: startMod
                 <button onClick={async () => toast((await copyText(plain(m.text))) ? 'Copied' : 'Could not copy')}>
                   <Icon name="link" size={14} /> Copy
                 </button>
-                <button class={speaking === i ? 'on' : ''} onClick={() => say(i, m.text)}>
-                  {speaking === i ? '■ Stop' : '🔊 Listen'}
-                </button>
+                {voiceOn && (
+                  <button class={speaking === i ? 'on' : ''} onClick={() => say(i, m.text)}>
+                    {speaking === i ? '■ Stop' : '🔊 Listen'}
+                  </button>
+                )}
                 <button onClick={() => (keepAnswer(book, plain(m.text)), toast('Saved to your ideas'))}>
                   <Icon name="bookmark" size={14} /> Save
                 </button>

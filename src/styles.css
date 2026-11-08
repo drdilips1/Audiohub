@@ -11382,3 +11382,71 @@ button.notes-book-head {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
+
+.book-finish {
+  margin: 6px 20px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* Settings → Books you've read: paste a list. */
+.read-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+}
+.read-import textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid var(--line, rgba(127, 127, 127, 0.3));
+  background: var(--card, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+.read-import .row-btns {
+  display: flex;
+  gap: 8px;
+}
+
+/* Send to Audiobookshelf: the two ways (home server / upload from the phone). */
+.abs-pick {
+  border-top: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+  padding: 6px 0;
+  & p {
+    margin: 6px 4px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  & .menu-item span {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 2px;
+  }
+  & .menu-item small {
+    font-size: 12px;
+    line-height: 1.35;
+    font-weight: 400;
+  }
+}
+
+/* Home's top bar has five buttons now (drive, scene, ask, theme dice, search): on narrower
+   phones make them a little smaller so the app's name isn't cut off. */
+@media (max-width: 430px) {
+  .home-top-actions {
+    gap: 2px;
+  }
+  .home-top-actions .icon-btn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+  }
+}

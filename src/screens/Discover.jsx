@@ -16,6 +16,7 @@ import { SourceResults } from '../components/source-results.jsx';
 import { sourceAddons } from '../sources/sourceaddons.js';
 import { RelatedRows } from '../components/related.jsx';
 import { PasteLink, isLink } from '../components/paste-link.jsx';
+import { aiOn } from '../lib/ai.js';
 
 const recent = persisted('recentSearches', []);
 let pendingQuery = '';
@@ -244,7 +245,7 @@ export function Discover() {
   }, [term]);
 
   const commit = (enter) => {
-    if (enter && looksLikeRequest(q)) askNow(q);
+    if (enter && aiOn() && looksLikeRequest(q)) askNow(q);
     if (term.length < 2) return;
     recent.set((h) => [term, ...h.filter((x) => x.toLowerCase() !== term.toLowerCase())].slice(0, 8));
   };
@@ -260,7 +261,7 @@ export function Discover() {
         <input
           ref={inputRef}
           value={q}
-          placeholder="Search, describe what you want, or paste a link…"
+          placeholder={aiOn() ? 'Search, describe what you want, or paste a link…' : 'Search, or paste a link…'}
           onInput={(e) => setQ(e.currentTarget.value)}
           onKeyDown={(e) => e.key === 'Enter' && (commit(true), e.currentTarget.blur())}
           onBlur={() => commit()}
@@ -277,9 +278,11 @@ export function Discover() {
         <PasteLink q={q} />
       ) : term.length < 2 ? (
         <>
-          <button class="search-hint" onClick={() => (setQ(hint), askNow(hint))}>
-            <Icon name="sparkle" size={14} /> Try “{hint}”
-          </button>
+          {aiOn() && (
+            <button class="search-hint" onClick={() => (setQ(hint), askNow(hint))}>
+              <Icon name="sparkle" size={14} /> Try “{hint}”
+            </button>
+          )}
           {history.length > 0 && (
             <section class="recent">
               <h3>Recent</h3>
@@ -322,7 +325,7 @@ const Results = memo(function Results({ results, filter, setFilter, term, pendin
   const seed = results.au?.items?.[0] || groups.flatMap(([, i]) => i).find((b) => b.kind !== 'text') || null;
   return (
     <>
-      {term.split(/\s+/).length >= 3 && <BooksellerAnswer q={term} />}
+      {aiOn() && term.split(/\s+/).length >= 3 && <BooksellerAnswer q={term} />}
       <div class="segmented">
         {FILTERS.map(([k, label]) => (
           <button class={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>

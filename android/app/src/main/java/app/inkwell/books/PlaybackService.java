@@ -120,6 +120,11 @@ public class PlaybackService extends MediaLibraryService {
         double time = p.getCurrentPosition() / 1000.0;
         CarCatalog.saveProgress(s, CarLibrary.carBook, track, time);
         CarCatalog.touch(s, CarLibrary.carBook, track, time);
+        // From your Audiobookshelf: your place goes back to the server too (Absorb, the web player).
+        double[] starts = CarLibrary.absStarts;
+        if (CarLibrary.carBook.startsWith("abs:") && starts != null && p.getCurrentMediaItemIndex() < starts.length) {
+            CarAbs.savePlace(s, CarLibrary.carBook.substring(4), starts[p.getCurrentMediaItemIndex()] + time, CarLibrary.absTotal);
+        }
     }
 
     /** The app started its own player: the car-only one stops and lets go. */

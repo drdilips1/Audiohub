@@ -2,7 +2,7 @@
 // TorBox or Real-Debrid account, and add new magnets / links to it.
 import { getJson, sendForm, qs } from '../lib/http.js';
 import { logError } from '../lib/report.js';
-import { debrid } from '../lib/store.js';
+import { debrid, persisted, progress } from '../lib/store.js';
 import { matches } from '../lib/match.js';
 
 const AUDIO = /\.(mp3|m4a|m4b|aac|flac|ogg|oga|opus|wav|wma|mka|mp4a)$/i;
@@ -149,8 +149,14 @@ export const forget = () => {
   tbStale = true;
 };
 
-export const torboxLibrary = () => (tbConnected() ? remember('tb', torboxLibraryRaw) : Promise.resolve([]));
-export const realdebridLibrary = () => (rdConnected() ? remember('rd', realdebridLibraryRaw) : Promise.resolve([]));
+// Most recent first: whichever is later — added to the cloud, or last played.
+const recentFirst = (list) => {
+  const prog = progress.get() || {};
+  const when = (b) => Math.max(b.addedAt || 0, prog[b.uid]?.updatedAt || 0);
+  return list.slice().sort((a, b) => when(b) - when(a));
+};
+export const torboxLibrary = () => (tbConnected() ? remember('tb', torboxLibraryRaw).then(recentFirst) : Promise.resolve([]));
+export const realdebridLibrary = () => (rdConnected() ? remember('rd', realdebridLibraryRaw).then(recentFirst) : Promise.resolve([]));
 
 async function torboxLibraryRaw() {
   const bypass = tbStale;
@@ -255,8 +261,65 @@ async function tbAddFile(file) {
 // ---------------- Real-Debrid ----------------
 const rdHeaders = () => ({ Authorization: `Bearer ${rdKey()}` });
 
+// Links sent to Real-Debrid from a topic (Rapidgator, Nitroflare… — hosts TorBox doesn't take).
+// Real-Debrid has no "folder" for these, so the app keeps the group: the topic's title and its
+// host links. Each play asks Real-Debrid for fresh direct links (they expire).
+export const rdSent = persisted('rdSent', []); // [{ id, title, author, links, files: [{ name, size }], at }]
+const SENT_AUDIO = /\.(mp3|m4b|m4a|aac|ogg|opus|flac|wav)$/i;
+
+/** Send host links to Real-Debrid as one book in Your Real-Debrid. Returns { files, playable }. */
+export async function sendToRd(links, { title = '', author = '' } = {}) {
+  const files = [];
+  const ok = [];
+  let err = '';
+  for (const l of links) {
+    try {
+      const f = await unrestrict(l);
+      files.push({ name: f.name, size: f.size, link: l });
+      ok.push(l);
+    } catch (e) {
+      err = e.message;
+    }
+  }
+  if (!files.length) throw new Error(err || 'Real-Debrid could not open these links');
+  const id = Date.now().toString(36);
+  rdSent.set((all) => [{ id, title: title || files[0].name, author, links: ok, files, at: Date.now() }, ...all.filter((x) => x.title !== title)].slice(0, 100));
+  return { files, uid: `rd:l:${id}`, playable: files.filter((f) => SENT_AUDIO.test(f.name) || EBOOK.test(f.name)).length, audio: files.filter((f) => SENT_AUDIO.test(f.name)).length };
+}
+export const forgetSent = (id) => rdSent.set((all) => all.filter((x) => x.id !== id));
+
+function sentBooks() {
+  return rdSent.get().map((x) => {
+    const audio = x.files.some((f) => SENT_AUDIO.test(f.name));
+    const ebook = !audio && x.files.some((f) => EBOOK.test(f.name));
+    return { uid: `rd:l:${x.id}`, source: 'rd', kind: ebook ? 'text' : 'audio', title: x.title, author: x.author || '', cover: '', parts: x.files.length, addedAt: x.at };
+  });
+}
+
+function sentDetails(book) {
+  const x = rdSent.get().find((s) => `rd:l:${s.id}` === book.uid);
+  if (!x) throw new Error('This one is no longer in your Real-Debrid list — send it again from its topic');
+  const fresh = async (f) => (await unrestrict(f.link)).url;
+  const files = x.files.filter((f) => SENT_AUDIO.test(f.name)).sort(naturalSort);
+  const ebooks = x.files.filter((f) => EBOOK.test(f.name)).map((f) => ({ name: f.name, format: fmtOf(f.name), size: f.size, resolve: () => fresh(f) }));
+  if (!files.length && !ebooks.length)
+    throw new Error('These are archives (.rar/.zip), which can’t be streamed: open the topic → Real-Debrid links → Save, unzip, then add the folder in Library → On this phone.');
+  const where = 'sent to your Real-Debrid';
+  if (!files.length) return { ...book, kind: 'text', description: `${ebooks.length} ebook file${ebooks.length === 1 ? '' : 's'} ${where}.`, tracks: [], ebooks };
+  return {
+    ...book,
+    description: `${files.length} audio file${files.length === 1 ? '' : 's'} ${where}.`,
+    ebooks,
+    tracks: files.map((f, i) => ({ title: f.name.replace(AUDIO, ''), index: i, size: f.size || 0, resolve: () => fresh(f) })),
+  };
+}
+
 async function realdebridLibraryRaw() {
-  const items = await getJson(`${RD}/torrents?limit=200`, { headers: rdHeaders(), fresh: true });
+  const sent = sentBooks();
+  const items = await getJson(`${RD}/torrents?limit=200`, { headers: rdHeaders(), fresh: true }).catch((e) => {
+    if (sent.length) return [];
+    throw e;
+  });
   // The list endpoint has no file names, so show finished torrents whose name looks
   // like an audiobook; the detail view filters to audio files.
   return (items || [])
@@ -264,10 +327,12 @@ async function realdebridLibraryRaw() {
     .filter((t) => AUDIO.test(t.filename) || !/\.(mkv|avi|mp4|iso|exe|apk)$/i.test(t.filename))
     .filter((t) => !looksLikeVideo(t.filename))
     .filter((t) => showMusic() || !looksLikeMusic(t.filename))
-    .map((t) => ({ ...toBook('rd', 'rd', t.id, t.filename, t.links || [], t.hash ? { hash: String(t.hash).toLowerCase() } : {}), addedAt: Date.parse(t.added) || 0 }));
+    .map((t) => ({ ...toBook('rd', 'rd', t.id, t.filename, t.links || [], t.hash ? { hash: String(t.hash).toLowerCase() } : {}), addedAt: Date.parse(t.added) || 0 }))
+    .concat(sent);
 }
 
 async function rdDetails(book) {
+  if (book.uid.startsWith('rd:l:')) return sentDetails(book);
   const id = book.uid.slice(3);
   const info = await getJson(`${RD}/torrents/info/${id}`, { headers: rdHeaders(), fresh: true });
   // Links map 1:1 onto the selected files, in file order.
@@ -356,6 +421,13 @@ export async function addTorrentFile(provider, file) {
   if (!file) throw new Error('No file chosen');
   if (!/\.torrent$/i.test(file.name || '') && file.type !== 'application/x-bittorrent') throw new Error('Choose a .torrent file');
   return provider === 'torbox' ? tbAddFile(file) : rdAddFile(file);
+}
+
+/** A file-host link (Rapidgator…) through Real-Debrid: { url, name, size } of a fast direct link. */
+export async function unrestrict(link) {
+  const r = await sendForm(`${RD}/unrestrict/link`, 'POST', { link }, rdHeaders());
+  if (!r?.download) throw new Error(r?.error ? `Real-Debrid: ${r.error}` : 'Real-Debrid could not open that link');
+  return { url: r.download, name: r.filename || 'file', size: Number(r.filesize) || 0 };
 }
 
 async function rdAdd(link) {

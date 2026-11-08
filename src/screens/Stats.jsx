@@ -49,7 +49,7 @@ export function Stats() {
         <Tile label="Today" value={hm(s.today)} />
         <Tile label="This week" value={hm(s.week)} />
         <Tile label="Last 30 days" value={hm(s.month)} />
-        <Tile label="All time" value={hm(s.total)} />
+        <Tile label="All time" value={hm(s.allTime)} />
       </div>
 
       <div class="st-card st-streak">
@@ -147,7 +147,7 @@ export function Stats() {
       )}
 
       <p class="st-foot">
-        <Icon name="info" size={14} /> {reading ? 'Reading time (the reader open and in use, or reading aloud)' : 'Listening time'} is counted on this phone{since ? ` since ${since}` : ' from now on'}. Books started and finished include everything before.
+        <Icon name="info" size={14} /> {reading ? 'Reading time (the reader open and in use, or reading aloud)' : 'Listening time'} is counted on this phone{since ? ` since ${since}` : ' from now on'}. All time, Most listened and books started and finished also include everything before — as far as you've got into each book.
       </p>
       <div class="footer-space" />
     </div>

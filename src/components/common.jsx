@@ -16,7 +16,8 @@ import { openExternal } from '../sources/summaries.js';
 import { useStoryShots, chooseStoryShots } from '../sources/storyshots.js';
 import { useLocalCover } from '../sources/local.js';
 import { audioFormat } from '../sources/debrid.js';
-import { markNotInterested, notInterested, isNotInterested } from '../lib/taste.js';
+import { markNotInterested, notInterested, isNotInterested, alreadyRead, isHiddenRec } from '../lib/taste.js';
+import { aiOff } from '../lib/ai.js';
 
 export function Cover({ book, class: cls = '', eager }) {
   // A tall print cover: the square audiobook cover (Apple Books / Audible) instead, once found.
@@ -279,6 +280,7 @@ const slim = (b) => Object.fromEntries(ROW_KEEP.filter((k) => b?.[k] !== undefin
 
 export function Row({ title, subtitle, load, items: given, icon, onMore, deps = [], showErrors = false, emptyText = '', cacheKey = '', shuffle = false, rec = false }) {
   const hidden = useStore(notInterested);
+  const read = useStore(alreadyRead);
   const scroller = useRef(null);
   const [items, setItems] = useState(() => given || (cacheKey && rowCache.get()[cacheKey]) || null);
   const [error, setError] = useState(null);
@@ -350,7 +352,7 @@ export function Row({ title, subtitle, load, items: given, icon, onMore, deps = 
         )}
       </header>
       <div class="row-scroll" ref={scroller}>
-        {items ? items.filter((b) => !rec || !isNotInterested(b, hidden)).map((b) => <SafeCard key={b.uid} book={b} rec={rec} />) : Array.from({ length: 6 }, (_, i) => <Skeleton key={i} />)}
+        {items ? items.filter((b) => !rec || !isHiddenRec(b, hidden, read)).map((b) => <SafeCard key={b.uid} book={b} rec={rec} />) : Array.from({ length: 6 }, (_, i) => <Skeleton key={i} />)}
       </div>
     </section>
   );
@@ -391,6 +393,7 @@ export function Skeleton() {
 
 /** ✨ Ask AI, in the top corner of every screen: about this book, or about all your books. */
 export function AskButton({ book = null, cls = 'icon-btn ask-btn glass' }) {
+  if (useStore(aiOff)) return null; // AI switched off
   return (
     <button
       class={cls}

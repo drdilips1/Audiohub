@@ -24,7 +24,9 @@ export const autoRead = persisted('askAutoRead', true);
 export const canPickVoice = nativeReader;
 const indian = (id) => /-IN-/.test(id);
 export const ASK_VOICES = [...EDGE_VOICES.filter(([id]) => indian(id)), ...EDGE_VOICES.filter(([id]) => !indian(id))];
-export const canListen = () => native || !!WebSR;
+// Voice off (Settings → AI): no speaking to the AI and no answers read aloud — text only.
+export const aiVoiceOn = persisted('aiVoiceOn', true);
+export const canListen = () => aiVoiceOn.get() !== false && (native || !!WebSR);
 
 /** Listen once; resolves the recognised text ('' if nothing was said). */
 export function listen(prompt = 'Ask about this book') {
@@ -73,6 +75,7 @@ function edgeVoice() {
 
 /** Read an answer aloud, a few sentences at a time (so it starts quickly). */
 export async function speakAnswer(text, onDone) {
+  if (aiVoiceOn.get() === false) return onDone?.();
   const my = ++run;
   const edge = edgeVoice();
   if (edge) {
