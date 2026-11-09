@@ -89,8 +89,7 @@ export function Available({ book, editions }) {
     for (const { r, via } of quick?.fetch || []) add({ key: 'f:' + r.key, icon: 'download', label: 'Get & play', sub: `${SVC[via]}${r.seeders == null ? '' : ` · ${r.seeders} seed${r.seeders === 1 ? '' : 's'}`}${r.size ? ` · ${fmtMb(r.size)}` : ''}`, act: { kind: 'fetch', r, via } });
     for (const r of quick?.readable || []) {
       const rb = readerBookFor(r, book);
-      // One Read button per format (two EPUB links from different sources look identical).
-      if (rb && !out.some((c) => c.icon === 'book' && c.label === `Read ${rb.ebookFormat || ''}`.trim())) add({ key: 'qr:' + r.key, icon: 'book', label: `Read ${rb.ebookFormat || ''}`.trim(), sub: 'from sources', act: read(rb) });
+      if (rb) add({ key: 'qr:' + r.key, icon: 'book', label: `Read ${rb.ebookFormat || ''}`.trim(), sub: 'from sources', act: read(rb) });
     }
     // An audiobook app: ways to listen first, then ebooks to read.
     const reading = (c) => c.icon === 'book';

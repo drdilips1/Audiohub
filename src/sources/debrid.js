@@ -70,6 +70,21 @@ export const showMusic = () => !!debrid.get().showMusic;
 const VIDEO = /\b(s\d{1,2}(e\d{1,3})?|season[\s._-]?\d+|\d{3,4}p|4k|uhd|hdr|x26[45]|h\.?26[45]|hevc|av1|web[\s._-]?(dl|rip)|blu[\s._-]?ray|bdrip|brrip|hdtv|dvdrip|remux|imax|nf|amzn|dsnp|hmax|atvp|ddp?\d|dts|aac2|10bit)\b|\.(mkv|avi|mp4|m4v|mov|wmv|iso|ts)$/i;
 export const looksLikeVideo = (name) => VIDEO.test(String(name || '').replace(/[._]/g, ' ')) && !/\b(audio ?books?|unabridged|m4b|mp3)\b/i.test(String(name || ''));
 
+// An audiobook packed as an .mp4 (AAC audio in an MP4 box, often with a still cover — 400 MB
+// for a whole book): played when the item has no other audio and doesn't look like a film or TV.
+const MP4 = /\.(mp4|m4v)$/i;
+const fileName = (f) => f.name || f.short_name || f.path || '';
+const noExt = (n) => baseName(n).replace(/\.[a-z0-9]{2,4}$/i, '');
+export function audioOf(files, itemName = '', nameOf = fileName) {
+  const a = (files || []).filter((f) => AUDIO.test(nameOf(f)));
+  if (a.length || looksLikeVideo(noExt(itemName))) return a;
+  return (files || []).filter((f) => MP4.test(nameOf(f)) && !looksLikeVideo(noExt(nameOf(f))));
+}
+// In your cloud list, only when the item is clearly a book (an ebook beside it, or a book-like name),
+// so films in TorBox don't turn up as audiobooks.
+const bookishMp4 = (it) => BOOKISH.test(it.name || '') || (it.files || []).some((f) => EBOOK.test(fileName(f)));
+const TRACK_EXT = /\.[a-z0-9]{2,4}$/i;
+
 // Looks like a person's name: 2–4 capitalised words, no digits or title words.
 const TITLE_WORDS = /\b(the|of|and|a|an|in|on|to|for|how|why|what|my|your|our|with|from|book|vol|volume|part|series|habits|money|life|world|history|power|art)\b/i;
 const nameLike = (s) => {
@@ -166,7 +181,8 @@ async function torboxLibraryRaw() {
   lists.forEach((items, i) => {
     const [, code] = TB_KINDS[i];
     for (const it of items) {
-      const files = (it.files || []).filter((f) => AUDIO.test(f.name || f.short_name || ''));
+      const plain = (it.files || []).filter((f) => AUDIO.test(f.name || f.short_name || ''));
+      const files = plain.length || !bookishMp4(it) ? plain : audioOf(it.files, it.name);
       const ebooks = files.length ? [] : (it.files || []).filter((f) => EBOOK.test(f.name || f.short_name || ''));
       if (!files.length && !ebooks.length) continue;
       if (files.length && !showMusic() && looksLikeMusic(it.name, it.files || [])) continue;
@@ -192,8 +208,7 @@ async function tbDetails(book) {
   if (!it) throw new Error('This item is no longer in your TorBox account');
   const done = code !== 't' || !!(it.download_finished || it.download_present);
   const pending = done ? null : { provider: 'torbox', hash: String(it.hash || '').toLowerCase(), progress: Number(it.progress) || 0, state: it.download_state || '' };
-  const files = (it.files || [])
-    .filter((f) => AUDIO.test(f.name || f.short_name || ''))
+  const files = audioOf(it.files, it.name)
     .map((f) => ({ ...f, name: f.short_name || baseName(f.name) }))
     .sort(naturalSort);
   const tbLink = async (f) => {
@@ -222,7 +237,7 @@ async function tbDetails(book) {
     ebooks,
     fetching: pending,
     tracks: files.map((f, i) => ({
-      title: f.name.replace(AUDIO, ''),
+      title: f.name.replace(TRACK_EXT, ''),
       index: i,
       size: Number(f.size || f.bytes) || 0, // estimates the part's length before it plays
       // Download links expire, so they're requested right before playback.
@@ -340,7 +355,7 @@ async function rdDetails(book) {
   // Fewer links than files means Real-Debrid packed them into one archive: nothing to stream.
   const packedLinks = (info.links || []).length > 0 && (info.links || []).length < selected.length;
   const linked = (packedLinks ? [] : selected).map((f, i) => ({ name: baseName(f.path), link: (info.links || [])[i], size: Number(f.bytes) || 0 }));
-  const files = linked.filter((f) => f.link && AUDIO.test(f.name)).sort(naturalSort);
+  const files = audioOf(linked.filter((f) => f.link), info.filename || '').sort(naturalSort);
   const rdLink = async (f) => {
     const r = await sendForm(`${RD}/unrestrict/link`, 'POST', { link: f.link }, rdHeaders());
     if (!r?.download) throw new Error('Real-Debrid did not return a link');
@@ -395,7 +410,7 @@ async function rdDetails(book) {
     description: `${files.length} audio file${files.length === 1 ? '' : 's'} in your Real-Debrid cloud.`,
     ebooks,
     tracks: files.map((f, i) => ({
-      title: f.name.replace(AUDIO, ''),
+      title: f.name.replace(TRACK_EXT, ''),
       index: i,
       size: Number(f.size || f.bytes) || 0, // estimates the part's length before it plays
       resolve: async () => {
@@ -490,7 +505,7 @@ export async function hasAudio(book) {
   if (book.kind === 'text' || EBOOK.test(book.rawName || '')) return false;
   if (book.uid?.startsWith('tb:')) return book.kind === 'audio';
   const info = await getJson(`${RD}/torrents/info/${book.uid.slice(3)}`, { headers: rdHeaders(), fresh: true });
-  return (info.files || []).some((f) => AUDIO.test(f.path || ''));
+  return audioOf(info.files, info.filename || '').length > 0;
 }
 
 export function details(book) {
@@ -548,7 +563,7 @@ export async function torboxCached(hashes) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const tbAudioCount = (it) => (it.files || []).filter((f) => AUDIO.test(f.name || f.short_name || '')).length;
+const tbAudioCount = (it) => audioOf(it.files, it.name).length;
 
 // One torrent by id: much faster than listing the whole account.
 async function tbOne(id) {
