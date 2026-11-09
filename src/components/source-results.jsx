@@ -62,9 +62,39 @@ export function useQuickSources(uid) {
   return v;
 }
 
+// Torrents that turned out to hold only an ebook (no audio): never offered as "Play now" again.
+const NOT_AUDIO_KEY = 'audiohub_not_audio';
+const notAudio = new Set((() => {
+  try {
+    return JSON.parse(localStorage.getItem(NOT_AUDIO_KEY) || '[]');
+  } catch {
+    return [];
+  }
+})());
+const hashOf = (r) => String(r?.hash || /btih:([a-z0-9]+)/i.exec(r?.magnet || '')?.[1] || '').toLowerCase();
+const isNotAudio = (r) => !!hashOf(r) && notAudio.has(hashOf(r));
+function markNotAudio(r, uid) {
+  const h = hashOf(r);
+  if (!h) return;
+  notAudio.add(h);
+  try {
+    localStorage.setItem(NOT_AUDIO_KEY, JSON.stringify([...notAudio].slice(-300)));
+  } catch {}
+  const q = uid && quickNow[uid];
+  if (q) publishQuick(uid, { ...q, instant: (q.instant || []).filter((x) => hashOf(x.r) !== h), fetch: (q.fetch || []).filter((x) => hashOf(x.r) !== h) });
+}
+
 /** Play a source result straight away (from the Available row). */
 export async function quickPlay(r, via, book, onStatus) {
-  const stub = await cloud.prepareMagnet(via, r, (text) => onStatus?.(text));
+  let stub;
+  try {
+    stub = await cloud.prepareMagnet(via, r, (text) => onStatus?.(text));
+  } catch (e) {
+    if (!/ebook, not an audiobook/.test(e.message || '')) throw e;
+    // The release name looked like an audiobook but it's only the ebook: drop it from Play now.
+    markNotAudio(r, book?.uid);
+    throw new Error('That copy is only the ebook, not the audiobook — removed it from Play now');
+  }
   const details = await getDetails({ ...stub, title: book?.title || stub.title, author: book?.author || r.author || stub.author, cover: book?.cover || stub.cover });
   nav.openOverlay('player');
   player.playBook(details, { exact: true }); // the copy you tapped, not the phone's
@@ -231,7 +261,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
     providers.find((p) => r.cache?.[p] || (p === 'realdebrid' && r.cache?.any && !r.cache?.torbox) || account.get(r.hash)?.ready);
   const instant = shownGroups
     .map((g) => g.items[0])
-    .filter((r) => (r.magnet || r.hash) && readyVia(r) && r.contentType !== 'ebook')
+    .filter((r) => (r.magnet || r.hash) && readyVia(r) && r.contentType !== 'ebook' && !isNotAudio(r) && !qb.isEbookName(`${r.title} ${r.format || ''}`))
     .map((r) => ({ r, via: readyVia(r) }));
   const readable = linkGroups
     .flatMap((g) => g.items)
@@ -241,7 +271,7 @@ export function SourceResults({ title: rawTitle = '', author: rawAuthor = '', qu
     ? shownGroups
         .map((g) => g.items[0])
         
-        .filter((r) => (r.magnet || r.hash) && !readyVia(r) && (r.seeders == null || r.seeders > 0) && r.contentType !== 'ebook' && !qb.isEbookName(`${r.title} ${r.format || ''}`))
+        .filter((r) => (r.magnet || r.hash) && !readyVia(r) && (r.seeders == null || r.seeders > 0) && r.contentType !== 'ebook' && !isNotAudio(r) && !qb.isEbookName(`${r.title} ${r.format || ''}`))
         .map((r) => ({ r, via: provider }))
     : [];
   const quickKey = `${instant.map((x) => x.r.key + x.via).join()}|${readable.map((r) => r.key).join()}|${fetchable.map((x) => x.r.key).join()}`;
