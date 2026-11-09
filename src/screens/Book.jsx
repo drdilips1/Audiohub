@@ -728,7 +728,9 @@ const fmtK = (n) =>
 /** Rating · length · year in one strip, Apple Books style. Tap the rating for reviews. */
 function StatsStrip({ book, tracks }) {
   const { goodreads, audible } = useRatings(book);
-  const r = goodreads || audible;
+  // When the lookups don't answer (busy, offline): the book's own catalogue stars (Audible results carry them).
+  const own = book.rating > 0 ? { rating: Number(book.rating), count: Number(book.ratings) || 0, from: "Rating" } : null;
+  const r = goodreads || audible || own;
   const cells = [];
   if (r)
     cells.push(
