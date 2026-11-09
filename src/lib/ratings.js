@@ -6,6 +6,9 @@ import { stripHtml } from './format.js';
 import { persisted } from './store.js';
 import { words, mainTitle, searchTitle } from './match.js';
 import * as hcSrc from '../sources/hardcover.js';
+import { logError } from './report.js';
+
+const logged = new Set();
 
 const cache = persisted('ratingsCache', {}, { delay: 2000 }); // key -> { t, v }
 
@@ -360,7 +363,14 @@ export function useRatings(book) {
       if (!alive) return;
       if (v) return setR((x) => ({ ...x, goodreads: v }));
       if (v === undefined && tries > 0) return timers.push(setTimeout(() => goodreads(book).then((w) => done(w, tries - 1)), 8000));
-      setR((x) => ({ ...x, why: `Goodreads: ${whyNoRating('gr8', norm(book)) || 'no answer'}` }));
+      const w = `Goodreads: ${whyNoRating('gr8', norm(book)) || 'no answer'}`;
+      setR((x) => ({ ...x, why: w }));
+      // For Report a problem: why this book shows no rating (once per book per session).
+      const k = keyFor(norm(book));
+      if (!logged.has(k)) {
+        logged.add(k);
+        audibleStars(book).then((a) => !a && logError('Ratings', `no rating for "${book.title}" — ${w}, Audible: ${whyNoRating(`au7-${MARKET}`, norm(book)) || (a === null ? 'not found' : 'no answer')}`));
+      }
     });
     return () => {
       alive = false;

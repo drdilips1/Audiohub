@@ -6,7 +6,15 @@ import { cleanAuthor } from '../lib/match.js';
 
 const big = (u) => String(u || '').replace(/^http:/, 'https:').replace(/\/\d+x\d+(bb)?\./, '/1000x1000bb.');
 const clean = (t) => String(t || '').replace(/\s*\((unabridged|abridged)\)\s*$/i, '').trim();
-const strip = (h) => String(h || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+// Apple's text has HTML and entities ("&#xa0;", "&#8217;", "&nbsp;"): plain text, with no-break spaces as spaces.
+const ENT = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', mdash: '—', ndash: '–', hellip: '…' };
+const entities = (t) =>
+  t
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&([a-z]+);/gi, (m, n) => ENT[n.toLowerCase()] ?? m)
+    .replace(/\u00a0/g, ' ');
+const strip = (h) => entities(String(h || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>\s*/gi, '\n\n').replace(/<[^>]+>/g, '')).replace(/\n{3,}/g, '\n\n').trim();
 
 const toBook = (r) => ({
   uid: `it:${r.collectionId || r.trackId}`,
