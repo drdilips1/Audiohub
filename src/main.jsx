@@ -29,11 +29,11 @@ try {
   ['inkwell:libby', 'inkwell:libbyAccount', 'inkwell:m4bChapters'].forEach((k) => localStorage.removeItem(k));
 } catch {}
 
-// Gemini and Mistral were replaced by Groq / OpenRouter: drop their old keys.
+// Mistral (and the old single "model" setting) were dropped: clear them once. Gemini is a
+// choice again — its key must stay (this used to delete it on every start).
 try {
   const a = JSON.parse(localStorage.getItem('inkwell:ai') || 'null');
-  if (a && ('geminiKey' in a || 'model' in a || 'mistralKey' in a)) {
-    delete a.geminiKey;
+  if (a && ('model' in a || 'mistralKey' in a)) {
     delete a.mistralKey;
     delete a.model;
     localStorage.setItem('inkwell:ai', JSON.stringify(a));
