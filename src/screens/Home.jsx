@@ -32,6 +32,20 @@ import { rollTheme, previousLook } from '../lib/theme.js';
 // Shows the last banner instantly, then merges each service as it answers
 // (a slow service never holds the others back).
 const heroCache = persisted('heroCache', { items: [] });
+// Books the banner has actually shown, and when (a few days kept): it brings new ones first,
+// and a book seen recently goes to the back.
+const heroSeen = persisted('heroSeen', {}, { delay: 2000 }); // uid -> when last on screen
+const HERO_FORGET = 4 * 864e5;
+function markHeroSeen(uid) {
+  if (!uid) return;
+  heroSeen.set((m) => {
+    const now = Date.now();
+    const next = {};
+    for (const [k, t] of Object.entries(m)) if (now - t < HERO_FORGET) next[k] = t;
+    next[uid] = now;
+    return next;
+  });
+}
 
 // Recommendations lead the banner: picks from your taste (AI with a free key,
 // otherwise Audible's "listeners also enjoyed")
@@ -55,9 +69,32 @@ async function topRated() {
 // save and rate), Psychology / Science / History until the app knows you better.
 const FICTION = /fiction|romance|fantasy|thriller|mystery|suspense|horror|teen|young adult|children|erotica|sci-fi|science fiction|litrpg|graphic novel|comics/i;
 const isFiction = (b) => (b.genres || []).some((g) => FICTION.test(g));
-const nonFiction = (list) => (list || []).filter((b) => !isFiction(b));
+// Settings → Your taste → Fiction too: novels stay in.
+const nonFiction = (list) => (settings.get().tasteFiction ? list || [] : (list || []).filter((b) => !isFiction(b)));
 const DEFAULT_TOPICS = ['Psychology & Human Behavior', 'Science & Biology', 'History & Civilization'];
+/** The topics the app learned from what you listen to, save and rate (up to `n`). */
+export function learnedTopics(n = 3) {
+  const p = profile();
+  return GENRES.filter((g) => g.au)
+    .map((g) => {
+      let w = 0;
+      for (const [name, v] of p.genres) if (g.match.test(name)) w += v.w;
+      return [g, w];
+    })
+    .filter(([, w]) => w > 0)
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, n)
+    .map(([g]) => g);
+}
 export function tasteTopics() {
+  // Picked in Settings → Your taste: those first (or only them).
+  const st = settings.get();
+  const picked = GENRES.filter((g) => g.au && (st.tastePicks || []).includes(g.name));
+  if (picked.length && st.tastePicksOnly) return picked;
+  if (picked.length) {
+    const more = learnedTopics(5).filter((g) => !picked.includes(g));
+    return [...picked, ...more].slice(0, Math.max(3, picked.length));
+  }
   const p = profile();
   const scored = GENRES.filter((g) => g.au) // the non-fiction categories
     .map((g) => {
@@ -142,14 +179,21 @@ function heroSources() {
   return list.sort((a, b) => rank(a[2]) - rank(b[2]));
 }
 
-/** Shuffle, with books the banner showed last time moved to the back — each refresh brings new ones. */
-function freshFirst(list, shown) {
+/**
+ * Shuffle, books not seen lately first; ones the banner showed in the last few days go to the
+ * back (the longer ago, the sooner they come back). Each group gives at most `max` books, so a
+ * short list (what you're in the middle of) doesn't fill the banner.
+ */
+function freshFirst(list, max = 6) {
+  const seen = heroSeen.get();
   const a = [...list];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
-  return [...a.filter((b) => !shown.has(b.uid)), ...a.filter((b) => shown.has(b.uid))];
+  const fresh = a.filter((b) => !seen[b.uid]);
+  const old = a.filter((b) => seen[b.uid]).sort((x, y) => seen[x.uid] - seen[y.uid]);
+  return [...fresh, ...old].slice(0, max);
 }
 
 function roundRobin(groups) {
@@ -308,10 +352,24 @@ function Hero() {
   const [items, setItems] = useState(() => (heroCache.get().items.length ? heroCache.get().items : null));
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(0);
+  // A new set when you come back to the app after 30 minutes or more.
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    let away = 0;
+    const vis = () => {
+      if (document.visibilityState === 'hidden') away = Date.now();
+      else if (away && Date.now() - away > 30 * 60e3) setRound((r) => r + 1);
+    };
+    document.addEventListener('visibilitychange', vis);
+    return () => document.removeEventListener('visibilitychange', vis);
+  }, []);
+  // What's actually on screen counts as seen.
+  useEffect(() => {
+    if (items?.length) markHeroSeen(items[i % items.length]?.uid);
+  }, [i, items]);
   useEffect(() => {
     const sources = heroSources();
     const groups = new Array(sources.length).fill(null);
-    const shown = new Set((heroCache.get().items || []).map((b) => b.uid));
     let alive = true;
     let pending = sources.length;
     let lastIds = '';
@@ -331,7 +389,7 @@ function Hero() {
       }
     };
     if (!sources.length) return publish(), () => (alive = false);
-    sources.forEach(([load, tag], k) => {
+    sources.forEach(([load, tag, kind], k) => {
       // A slow service stops blocking the free fallback after 8s, but its books still join the banner when they arrive.
       let settled = false;
       const settle = () => {
@@ -343,12 +401,12 @@ function Hero() {
       setTimeout(settle, 8000);
       Promise.resolve()
         .then(load)
-        .then((r) => (groups[k] = freshFirst(r || [], shown).map((x) => ({ ...x, heroTag: tag }))))
+        .then((r) => (groups[k] = freshFirst(r || [], kind === 'ai' || kind === 'top' ? 6 : 2).map((x) => ({ ...x, heroTag: tag }))))
         .catch(() => {})
         .finally(settle);
     });
     return () => (alive = false);
-  }, []);
+  }, [round]);
   // One steady timer: books arriving from slower services don't restart it.
   const count = useRef(0);
   count.current = items?.length || 0;
@@ -683,7 +741,7 @@ export function Home() {
           case 'plan':
             return <PlanRow key={id} />;
           case 'rec':
-            return <Row key={id} title="Recommended for you" subtitle="Non-fiction from your listening and ratings" icon="sparkle" cacheKey="homeRec" shuffle rec load={recommendedForYou} deps={[]} />;
+            return <Row key={id} title="Recommended for you" subtitle={settings.get().tasteFiction ? "From your listening and ratings" : "Non-fiction from your listening and ratings"} icon="sparkle" cacheKey="homeRec" shuffle rec load={recommendedForYou} deps={[]} />;
           case 'new':
             return <Row key={id} title="New releases" subtitle={`New in ${topicNames()}`} icon="flame" cacheKey="homeNew" shuffle rec load={newReleases} deps={[]} />;
           case 'top':

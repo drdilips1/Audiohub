@@ -1,3 +1,6 @@
+import { metaNow, lookup, metaFixes } from "../lib/meta.js";
+import { preferredCopy, preferredFor, setPreferred, judge, workKey } from "../lib/editions.js";
+import { findOwned, localSrc as phoneSrc } from "../sources/index.js";
 import { BgImage } from "../components/bg-image.jsx";
 import { BookBookmarks } from '../components/bookmarks.jsx';
 import { useEffect, useRef, useState } from "preact/hooks";
@@ -7,7 +10,6 @@ import {
   Row,
   BookCard,
   toast,
-  AskButton,
 } from "../components/common.jsx";
 import { Icon } from "../components/icons.jsx";
 import {
@@ -25,7 +27,7 @@ import * as qb from "../sources/qbit.js";
 import { canSendToKindle, sendToKindle, shareEbook } from "../lib/kindle.js";
 import { cloudReaderBook } from "../lib/epub.js";
 import { openSearch } from "./Discover.jsx";
-import { mainTitle, searchTitle } from "../lib/match.js";
+import { mainTitle, searchTitle, matches, surname } from "../lib/match.js";
 import { STARTERS } from "../lib/askbook.js";
 import { SourceResults } from "../components/source-results.jsx";
 import { FixDetails } from "../components/fix-details.jsx";
@@ -117,10 +119,25 @@ export function Book({ book: initial }) {
     return () => (alive = false);
   }, [initial.uid]);
 
+  // Details you edited by hand (⋯ → Edit title, author, narrator): shown at once.
+  useEffect(
+    () =>
+      metaFixes.subscribe((all) => {
+        const f = all?.[initial.uid];
+        if (f?.edited) setBook((b) => ({ ...b, title: f.title || b.title, author: f.author ?? b.author, narrator: f.narrator ?? b.narrator, series: f.series ?? b.series, year: f.year || b.year }));
+      }),
+    [initial.uid],
+  );
   const listen = (opts) => {
     if (isCurrent && !opts) return player.toggle();
     nav.openOverlay("player");
-    player.playBook(book, opts);
+    // The copy you chose to play first (Your copies): that one, exactly.
+    const pref = preferredFor(book);
+    if (pref && pref.uid !== book.uid)
+      return getDetails(pref)
+        .then((d) => player.playBook(d, { ...(opts || {}), exact: true }))
+        .catch(() => player.playBook(book, opts));
+    player.playBook(book, pref?.uid === book.uid ? { ...(opts || {}), exact: true } : opts);
   };
   const canListen = book.kind === "audio";
   // Ebook files in your TorBox / Real-Debrid: EPUB opens in the reader.
@@ -134,6 +151,13 @@ export function Book({ book: initial }) {
   const partsOpen = showParts ?? tracks.length <= 5;
   const pct = prog ? Math.round((prog.percent || 0) * 100) : 0;
   const authorKey = (book.author || "").split(",")[0].trim();
+  // What Sources search with: a cloud / phone file's tidy title and author (found or picked —
+  // "The Selfish Gene Unabridged 2_005" with no author is "The Selfish Gene", Richard Dawkins),
+  // so its results aren't all "loose matches".
+  const found = metaNow(book) || metaNow(initial);
+  const fileNamed = ["tb", "rd", "loc", "addon"].includes(book.source);
+  const srcTitle = searchTitle((found?.fixed || fileNamed) && found?.title ? found.title : book.title);
+  const srcAuthor = ((found?.fixed || !book.author) && found?.author ? found.author : book.author || "").split(",")[0].trim();
 
   return (
     <div class="screen book" style={color ? { "--dyn": color } : null}>
@@ -151,17 +175,6 @@ export function Book({ book: initial }) {
           </button>
           <span />
           <div class="topbar-right">
-            {book.source !== "pod" && <AskButton book={book} glass />}
-            <button
-              class={"icon-btn glass" + (saved ? " liked" : "")}
-              aria-label={saved ? "Remove from library" : "Add to library"}
-              onClick={() => {
-                toggleLibrary(book);
-                toast(saved ? "Removed from your library" : "Added to your library (not downloaded — use Download for that)");
-              }}
-            >
-              <Icon name="heart" fill={saved} />
-            </button>
             {book.source !== "pod" && (
               <button
                 class="icon-btn glass"
@@ -178,8 +191,9 @@ export function Book({ book: initial }) {
           <h1>{book.title}</h1>
           {book.author && <p class="book-author">{book.author}</p>}
           {book.narrator && (
-            <p class="book-narrator">Narrated by {book.narrator}</p>
+            <p class="book-narrator">Read by {book.narrator}</p>
           )}
+          <HeroFacts book={book} tracks={tracks} />
           <div class="book-meta">
             <SourceBadge uid={book.uid} book={book} />
             {book.series && <span>{book.series}</span>}
@@ -197,7 +211,6 @@ export function Book({ book: initial }) {
       </div>
 
       <div class="book-body">
-      <StatsStrip book={book} tracks={tracks} />
       {book.source !== "pod" && book.source !== "sum" && (
         <Available book={book} editions={editions} />
       )}
@@ -235,29 +248,6 @@ export function Book({ book: initial }) {
               : pct > 0 && !prog.finished
                 ? `Resume · ${pct}%`
                 : "Listen now"}
-          </button>
-        )}
-        {canSendToKindle(book) && (
-          <button
-            class="btn secondary big kindle-btn"
-            disabled={kindleBusy}
-            onClick={async () => {
-              setKindleBusy(true);
-              try {
-                await sendToKindle(book);
-              } catch (e) {
-                toast(e.message);
-              } finally {
-                setKindleBusy(false);
-              }
-            }}
-          >
-            {kindleBusy ? (
-              <span class="spinner" />
-            ) : (
-              <Icon name="upload" size={18} />
-            )}{" "}
-            Send to Kindle
           </button>
         )}
         {canRead && (
@@ -298,87 +288,79 @@ export function Book({ book: initial }) {
             Listen
           </button>
         )}
+        {/* Quiet squares beside the main button: save to phone, your library, Kindle. */}
+        {canListen && canDownload && book.source !== "tts" && book.source !== "loc" && (
+          <button
+            class={"btn secondary big sq" + (dl?.status === "done" ? " ok" : "")}
+            aria-label={dl?.status === "done" ? "On this phone — remove" : dl?.status === "downloading" ? "Stop downloading" : "Download to this phone"}
+            disabled={!dl && loading && !book.tracks && !book.resolveTracks}
+            onClick={() => {
+              if (dl?.status === "done") return confirm("Remove the download from this phone?") && removeDownload(book.uid).then(() => toast("Download removed"));
+              if (dl?.status === "downloading") return confirm("Stop downloading?") && cancelDownload(book.uid);
+              downloadBook(book, { resume: !!dl })
+                .then(() => downloads.get()[book.uid]?.status === "done" && toast("Downloaded — plays offline now"))
+                .catch((e) => e.message !== "cancelled" && toast(e.message));
+            }}
+          >
+            {dl?.status === "downloading" ? <span class="spinner small" /> : <Icon name={dl?.status === "done" ? "check" : "download"} size={20} />}
+          </button>
+        )}
+        {book.source !== "pod" && (
+          <button
+            class={"btn secondary big sq" + (saved ? " liked" : "")}
+            aria-label={saved ? "Remove from library" : "Add to library"}
+            onClick={() => {
+              toggleLibrary(book);
+              toast(saved ? "Removed from your library" : "Added to your library");
+            }}
+          >
+            <Icon name="heart" size={20} fill={saved} />
+          </button>
+        )}
+        {canSendToKindle(book) && (
+          <button
+            class="btn secondary big sq"
+            aria-label="Send to Kindle"
+            disabled={kindleBusy}
+            onClick={async () => {
+              setKindleBusy(true);
+              try {
+                await sendToKindle(book);
+              } catch (e) {
+                toast(e.message);
+              } finally {
+                setKindleBusy(false);
+              }
+            }}
+          >
+            {kindleBusy ? <span class="spinner small" /> : <Icon name="upload" size={20} />}
+          </button>
+        )}
       </div>
       {cloudEbooks.length > 0 && (
         <CloudEbooks book={book} files={cloudEbooks} />
       )}
-      {((canListen && canDownload && book.source !== "tts" && book.source !== "loc") ||
-        (book.hash &&
+      {/* Downloading: how far it is (the square beside Play starts and stops it). */}
+      {dl?.status === "downloading" && (
+        <div class="book-dl">
+          <span>
+            Saving to this phone · part {Math.min((dl.done || 0) + 1, dl.total || 1)} of {dl.total || "…"}
+            {dl.currentTotal > 0 ? ` · ${Math.round((dl.current / dl.currentTotal) * 100)}%` : ""}
+          </span>
+          <span class="progress-bar">
+            <span style={{ width: `${dl.total ? (((dl.done || 0) + (dl.currentTotal ? dl.current / dl.currentTotal : 0)) / dl.total) * 100 : 2}%` }} />
+          </span>
+        </div>
+      )}
+      {(dl?.status === "error" || dl?.status === "paused") && (
+        <p class="book-dl-note">
+          {dl.status === "error" ? dl.error || "The download stopped" : `${dl.done || 0} of ${dl.total || "?"} parts saved`} — tap <Icon name="download" size={13} /> to {dl.status === "error" ? "try again" : "carry on"}
+        </p>
+      )}
+      {(book.hash &&
           (book.source === "tb" || book.source === "rd") &&
-          qb.available)) && (
+          qb.available) && (
         <div class="book-tools">
-          {canListen &&
-            canDownload &&
-            book.source !== "tts" &&
-            book.source !== "loc" &&
-            (!dl || dl.status === "error" || dl.status === "paused" ? (
-              <button
-                class="tool"
-                disabled={loading && !book.tracks && !book.resolveTracks}
-                onClick={() =>
-                  downloadBook(book, { resume: !!dl })
-                    .then(() => downloads.get()[book.uid]?.status === "done" && toast("Downloaded — plays offline now"))
-                    .catch((e) => e.message !== "cancelled" && toast(e.message))
-                }
-              >
-                <span class="tool-icon">
-                  <Icon name="download" size={18} />
-                </span>
-                <span class="tool-text">
-                  <b>{dl?.status === "error" ? "Retry download" : dl?.status === "paused" ? "Resume download" : "Download"}</b>
-                  <small>
-                    {dl?.status === "error"
-                      ? dl.error || "Download failed"
-                      : dl?.status === "paused"
-                        ? `${dl.done || 0} of ${dl.total || "?"} parts saved`
-                        : "Plays without internet"}
-                  </small>
-                </span>
-              </button>
-            ) : dl.status === "done" ? (
-              <button
-                class="tool done"
-                onClick={() =>
-                  confirm("Remove the download from this phone?") &&
-                  removeDownload(book.uid).then(() => toast("Download removed"))
-                }
-              >
-                <span class="tool-icon">
-                  <Icon name="check" size={18} />
-                </span>
-                <span class="tool-text">
-                  <b>On this phone</b>
-                  <small>{fmtBytes(dl.bytes)} · tap to remove</small>
-                </span>
-              </button>
-            ) : (
-              <button
-                class="tool busy"
-                onClick={() =>
-                  confirm("Stop downloading?") && cancelDownload(book.uid)
-                }
-              >
-                <span class="tool-icon">
-                  <span class="spinner small" />
-                </span>
-                <span class="tool-text">
-                  <b>
-                    Part {Math.min((dl.done || 0) + 1, dl.total || 1)} of{" "}
-                    {dl.total || "…"}
-                    {dl.currentTotal > 0
-                      ? ` · ${Math.round((dl.current / dl.currentTotal) * 100)}%`
-                      : ""}
-                  </b>
-                  <span class="progress-bar">
-                    <span
-                      style={{
-                        width: `${dl.total ? (((dl.done || 0) + (dl.currentTotal ? dl.current / dl.currentTotal : 0)) / dl.total) * 100 : 2}%`,
-                      }}
-                    />
-                  </span>
-                </span>
-              </button>
-            ))}
           {book.hash &&
             (book.source === "tb" || book.source === "rd") &&
             qb.available && (
@@ -446,10 +428,18 @@ export function Book({ book: initial }) {
         </div>
       )}
       {pct > 0 && (
-        <div class="progress-bar book-progress">
-          <div style={{ width: pct + "%" }} />
+        <div class="book-prog">
+          <small>
+            {prog.finished ? "Finished" : `${pct}% ${canRead ? "read" : "listened"}`}
+            {!prog.finished && !canRead && book.duration > 0 ? ` · ${fmtDuration(book.duration * (1 - pct / 100))} left` : ""}
+          </small>
+          <div class="progress-bar book-progress">
+            <div style={{ width: pct + "%" }} />
+          </div>
         </div>
       )}
+      {book.partsCheck && <BookCheck check={book.partsCheck} />}
+      {canListen && <CopiesCheck book={book} />}
       <AbsSending uid={initial.uid} />
       {pct > 0 && !prog.finished && !canRead && finishLine(initial.uid) && <p class="book-finish">{finishLine(initial.uid)}</p>}
 
@@ -522,8 +512,8 @@ export function Book({ book: initial }) {
       <YourCopies editions={editions} />
       {book.kind === "discover" && sourceAddons().length > 0 && !loading && (
         <SourceResults
-          title={searchTitle(book.title)}
-          author={(book.author || "").split(",")[0].trim()}
+          title={srcTitle}
+          author={srcAuthor}
           book={book}
         />
       )}
@@ -533,8 +523,8 @@ export function Book({ book: initial }) {
         !loading && (
           <section class="pad">
             <SourceResults
-              title={searchTitle(book.title)}
-              author={(book.author || "").split(",")[0].trim()}
+              title={srcTitle}
+              author={srcAuthor}
               book={book}
             />
           </section>
@@ -726,51 +716,148 @@ const fmtK = (n) =>
 
 /** Ratings across services and awards, as a row of badges: "4.6 (1.2k)"; tap one for its reviews. */
 /** Rating · length · year in one strip, Apple Books style. Tap the rating for reviews. */
-function StatsStrip({ book, tracks }) {
+/**
+ * Your copies of this book, side by side: where, narrator, length, format — each compared with
+ * the full audiobook's length (Audible): FULL, ABRIDGED?, MAYBE INCOMPLETE, OTHER NARRATOR.
+ * Tap the circle to choose the copy Play uses. Shown when there's more than one, or one is short.
+ */
+function CopiesCheck({ book }) {
+  const local = useStore(phoneSrc.localCfg);
+  const prefs = useStore(preferredCopy);
+  const [owned, setOwned] = useState(null);
+  const [full, setFull] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    setOwned(null);
+    setFull(null);
+    findOwned(book).then((o) => alive && setOwned(o), () => alive && setOwned({ server: [], cloud: [] }));
+    lookup(book).then((m) => alive && setFull(m && m.runtime > 0 ? m : null), () => {});
+    return () => (alive = false);
+  }, [book.uid]);
+  const t = mainTitle(book.title || "");
+  const sn = surname(book.author || "");
+  const same = (b) => b && b.kind !== "text" && matches(t, `${b.title || ""} ${b.rawName || ""}`) && (!sn || !b.author || surname(b.author) === sn);
+  const seen = new Set();
+  const copies = [book, ...(local.books || []).filter(same), ...(owned?.server || []).filter(same), ...(owned?.cloud || []).filter(same)].filter((c) => c?.uid && !seen.has(c.uid) && seen.add(c.uid));
+  const judged = copies.map((c) => ({ c, j: judge(c, full) }));
+  const short = judged.some(({ j }) => j.tag === "abridged" || j.tag === "incomplete");
+  if (copies.length < 2 && !short) return null;
+  const pref = prefs[workKey(book)]?.uid || "";
+  const WHERE = { loc: "On this phone", abs: "Your Audiobookshelf", tb: "TorBox", rd: "Real-Debrid", url: "Link" };
+  const TAG = { full: ["FULL", "ok"], abridged: ["ABRIDGED?", "warn"], incomplete: ["MAYBE INCOMPLETE", "bad"] };
+  const hm = (s) => fmtDuration(s);
+  return (
+    <section class="copies-check">
+      <h4>
+        Your copies · {copies.length}
+        {full?.runtime > 0 && <small> · full audiobook {hm(full.runtime)}</small>}
+      </h4>
+      {judged.map(({ c, j }, k) => {
+        const chosen = pref ? pref === c.uid : k === 0;
+        const note =
+          j.tag === "abridged" ? `About ${Math.round(j.ratio * 100)}% of the full audiobook's length — probably a shortened edition.`
+          : j.tag === "incomplete" ? `${hm(Math.max(0, full.runtime - j.len))} shorter than the full audiobook — parts may be missing.`
+          : "";
+        return (
+          <div class={"cc-copy" + (chosen ? " on" : "")}>
+            <div class="cc-top">
+              <b>{WHERE[c.source] || c.addonName || "Copy"}</b>
+              <button class={"cc-radio" + (chosen ? " on" : "")} aria-label="Play this copy first" onClick={() => (setPreferred(book, c), toast(`Play uses ${WHERE[c.source] || "this copy"} for this book`))} />
+            </div>
+            <small class="cc-meta">{[c.narrator && `Read by ${c.narrator}`, j.len > 0 && hm(j.len), c.format].filter(Boolean).join(" · ") || "Length not known yet"}</small>
+            {j.ratio > 0 && (
+              <div class="cc-bar">
+                <span>
+                  <i class={TAG[j.tag]?.[1] || ""} style={{ width: Math.min(100, Math.round(j.ratio * 100)) + "%" }} />
+                </span>
+                <small>{j.tag === "full" ? "complete" : `${Math.round(j.ratio * 100)}% length`}</small>
+              </div>
+            )}
+            <div class="cc-tags">
+              {TAG[j.tag] && <span class={"cc-tag " + TAG[j.tag][1]}>{TAG[j.tag][0]}</span>}
+              {j.otherNarrator && <span class="cc-tag">OTHER NARRATOR</span>}
+              {c.partsCheck?.missing?.length > 0 && <span class="cc-tag">PART{c.partsCheck.missing.length > 1 ? "S" : ""} {c.partsCheck.missing.slice(0, 3).join(", ")} MISSING</span>}
+              {chosen && copies.length > 1 && <span class="cc-tag">PLAYS FIRST</span>}
+            </div>
+            {note && <small class="cc-note">{note}</small>}
+          </div>
+        );
+      })}
+      {!full && copies.length > 1 && <small class="cc-foot">The full audiobook's length wasn't found, so copies aren't compared yet.</small>}
+    </section>
+  );
+}
+
+/**
+ * Book check (multipart books): a part missing from the numbering, duplicate copies skipped,
+ * parts put back in number order. Shown only when there's something to say.
+ */
+function BookCheck({ check }) {
+  const items = [];
+  const list = (ns) => (ns.length > 3 ? `${ns.slice(0, 3).join(", ")}…` : ns.join(ns.length === 2 ? " and " : ", "));
+  if (check.missing?.length)
+    items.push({
+      warn: true,
+      title: check.missing.length === 1 ? `Part ${check.missing[0]} seems to be missing` : `Parts ${list(check.missing)} seem to be missing`,
+      sub: "The numbering skips them — the player says so when it gets there. Another copy (Available, Sources) may have them.",
+    });
+  if (check.dupes?.length)
+    items.push({ title: `${check.dupes.length} duplicate part${check.dupes.length === 1 ? "" : "s"} skipped`, sub: check.dupes.slice(0, 3).map((n) => `“${n}”`).join(", ") });
+  else if (check.dupesFound?.length && check.kept)
+    items.push({ warn: true, title: `${check.dupesFound.length} duplicate part${check.dupesFound.length === 1 ? "" : "s"}`, sub: "Left as they are while you're in the middle of the book — skipped when you start it again" });
+  if (check.reordered) items.push({ title: "Parts put back in order", sub: "By their numbers, not the file names' sort or dates" });
+  else if (check.outOfOrder && check.kept) items.push({ warn: true, title: "Some parts are out of order", sub: "Left as they are while you're in the middle of the book — put in order when you start it again" });
+  if (!items.length) return null;
+  return (
+    <section class="book-check">
+      <h4>
+        Book check <small>· when it opened</small>
+      </h4>
+      {items.map((x) => (
+        <div class="bc-item">
+          <span class={"bc-ic" + (x.warn ? " warn" : "")}>{x.warn ? "!" : <Icon name="check" size={13} />}</span>
+          <div>
+            <b>{x.title}</b>
+            <small>{x.sub}</small>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** Under the title, two quiet lines: length · parts · year · language, then the ratings. */
+function HeroFacts({ book, tracks }) {
   const { goodreads, audible } = useRatings(book);
   // When the lookups don't answer (busy, offline): the book's own catalogue stars (Audible results carry them).
-  const own = book.rating > 0 ? { rating: Number(book.rating), count: Number(book.ratings) || 0, from: "Rating" } : null;
-  const r = goodreads || audible || own;
-  const cells = [];
-  if (r)
-    cells.push(
-      <button class="stat" onClick={() => r.url && openExternal(r.url)}>
-        <b>
-          {r.rating.toFixed(goodreads ? 2 : 1)} <Icon name="star" size={13} fill />
-        </b>
-        <small>{r.count > 0 ? `${fmtK(r.count)} ratings` : r.from}</small>
-      </button>,
-    );
-  if (book.duration > 0)
-    cells.push(
-      <div class="stat">
-        <b>{fmtDuration(book.duration)}</b>
-        <small>Length</small>
-      </div>,
-    );
-  if (tracks.length > 1)
-    cells.push(
-      <div class="stat">
-        <b>{tracks.length}</b>
-        <small>Parts</small>
-      </div>,
-    );
-  if (book.year)
-    cells.push(
-      <div class="stat">
-        <b>{book.year}</b>
-        <small>Released</small>
-      </div>,
-    );
-  if (book.language && cells.length < 4)
-    cells.push(
-      <div class="stat">
-        <b>{String(book.language).slice(0, 10)}</b>
-        <small>Language</small>
-      </div>,
-    );
-  if (!cells.length) return null;
-  return <div class="stats-strip">{cells}</div>;
+  const own = !goodreads && !audible && book.rating > 0 ? { rating: Number(book.rating), count: Number(book.ratings) || 0 } : null;
+  const facts = [
+    book.duration > 0 && fmtDuration(book.duration),
+    tracks.length > 1 && `${tracks.length} parts`,
+    book.year,
+    book.language && String(book.language).slice(0, 12),
+  ].filter(Boolean);
+  const rates = [
+    goodreads && { r: goodreads, label: "Goodreads", d: 2 },
+    audible && { r: audible, label: "Audible", d: 1 },
+    own && { r: own, label: "", d: 1 },
+  ].filter(Boolean);
+  return (
+    <>
+      {facts.length > 0 && <p class="book-facts">{facts.join(" · ")}</p>}
+      {rates.length > 0 && (
+        <div class="book-rates">
+          {rates.map(({ r, label, d }) => (
+            <button class="book-rate" onClick={() => r.url && openExternal(r.url)}>
+              <Icon name="star" size={13} fill /> <b>{r.rating.toFixed(d)}</b>
+              {label ? ` ${label}` : ""}
+              {r.count > 0 ? ` · ${fmtK(r.count)}` : ""}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 /** Your own verdict: how you found it, the story and the narration, and why if it didn't work. Feeds your picks. */

@@ -2,7 +2,7 @@
 // finished, are listening to and saved). Used to rank recommendations, explain each
 // pick ("why this pick"), give it a match %, and hold back poorly rated or poorly
 // narrated titles.
-import { persisted, library, progress } from './store.js';
+import { persisted, library, progress, settings } from './store.js';
 import { words, mainTitle } from './match.js';
 
 // key -> { verdict, story, narration, reasons[], title, author, narrator, genres[], updatedAt }
@@ -105,13 +105,16 @@ export function profile() {
   // "Not interested": a gentle push away from that author and those genres.
   for (const n of Object.values(notInterested.get())) feed(n, -0.8, { story: -0.8 });
   // Then what you've finished, are listening to, and saved.
-  for (const p of Object.values(progress.get())) if (p?.book) feed(p.book, p.finished ? 0.8 : 0.3, { verdict: p.finished ? 'finished' : 'listening' });
-  for (const b of Object.values(library.get())) if (b) feed(b, 0.2, { verdict: 'saved' });
+  // "Start fresh" (Settings → Your taste): what came before it no longer counts.
+  const since = Number(settings.get().tasteSince) || 0;
+  for (const p of Object.values(progress.get())) if (p?.book && (p.updatedAt || 0) > since) feed(p.book, p.finished ? 0.8 : 0.3, { verdict: p.finished ? 'finished' : 'listening' });
+  for (const b of Object.values(library.get())) if (b && (b.addedAt || 0) > since) feed(b, 0.2, { verdict: 'saved' });
   cached = { authors, narrators, genres, size: seen.size };
   cachedAt = Date.now();
   return cached;
 }
 myRatings.subscribe(() => (cached = null));
+settings.subscribe(() => (cached = null));
 notInterested.subscribe(() => (cached = null));
 
 /** Titles you own, are listening to, finished or rated: never recommended back to you. */

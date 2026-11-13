@@ -250,18 +250,73 @@ export function clearMetaCache() {
 
 // ---- Finding missing covers for a whole list at once (Library) -------------------
 const bare = (t) => String(t || '').replace(/^[\s\-–—_.,:;]+/, '').replace(/\.(epub|pdf|m4b|mp3|mobi|azw3?)$/i, '');
+/**
+ * A file or folder name as words to search with: "SayNothing-1" → "Say Nothing",
+ * "CATCH22" → "CATCH 22", "the_book_thief (Unabridged) 01" → "the book thief".
+ */
+export function searchTitle(t) {
+  return mainTitle(bare(t))
+    .replace(/[_.]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Za-z]{3,})(\d{1,4})\b/g, '$1 $2')
+    .replace(/\s*[-–—]\s*\d{1,2}$/, '')
+    .replace(/\s+(part|cd|disc|book|vol)\s*\d{1,2}$/i, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+// Letters and digits only: "Catch-22" and "CATCH22" are the same.
+const squash = (t) => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+// Cover addresses that didn't load (a server's "no picture", a phone file that's gone): the
+// book shows its made-up title cover, so it counts as missing one. Kept a week, then tried again.
+const brokenCovers = persisted('brokenCovers', {}, { delay: 3000 }); // address -> when
+const coverKey = (u) => String(u || '').replace(/([?&])token=[^&]*&?/, '$1');
+// A failure only counts when the same place answered with other covers just now — not when
+// your server is out of reach (away from home) or the phone is offline.
+const hostOf = (u) => {
+  try {
+    return new URL(u, location.href).host;
+  } catch {
+    return '';
+  }
+};
+const hostOk = new Map(); // host -> when a cover from it last loaded
+export function coverLoaded(url) {
+  if (url && !/^data:/.test(url)) hostOk.set(hostOf(url), Date.now());
+}
+export function coverFailed(url) {
+  if (!url || /^data:/.test(url)) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  if (!(Date.now() - (hostOk.get(hostOf(url)) || 0) < 10 * 60e3)) return;
+  const k = coverKey(url);
+  if (brokenCovers.get()[k]) return;
+  brokenCovers.set((m) => ({ ...m, [k]: Date.now() }));
+}
+const isBroken = (u) => {
+  const t = u && brokenCovers.get()[coverKey(u)];
+  return !!t && Date.now() - t < 7 * 864e5;
+};
 /** The cover a book shows now (its own, one found for it, or one you picked), or ''. */
-export const coverNow = (book) => (book && (fixFor(book.uid)?.cover || book.cover || (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v?.cover : ''))) || '';
+export const coverNow = (book) => {
+  if (!book) return '';
+  const fix = fixFor(book.uid)?.cover;
+  if (fix) return fix;
+  const own = book.cover && !isBroken(book.cover) ? book.cover : '';
+  return own || (wantsMeta(book) ? cache.get()[keyFor(queryFor(book))]?.v?.cover || '' : '');
+};
 
 /** Does a search result look like this book? Most of the title's words, and the author's surname when both are known. */
-function sameBook(want, hit) {
+export function sameBook(want, hit) {
   // A file name often carries the author ("Atul Gawande - Better"): the title's words without them.
   const aw = new Set(words(want.author || ''));
   const t = new Set(words(mainTitle(bare(want.title))).filter((w) => !aw.has(w)));
   const h = words(String(hit.title || '').replace(/[:(].*$/, ''));
   if (!t.size || !h.length) return false;
   const shared = h.filter((w) => t.has(w)).length;
-  if (shared / Math.max(t.size, h.length) < 0.5) return false;
+  // Spelled differently but the same letters ("SayNothing" / "Say Nothing", "Catch22" / "Catch-22").
+  const a = squash(mainTitle(bare(want.title)));
+  const b = squash(String(hit.title || '').replace(/[:(].*$/, ''));
+  const same = a.length >= 5 && b.length >= 5 && (a === b || (a.length >= 8 && (a.startsWith(b) || b.startsWith(a))));
+  if (!same && shared / Math.max(t.size, h.length) < 0.5) return false;
   const sn = words(String(want.author || '').split(',')[0]).pop();
   return !sn || !hit.author || words(hit.author).includes(sn);
 }
@@ -279,20 +334,24 @@ export async function findMissingCovers(books, onProgress = () => {}, onFound = 
   let done = 0;
   let found = 0;
   const one = async (b) => {
-    const title = mainTitle(bare(b.title));
+    const title = searchTitle(b.title);
     const author = String(b.author || '').split(',')[0].trim();
     for (const term of [`${title} ${author}`.trim(), title]) {
       if (!title) break;
       // Every place "Find cover & details" looks: Audible, Apple, Goodreads, Google Books, Open Library.
       const all = await searchCovers(term).catch(() => []);
-      const hit = all.find((m) => m?.cover && sameBook({ title, author }, m));
+      // The title alone: the same title exactly is enough, whatever the (often guessed, from a
+      // folder's name) author says.
+      const hit =
+        all.find((m) => m?.cover && sameBook({ title, author }, m)) ||
+        (term === title ? all.find((m) => m?.cover && squash(searchTitle(m.title)) === squash(title) && squash(title).length >= 5) : null);
       if (hit) {
         setFix(b.uid, { ...(fixFor(b.uid) || {}), cover: hiRes(hit.cover) });
-        onFound(b, hiRes(hit.cover));
+        onFound(b, hiRes(hit.cover), hit);
         found++;
         break;
       }
-      if (!author) break; // the title alone was already tried
+      if (!author || term === title) break; // the title alone was already tried
     }
     onProgress(++done, todo.length, found);
     await new Promise((r) => setTimeout(r, 400));
@@ -304,6 +363,46 @@ export async function findMissingCovers(books, onProgress = () => {}, onFound = 
     })
   );
   return { found, total: todo.length };
+}
+
+/**
+ * The same search as findMissingCovers, but nothing is saved: for each book, its best guess
+ * (`pick`, or null) and the other covers found (`options`), to look over before saving.
+ * onProgress(done, total, found). Resolves [{ book, pick, options }].
+ */
+export async function guessCovers(books, onProgress = () => {}) {
+  const todo = books.filter((b) => b && b.source !== 'pod' && !coverNow(b));
+  const out = [];
+  let done = 0;
+  let found = 0;
+  const one = async (b) => {
+    const title = searchTitle(b.title);
+    const author = String(b.author || '').split(',')[0].trim();
+    let pick = null;
+    let options = [];
+    for (const term of [`${title} ${author}`.trim(), title]) {
+      if (!title) break;
+      const all = (await searchCovers(term).catch(() => [])).filter((m) => m?.cover);
+      for (const m of all) if (!options.some((o) => o.cover === m.cover)) options.push({ ...m, cover: hiRes(m.cover) });
+      pick =
+        options.find((m) => sameBook({ title, author }, m)) ||
+        (term === title ? options.find((m) => squash(searchTitle(m.title)) === squash(title) && squash(title).length >= 5) : null) ||
+        null;
+      if (pick || !author || term === title) break;
+    }
+    if (pick) found++;
+    out.push({ book: b, pick, options: options.slice(0, 12) });
+    onProgress(++done, todo.length, found);
+    await new Promise((r) => setTimeout(r, 400));
+  };
+  const queue = [...todo];
+  await Promise.all(
+    Array.from({ length: 2 }, async () => {
+      while (queue.length) await one(queue.shift());
+    })
+  );
+  // In the order they were given (the screen's order).
+  return todo.map((b) => out.find((x) => x.book === b)).filter(Boolean);
 }
 
 // ---- Square audiobook covers ---------------------------------------------------

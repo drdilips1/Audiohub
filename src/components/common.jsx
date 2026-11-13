@@ -8,7 +8,7 @@ import { nav } from '../lib/nav.js';
 import { progress as progressStore, useStoreKey, persisted, useStore, settings } from '../lib/store.js';
 import { useImage, coverFrame, frameStyle, frameTall } from '../lib/image.js';
 import { longPress } from './book-actions.jsx';
-import { useSquareCover, fixFor } from '../lib/meta.js';
+import { useSquareCover, fixFor, coverFailed, coverLoaded } from '../lib/meta.js';
 import { activePalette, isInk } from '../lib/theme.js';
 import { useMeta } from '../lib/meta.js';
 import { useTileRating } from '../lib/ratings.js';
@@ -16,7 +16,7 @@ import { openExternal } from '../sources/summaries.js';
 import { useStoryShots, chooseStoryShots } from '../sources/storyshots.js';
 import { useLocalCover } from '../sources/local.js';
 import { audioFormat } from '../sources/debrid.js';
-import { markNotInterested, notInterested, isNotInterested, alreadyRead, isHiddenRec } from '../lib/taste.js';
+import { markNotInterested, notInterested, alreadyRead, isHiddenRec } from '../lib/taste.js';
 import { aiOff } from '../lib/ai.js';
 
 export function Cover({ book, class: cls = '', eager }) {
@@ -58,11 +58,12 @@ export function Cover({ book, class: cls = '', eager }) {
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
           style={frameStyle(frame)}
-          onError={() => setFailed(true)}
+          onError={() => (setFailed(true), !square && coverFailed(book?.cover))}
           onLoad={(e) => {
             // Open Library returns a 1x1 gif for missing covers.
             const im = e.currentTarget;
-            if (im.naturalWidth < 10) return setFailed(true);
+            if (im.naturalWidth < 10) return setFailed(true), !square && coverFailed(book?.cover);
+            if (!square) coverLoaded(book?.cover);
             setRatio(im.naturalWidth / im.naturalHeight);
             im.classList.add('loaded');
           }}
@@ -273,6 +274,13 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
 
 // Last contents of slow rows (your cloud, your server), shown at once on the next open.
 const rowCache = persisted('rowCache', {}, { delay: 1500 });
+/** Forget rows' saved lists (they load afresh next time), e.g. after Your taste changes. */
+export const clearRowCache = (keys) =>
+  rowCache.set((c) => {
+    const next = { ...c };
+    for (const k of keys) delete next[k];
+    return next;
+  });
 /** The last list a cached row showed (e.g. Home's recommendations), or []. */
 export const cachedRow = (key) => rowCache.get()[key] || [];
 const ROW_KEEP = ['uid', 'source', 'kind', 'title', 'author', 'narrator', 'cover', 'year', 'duration', 'addedAt', 'hash', 'format', 'fetching', 'genres', 'why', 'match'];

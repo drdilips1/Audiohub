@@ -11450,3 +11450,521 @@ button.notes-book-head {
     min-width: 38px;
   }
 }
+
+/* ---- Find missing covers: look over the guesses before saving ---- */
+.cover-review {
+  max-height: 88vh;
+}
+.cr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+.cr-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+.cr-pic,
+.cr-tile > img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.06);
+  display: block;
+}
+.cr-tile.on .cr-pic,
+button.cr-tile.on > img {
+  border-color: var(--accent);
+}
+.cr-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cr-tile.off .cr-pic {
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+}
+.cr-none {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  text-align: center;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+.cr-tick {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.cr-tile small {
+  font-size: 11.5px;
+  line-height: 1.25;
+  opacity: 0.8;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.cr-actions {
+  display: flex;
+  gap: 10px;
+  position: sticky;
+  bottom: 0;
+  padding-top: 8px;
+  background: inherit;
+}
+.cr-actions {
+  align-items: center;
+}
+.cr-actions .btn {
+  flex: 1;
+  margin: 0;
+}
+
+/* ---- Source cards, compact (Nov 2026): details under the title, services in one row ---- */
+.src-names .src-meta {
+  margin-top: 6px;
+}
+.src-row .src-services.svc-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+.svc-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px 7px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+.svc-chip > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.svc-chip b {
+  font-size: 13px;
+  font-weight: 700;
+}
+.svc-chip small {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.svc-chip > svg {
+  flex: none;
+  color: var(--accent);
+}
+.svc-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint, rgba(255, 255, 255, 0.25));
+}
+.svc-chip.ok .svc-dot {
+  background: var(--ready, #4cc38a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ready, #4cc38a) 22%, transparent);
+}
+.svc-chip.ok small {
+  color: var(--ready, #4cc38a);
+}
+.svc-chip.in {
+  border-color: color-mix(in srgb, var(--ready, #4cc38a) 40%, transparent);
+}
+.svc-chip:disabled {
+  opacity: 1;
+}
+.topic-cloud .src-actions.ready {
+  margin-top: 12px;
+}
+.src-row .topic-cloud {
+  margin-top: 0;
+}
+
+/* Settings → Your taste */
+.taste-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 6px;
+}
+.taste-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.taste-chips .chip.on {
+  background: var(--accent-grad, var(--accent));
+  color: var(--on-accent, #241523);
+  border-color: transparent;
+}
+.taste-note {
+  display: block;
+  font-size: 12px;
+}
+.taste-from {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.taste-from span {
+  font-size: 11.5px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+
+/* =====================================================================
+   Book page, calm & premium (Nov 2026): a big cover on its own glow, two quiet
+   lines of facts, one main button with small squares, a thin progress line.
+   ===================================================================== */
+.screen.book .book-hero {
+  padding-bottom: 14px;
+}
+.screen.book .book-cover {
+  width: min(58vw, 230px);
+  margin-bottom: 20px;
+}
+.screen.book .book-hero h1 {
+  font-size: 26px;
+  margin: 0 auto;
+}
+.screen.book .book-author {
+  margin-top: 6px;
+  font-size: 15.5px;
+}
+.screen.book .book-narrator {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  opacity: 0.65;
+}
+.book-facts {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.book-rates {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  margin-top: 8px;
+}
+.book-rate {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.book-rate svg {
+  color: #f5b544;
+}
+.book-rate b {
+  color: var(--text);
+  font-weight: 700;
+}
+.screen.book .book-meta {
+  margin-top: 10px;
+  font-size: 12px;
+}
+/* One main button, quiet squares beside it */
+.screen.book .book-actions {
+  flex-wrap: nowrap;
+  padding: 4px 20px 0;
+}
+.screen.book .book-actions .btn.big:not(.sq) {
+  flex: 1;
+  min-width: 0;
+  height: 54px;
+  border-radius: 18px;
+  font-size: 16px;
+}
+.screen.book .book-actions .btn.secondary.big:not(.sq) {
+  flex: 0 1 auto;
+  padding: 0 16px;
+}
+.screen.book .book-actions .btn.sq {
+  flex: none;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+}
+.screen.book .book-actions .btn.sq.ok {
+  color: var(--ready, #4cc38a);
+}
+.screen.book .book-actions .btn.sq.liked svg {
+  color: var(--accent);
+}
+/* Progress: a line of words over a thin bar */
+.book-prog {
+  margin: 14px 22px 0;
+}
+.book-prog small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.book-prog .book-progress {
+  margin: 6px 0 0;
+  height: 4px;
+}
+.book-dl {
+  margin: 12px 22px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  display: grid;
+  gap: 6px;
+}
+.book-dl-note {
+  margin: 10px 22px 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+/* Ask: one compact card */
+.screen.book .ask-card {
+  margin-top: 6px;
+  border-radius: 18px;
+}
+/* Book check (multipart books) */
+.book-check {
+  margin: 14px 16px 0;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+.book-check h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.book-check h4 small {
+  font-weight: 500;
+  color: var(--muted);
+}
+.bc-item {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+}
+.bc-item:first-of-type {
+  border-top: 0;
+  padding-top: 2px;
+}
+.bc-item b {
+  display: block;
+  font-size: 13.5px;
+}
+.bc-item small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.bc-ic {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ready, #4cc38a);
+  background: color-mix(in srgb, var(--ready, #4cc38a) 15%, transparent);
+}
+.bc-ic.warn {
+  color: #f5b544;
+  background: rgba(245, 181, 68, 0.15);
+}
+/* Your copies: length against the full audiobook */
+.copies-check {
+  margin: 14px 16px 0;
+  display: grid;
+  gap: 10px;
+}
+.copies-check h4 {
+  margin: 0 2px;
+  font-size: 14px;
+}
+.copies-check h4 small {
+  font-weight: 500;
+  color: var(--muted);
+}
+.cc-copy {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+.cc-copy.on {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.cc-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.cc-top b {
+  font-size: 14.5px;
+}
+.cc-radio {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  background: none;
+  padding: 0;
+}
+.cc-radio.on {
+  border: 7px solid var(--accent);
+}
+.cc-meta {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.cc-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cc-bar > span {
+  flex: 1;
+  height: 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow: hidden;
+}
+.cc-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--muted);
+}
+.cc-bar i.ok {
+  background: var(--ready, #4cc38a);
+}
+.cc-bar i.warn {
+  background: #f5b544;
+}
+.cc-bar i.bad {
+  background: #ff7a7a;
+}
+.cc-bar small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.cc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.cc-tags:empty {
+  display: none;
+}
+.cc-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 7px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+.cc-tag.ok {
+  color: var(--ready, #4cc38a);
+  background: color-mix(in srgb, var(--ready, #4cc38a) 14%, transparent);
+}
+.cc-tag.warn {
+  color: #f5b544;
+  background: rgba(245, 181, 68, 0.15);
+}
+.cc-tag.bad {
+  color: #ff7a7a;
+  background: rgba(255, 122, 122, 0.14);
+}
+.cc-note,
+.cc-foot {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* Edit details by hand */
+.edit-details {
+  display: grid;
+  gap: 10px;
+  padding: 6px 2px 4px;
+}
+.edit-field {
+  display: grid;
+  gap: 4px;
+}
+.edit-field span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.edit-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font: inherit;
+}
+.edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}

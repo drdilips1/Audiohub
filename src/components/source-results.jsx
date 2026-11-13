@@ -674,41 +674,46 @@ function SourceRow({ r, provider, providers = [], book, inAccount, onChanged }) 
               {r.narrator ? ` · read by ${r.narrator}` : ''}
             </div>
           )}
-          {prettyName(r.title) !== r.title && <div class="src-raw">{r.title}</div>}
+          <div class="src-meta">
+            {r.size > 0 && <span>{fmtSize(r.size)}</span>}
+            {/* Unknown seeds (AudiobookBay doesn't list them; TorBox fills them in when it can): nothing shown, not a '?'. */}
+            {hasMagnet && r.seeders != null && <span class={'seeds ' + seedClass(r.seeders)}>{r.seeders} seed{r.seeders === 1 ? '' : 's'}</span>}
+            {r.language && <span>{r.language}</span>}
+            <span>{sourceLabel(r.addon)}</span>
+            {r.downloads?.length > 0 && (
+              <span>
+                {r.downloads.length} link{r.downloads.length === 1 ? '' : 's'} · {[...new Set(r.downloads.map((d) => d.host.replace(/\.(net|com|to|my)$/, '')))].slice(0, 3).join(', ')}
+              </span>
+            )}
+          </div>
         </div>
       </div>
-      <div class="src-meta">
-        {r.size > 0 && <span>{fmtSize(r.size)}</span>}
-        {/* Unknown seeds (AudiobookBay doesn't list them; TorBox fills them in when it can): nothing shown, not a '?'. */}
-        {hasMagnet && r.seeders != null && <span class={'seeds ' + seedClass(r.seeders)}>{r.seeders} seed{r.seeders === 1 ? '' : 's'}</span>}
-        {r.language && <span>{r.language}</span>}
-        <span>{sourceLabel(r.addon)}</span>
-      </div>
       {hasMagnet && (providers.length > 0 || home) && (
-        <div class="src-services">
+        // One row: each service with its state (a green dot: instant / ready) — tap to add.
+        <div class="src-services svc-row">
           {providers.map((p) => {
             const a = acc(p);
-            const label = a ? (a.ready ? 'in account · ready' : `in account · ${Math.round((a.progress || 0) * 100)}%`) : cachedOn(p) ? 'instant' : 'not cached';
+            const label = a ? (a.ready ? 'ready' : `${Math.round((a.progress || 0) * 100)}%`) : cachedOn(p) ? 'instant' : 'not cached';
             return (
-              <div class={'svc' + (readyOn(p) ? ' ok' : '')}>
-                <b>{SHORT[p]}</b>
-                <span>{label}</span>
-                {!a && (
-                  <button class="pill small" disabled={!!busy} onClick={() => add(p)} aria-label={`Add to ${LABEL[p]}`}>
-                    {busy === 'add:' + p ? <span class="spinner small" /> : <Icon name="plus" size={14} />}
-                  </button>
-                )}
-              </div>
+              <button class={'svc-chip' + (readyOn(p) ? ' ok' : '') + (a ? ' in' : '')} disabled={!!busy || !!a} onClick={() => add(p)} aria-label={a ? `In your ${LABEL[p]} · ${label}` : `Add to ${LABEL[p]} (${label})`}>
+                <i class="svc-dot" />
+                <span>
+                  <b>{SHORT[p]}</b>
+                  <small>{a ? `in account · ${label}` : label}</small>
+                </span>
+                {!a && (busy === 'add:' + p ? <span class="spinner small" /> : <Icon name="plus" size={15} />)}
+              </button>
             );
           })}
           {home && (
-            <div class={'svc' + (sentHome || book?.source === 'abs' ? ' ok' : '')}>
-              <b>Home</b>
-              <span>{sentHome ? 'sent' : book?.source === 'abs' ? 'on your server' : 'qBittorrent'}</span>
-              <button class="pill small" disabled={!!busy} onClick={sendHome} aria-label="Send to your home server">
-                {busy === 'home' ? <span class="spinner small" /> : <Icon name={sentHome ? 'check' : 'plus'} size={14} />}
-              </button>
-            </div>
+            <button class={'svc-chip' + (sentHome || book?.source === 'abs' ? ' ok' : '')} disabled={!!busy} onClick={sendHome} aria-label="Send to your home server">
+              <i class="svc-dot" />
+              <span>
+                <b>Home</b>
+                <small>{sentHome ? 'sent' : book?.source === 'abs' ? 'on server' : 'qBittorrent'}</small>
+              </span>
+              {busy === 'home' ? <span class="spinner small" /> : <Icon name={sentHome ? 'check' : 'plus'} size={15} />}
+            </button>
           )}
         </div>
       )}

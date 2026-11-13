@@ -192,7 +192,9 @@ function toBook(item) {
     kind: li.media?.numAudioFiles === 0 && li.media?.ebookFormat ? 'text' : 'audio',
     title: md.title || li.name || 'Untitled',
     author: md.authorName || (md.authors || []).map((a) => a.name).join(', '),
-    cover: `${base()}/api/items/${li.id}/cover?${qs({ token: cfg().token, width: 400 })}`,
+    // The server gives a cover address for every book, even one it has no picture for (that
+    // answers "not found"): those count as without a cover, so Find missing covers sees them.
+    cover: li.media && 'coverPath' in li.media && !li.media.coverPath ? '' : `${base()}/api/items/${li.id}/cover?${qs({ token: cfg().token, width: 400 })}`,
     year: md.publishedYear || '',
     duration: li.media?.duration || 0,
     genres: [...(md.genres || []), ...(li.media?.tags || [])],

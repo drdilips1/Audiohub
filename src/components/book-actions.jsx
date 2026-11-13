@@ -6,11 +6,12 @@ import { Cover, toast } from './common.jsx';
 import { useStore, library, progress, bookTags, toggleLibrary, hideFromContinue, summarize } from '../lib/store.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { allTags } from './book-tags.jsx';
-import { FixDetails } from './fix-details.jsx';
+import { FixDetails, EditDetails } from './fix-details.jsx';
 import { upNext, addUpNext, removeUpNext } from '../lib/upnext.js';
 import { markNotInterested, markAlreadyRead } from '../lib/taste.js';
 import { readLater, toggleReadLater } from '../lib/readlists.js';
 import { canSendToAbs, sendToAbs, absUploads } from '../lib/absupload.js';
+import { downloads, removeDownload, cancelDownload, fmtBytes } from '../lib/downloads.js';
 
 // The book whose sheet is open (not saved).
 let current = null;
@@ -53,6 +54,7 @@ const ebookOnly = (b) => b.kind === 'text';
 
 export function BookActionsSheet() {
   const book = useStore(sheet);
+  const dl = useStore(downloads)[book?.uid];
   const lib = useStore(library);
   const queue = useStore(upNext);
   const prog = useStore(progress);
@@ -85,6 +87,7 @@ export function BookActionsSheet() {
   };
   const [busy, setBusy] = useState('');
   const [fixing, setFixing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const close = () => (setFixing(false), sheet.set(null));
   useBackClose(!!book, close);
   useEffect(() => (setBusy(''), setFixing(false), setAbsPick(null)), [book?.uid]);
@@ -154,10 +157,24 @@ export function BookActionsSheet() {
         <button class="menu-item" disabled={!!busy} onClick={play}>
           {busy === 'play' ? <span class="spinner small" /> : <Icon name={ebookOnly(book) ? 'book' : 'play'} size={18} />} {ebookOnly(book) ? 'Read' : pct ? 'Continue' : 'Play'}
         </button>
-        {canDownload && (
-          <button class="menu-item" disabled={!!busy} onClick={download}>
-            {busy === 'dl' ? <span class="spinner small" /> : <Icon name="download" size={18} />} Download
+        {/* Saved on the phone: remove it here (frees the space; the book stays in your library). */}
+        {dl?.status === 'done' ? (
+          <button
+            class="menu-item"
+            onClick={act(() => confirm(`Delete the downloaded copy of “${book.title}” from this phone? The book stays in your library.`) && removeDownload(book.uid).then(() => toast('Download deleted')))}
+          >
+            <Icon name="trash" size={18} /> Delete download{dl.bytes ? ` · frees ${fmtBytes(dl.bytes)}` : ''}
           </button>
+        ) : dl?.status === 'downloading' ? (
+          <button class="menu-item" onClick={act(() => (cancelDownload(book.uid), toast('Download stopped')))}>
+            <Icon name="close" size={18} /> Stop downloading
+          </button>
+        ) : (
+          canDownload && (
+            <button class="menu-item" disabled={!!busy} onClick={download}>
+              {busy === 'dl' ? <span class="spinner small" /> : <Icon name="download" size={18} />} Download
+            </button>
+          )
         )}
         {canSendToAbs() && book.source !== 'abs' && !ebookOnly(book) && !absPick && (
           <button
@@ -248,6 +265,13 @@ export function BookActionsSheet() {
         ) : (
           <button class="menu-item" onClick={() => setFixing(true)}>
             <Icon name="covers" size={18} /> {book.cover ? 'Find a better cover & details' : 'Find cover & details'}
+          </button>
+        )}
+        {editing ? (
+          <EditDetails book={book} onClose={close} />
+        ) : (
+          <button class="menu-item" onClick={() => setEditing(true)}>
+            <Icon name="edit" size={18} /> Edit title, author, narrator
           </button>
         )}
         <button class="menu-item" onClick={act(() => nav.push('book', { book }))}>

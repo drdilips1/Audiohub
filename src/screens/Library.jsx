@@ -5,13 +5,13 @@ import { library, progress, useStore, forgetBook, persisted, clearPodcastHistory
 import { allTags } from '../components/book-tags.jsx';
 import { localSrc } from '../sources/index.js';
 import { fmtDuration } from '../lib/format.js';
-import { metaNow, metaFixes, coverNow, findMissingCovers } from '../lib/meta.js';
+import { metaNow, metaFixes, coverNow, guessCovers, setFix, fixFor } from '../lib/meta.js';
 import { longPress } from '../components/book-actions.jsx';
 import { seriesOf } from '../lib/series.js';
 import { oneEach } from '../lib/works.js';
 import { downloads, removeDownload } from '../lib/downloads.js';
 import { forgetEbook, savedEbooks } from '../lib/epub.js';
-import { nav } from '../lib/nav.js';
+import { nav, useBackClose } from '../lib/nav.js';
 import { podcasts } from '../sources/podcasts.js';
 import { ShowGrid } from './Podcasts.jsx';
 import { EbookSearchBox, EbookSearchResults } from '../components/ebook-search.jsx';
@@ -643,35 +643,121 @@ function SeriesGroups({ items, mode = 'grid', prog }) {
   );
 }
 
-/** "Find 37 missing covers": looks them all up in one go (Audible, Apple, Google, Open Library). */
+/**
+ * "Find 37 missing covers": looks them all up (Audible, Apple, Goodreads, Google Books, Open
+ * Library), then shows every guess in one grid to look over — untick a wrong one, tap a book
+ * to choose another of the covers found for it — and saves the ticked ones.
+ */
 function MissingCovers({ items, local }) {
   useStore(metaFixes);
   const [run, setRun] = useState(null); // { done, total, found }
+  const [review, setReview] = useState(null); // [{ book, pick, options }]
   const phoneCover = (b) => b.source === 'loc' && (local.books || []).find((x) => x.uid === b.uid)?.cover;
   const missing = items.filter((b) => !coverNow(b) && !phoneCover(b));
-  if (!missing.length && !run) return null;
+  if (!missing.length && !run && !review) return null;
   const go = async () => {
     setRun({ done: 0, total: missing.length, found: 0 });
-    const r = await findMissingCovers(
-      missing,
-      (done, total, found) => setRun({ done, total, found }),
-      // A phone book keeps its cover with its file details too (survives rescans), like a picked one.
-      (b, cover) => b.source === 'loc' && localSrc.setCover?.(b.uid, cover)
-    );
+    const list = await guessCovers(missing, (done, total, found) => setRun({ done, total, found })).catch(() => []);
     setRun(null);
-    toast(r.found ? `Found ${r.found} of ${r.total} covers` : 'No covers found for these — try “Find cover & details” on a book');
+    if (!list.some((x) => x.options.length)) return toast('No covers found for these — try “Find cover & details” on a book');
+    setReview(list);
   };
   return (
-    <button class="btn ghost-wide lib-manage" disabled={!!run} onClick={go}>
-      {run ? (
-        <>
-          <span class="spinner small" /> Finding covers {run.done}/{run.total} · {run.found} found
-        </>
-      ) : (
-        <>
-          <Icon name="covers" size={16} /> Find {missing.length} missing cover{missing.length === 1 ? '' : 's'}
-        </>
-      )}
-    </button>
+    <>
+      <button class="btn ghost-wide lib-manage" disabled={!!run} onClick={go}>
+        {run ? (
+          <>
+            <span class="spinner small" /> Finding covers {run.done}/{run.total} · {run.found} found
+          </>
+        ) : (
+          <>
+            <Icon name="covers" size={16} /> Find {missing.length} missing cover{missing.length === 1 ? '' : 's'}
+          </>
+        )}
+      </button>
+      {review && <CoverReview list={review} close={() => setReview(null)} />}
+    </>
+  );
+}
+
+/** The covers found, one tile per book: ticked ones are saved; tap a book for its other covers. */
+function CoverReview({ list, close }) {
+  // uid -> the chosen cover ('' = leave this book as it is)
+  const [chosen, setChosen] = useState(() => Object.fromEntries(list.map((x) => [x.book.uid, x.pick?.cover || ''])));
+  const [open, setOpen] = useState(null); // the book whose other covers are shown
+  useBackClose(true, () => (open ? setOpen(null) : close()));
+  const ticked = list.filter((x) => chosen[x.book.uid]);
+  const save = () => {
+    for (const x of ticked) {
+      const cover = chosen[x.book.uid];
+      setFix(x.book.uid, { ...(fixFor(x.book.uid) || {}), cover });
+      // A phone book keeps its cover with its file details too (survives rescans), like a picked one.
+      if (x.book.source === 'loc') localSrc.setCover?.(x.book.uid, cover);
+    }
+    toast(`Saved ${ticked.length} cover${ticked.length === 1 ? '' : 's'}`);
+    close();
+  };
+  const cur = open && list.find((x) => x.book.uid === open);
+  return (
+    <div class="sheet-backdrop" onClick={close}>
+      <div class="sheet cover-review" onClick={(e) => e.stopPropagation()}>
+        <div class="sheet-handle" />
+        {cur ? (
+          <>
+            <button class="link-btn" onClick={() => setOpen(null)}>
+              <Icon name="back" size={14} /> All books
+            </button>
+            <h3>{cur.book.title}</h3>
+            <p class="muted small">{cur.options.length ? 'Tap the right cover.' : 'Nothing found for this one — try “Find cover & details” on its page.'}</p>
+            <div class="cr-grid">
+              {cur.options.map((m) => (
+                <button class={'cr-tile' + (chosen[cur.book.uid] === m.cover ? ' on' : '')} onClick={() => (setChosen((c) => ({ ...c, [cur.book.uid]: m.cover })), setOpen(null))}>
+                  <img src={m.cover} loading="lazy" alt="" />
+                  <small>{m.from}</small>
+                </button>
+              ))}
+            </div>
+            {chosen[cur.book.uid] && (
+              <button class="btn ghost-wide" onClick={() => (setChosen((c) => ({ ...c, [cur.book.uid]: '' })), setOpen(null))}>
+                Leave this book without a cover
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <h3>Check the covers</h3>
+            <p class="muted small">
+              {ticked.length} of {list.length} ready. Tap ✓ to leave one out; tap a book to choose another cover.
+            </p>
+            <div class="cr-grid">
+              {list.map((x) => {
+                const c = chosen[x.book.uid];
+                return (
+                  <div class={'cr-tile' + (c ? ' on' : ' off')}>
+                    <button class="cr-pic" onClick={() => setOpen(x.book.uid)}>
+                      {c ? <img src={c} loading="lazy" alt="" /> : <span class="cr-none">{x.options.length ? `${x.options.length} to choose from` : 'Not found'}</span>}
+                    </button>
+                    {c && (
+                      <button class="cr-tick" aria-label="Leave this one out" onClick={() => setChosen((m) => ({ ...m, [x.book.uid]: '' }))}>
+                        <Icon name="check" size={14} />
+                      </button>
+                    )}
+                    <small>{x.book.title}</small>
+                  </div>
+                );
+              })}
+            </div>
+            <div class="cr-actions">
+              <button class="btn ghost-wide" onClick={close}>
+                Cancel
+              </button>
+              <button class="btn primary" disabled={!ticked.length} onClick={save}>
+                Save {ticked.length} cover{ticked.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

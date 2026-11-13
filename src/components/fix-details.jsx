@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
 import { toast } from './common.jsx';
-import { setFix, searchCovers, metaNow } from '../lib/meta.js';
+import { setFix, searchCovers, metaNow, fixFor } from '../lib/meta.js';
 import { mainTitle } from '../lib/match.js';
 import { localSrc } from '../sources/index.js';
 
@@ -149,6 +149,65 @@ export function FixDetails({ book, onFixed = () => {}, autoOpen = false, onDone 
       >
         Cancel
       </button>
+    </div>
+  );
+}
+
+/**
+ * Edit a book's details by hand — title, author, narrator, series, year — when what came with
+ * the file (or the lookup) is wrong. Kept on this phone for this book; Undo brings back the
+ * original. onSaved(fields) lets the page show them at once.
+ */
+export function EditDetails({ book, onSaved = () => {}, onClose = () => {} }) {
+  const fix = fixFor(book.uid) || {};
+  const [f, setF] = useState({
+    title: fix.title || book.title || '',
+    author: fix.author || book.author || '',
+    narrator: fix.narrator || book.narrator || '',
+    series: fix.series || book.series || '',
+    year: String(fix.year || book.year || ''),
+  });
+  const field = (k, label, hint) => (
+    <label class="edit-field">
+      <span>{label}</span>
+      <input value={f[k]} placeholder={hint} onInput={(e) => setF((x) => ({ ...x, [k]: e.currentTarget.value }))} />
+    </label>
+  );
+  const save = () => {
+    const clean = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, String(v).trim()]));
+    if (!clean.title) return toast('A title is needed');
+    setFix(book.uid, { ...fix, ...clean, edited: true, source: fix.source || 'you' });
+    onSaved(clean);
+    toast('Details saved for this book');
+    onClose();
+  };
+  return (
+    <div class="edit-details">
+      {field('title', 'Title', 'Book title')}
+      {field('author', 'Author', 'e.g. Siddhartha Mukherjee')}
+      {field('narrator', 'Narrator', 'Who reads it')}
+      {field('series', 'Series', 'e.g. The Expanse #3')}
+      {field('year', 'Year', 'e.g. 2010')}
+      <div class="edit-actions">
+        <button class="btn primary" onClick={save}>
+          Save
+        </button>
+        <button class="btn secondary" onClick={onClose}>
+          Cancel
+        </button>
+        {fixFor(book.uid)?.edited && (
+          <button
+            class="link-btn"
+            onClick={() => {
+              setFix(book.uid, null);
+              toast('Back to the original details — reopen the book to see them');
+              onClose();
+            }}
+          >
+            Undo my edits
+          </button>
+        )}
+      </div>
     </div>
   );
 }

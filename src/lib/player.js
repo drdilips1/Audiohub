@@ -294,6 +294,7 @@ const handlers = {
     if (!state.tracks[i] || i === state.index) return;
     loadingAt = null;
     set({ index: i, time: 0, duration: state.tracks[i].duration || 0 });
+    sayGap(i);
     saveProgress(true);
     queueAhead(loadToken);
   },
@@ -430,6 +431,7 @@ async function loadTrack(i, startAt = 0, autoplay = true) {
   loadingAt = { index: i, at: startAt };
   outroAt = 0;
   set({ index: i, loading: true, error: null, time: startAt, duration: t.duration || 0, phase: !t.url && t.resolve ? 'Getting the audio link…' : 'Connecting…' });
+  if (startAt === 0) sayGap(i);
   try {
     let url = t.url;
     // A link fetched ahead of time that's getting old: fetch a new one.
@@ -721,6 +723,18 @@ async function phoneCopy(book) {
     }
   }
   return d;
+}
+
+// A part missing from the book's numbering (its book check found it): said when the player
+// reaches the part after it, instead of jumping on silently. Once per book and place.
+const gapsSaid = new Set();
+function sayGap(i) {
+  const hole = state.book?.partsCheck?.gapBefore?.[i];
+  const key = `${state.book?.uid}#${i}`;
+  if (!hole?.length || gapsSaid.has(key)) return;
+  gapsSaid.add(key);
+  const parts = hole.length === 1 ? `Part ${hole[0]} is` : `Parts ${hole[0]}–${hole[hole.length - 1]} are`;
+  import('../components/common.jsx').then(({ toast }) => toast(`${parts} missing from this copy — carrying on with the next part`)).catch(() => {});
 }
 
 let pctSeek = null; // { i, frac }: go to this point of part i once its length is known
