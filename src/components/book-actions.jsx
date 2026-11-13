@@ -88,9 +88,9 @@ export function BookActionsSheet() {
   const [busy, setBusy] = useState('');
   const [fixing, setFixing] = useState(false);
   const [editing, setEditing] = useState(false);
-  const close = () => (setFixing(false), sheet.set(null));
+  const close = () => (setFixing(false), setEditing(false), sheet.set(null));
   useBackClose(!!book, close);
-  useEffect(() => (setBusy(''), setFixing(false), setAbsPick(null)), [book?.uid]);
+  useEffect(() => (setBusy(''), setFixing(false), setEditing(false), setAbsPick(null)), [book?.uid]);
   if (!book) return null;
   const p = prog[book.uid];
   const pct = p ? Math.round((p.percent || 0) * 100) : 0;
@@ -267,13 +267,10 @@ export function BookActionsSheet() {
             <Icon name="covers" size={18} /> {book.cover ? 'Find a better cover & details' : 'Find cover & details'}
           </button>
         )}
-        {editing ? (
-          <EditDetails book={book} onClose={close} />
-        ) : (
-          <button class="menu-item" onClick={() => setEditing(true)}>
-            <Icon name="edit" size={18} /> Edit title, author, narrator
-          </button>
-        )}
+        <button class="menu-item" onClick={() => setEditing((x) => !x)}>
+          <Icon name="edit" size={18} /> {editing ? 'Close editing' : 'Edit title, author, narrator'}
+        </button>
+        {editing && <EditDetails book={book} onSaved={close} onClose={() => setEditing(false)} />}
         <button class="menu-item" onClick={act(() => nav.push('book', { book }))}>
           <Icon name="info" size={18} /> Details
         </button>
