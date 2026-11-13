@@ -313,16 +313,32 @@ export function TranscriptView({ s }) {
   // Part lengths not all known yet (cloud files report theirs when played): the part's share.
   const guessT = globalT ?? (s.tracks?.length === 1 ? s.time || 0 : totalT && s.tracks?.length ? (s.index / s.tracks.length) * totalT + (s.time || 0) : null);
   const at = !t?.published && t?.bookText?.state === 'on' ? bookAt(s.time, { global: guessT, total: totalT }) : null;
-  const paras = at ? bookAround(at.word) : null;
+  // Steady reading: the lit place doesn't step back a little when the guess is corrected (it
+  // waits for the audio to catch up); a real jump — a seek, a new part — is followed at once.
+  // The block of text only changes every ~300 words, so the page doesn't keep shifting.
+  const steady = useRef({ word: -1, key: '' });
+  const stKey = `${s.book?.uid}#${s.index}`;
+  let word = at ? at.word : -1;
+  if (at) {
+    const st = steady.current;
+    if (st.key === stKey && st.word >= 0 && word < st.word && st.word - word < 120) word = st.word;
+    st.word = word;
+    st.key = stKey;
+  }
+  const base = word >= 0 ? Math.floor(word / 300) * 300 : -1;
+  const paras = at ? bookAround(base, 300, 900) : null;
   let litFrom = -1;
-  if (paras) for (const pg of paras) for (const se of pg.sentences) if (se.from <= at.word && at.word < se.to) litFrom = se.from;
+  if (paras) for (const pg of paras) for (const se of pg.sentences) if (se.from <= word && word < se.to) litFrom = se.from;
   useEffect(() => {
     if (litFrom < 0 || Date.now() - userScroll.current < 4000) return;
     const el = box.current?.querySelector(`[data-w="${litFrom}"]`);
     if (!el) return;
     const b = box.current;
-    b.scrollTo({ top: el.offsetTop - b.clientHeight / 2 + el.clientHeight / 2, behavior: 'smooth' });
-  }, [litFrom]);
+    // Already comfortably in view (upper middle): leave the page still.
+    const y = el.offsetTop - b.scrollTop;
+    if (y > b.clientHeight * 0.2 && y + el.clientHeight < b.clientHeight * 0.7) return;
+    b.scrollTo({ top: el.offsetTop - b.clientHeight * 0.35, behavior: 'smooth' });
+  }, [litFrom, base]);
   useEffect(() => {
     if (paras || active < 0 || Date.now() - userScroll.current < 4000) return;
     const el = box.current?.querySelector(`[data-i="${active}"]`);
@@ -386,7 +402,7 @@ export function TranscriptView({ s }) {
               {pg.sentences.map((se) => (
                 <span
                   data-w={se.from}
-                  class={'tb-s' + (se.from === litFrom ? ' on' : se.to <= at.word ? ' past' : '')}
+                  class={'tb-s' + (se.from === litFrom ? ' on' : se.to <= word ? ' past' : '')}
                   onClick={() => {
                     const tt = timeAtWord(se.from);
                     if (tt != null) player.seek(Math.max(0, tt));
