@@ -1,6 +1,6 @@
 // Following the book by the audio's time (transcript with the ebook attached).
 import { describe, it, expect } from 'vitest';
-const { wordAtTime } = await import('../src/lib/booksync.js');
+const { wordAtTime, forwardRun } = await import('../src/lib/booksync.js');
 
 // Lines found at 10 s → word 100, 20 s → word 125, 30 s → word 150 (2.5 words a second).
 const pts = [[10, 100], [20, 125], [30, 150]];
@@ -35,5 +35,16 @@ describe('misheard credits and chapter headings', () => {
     // Outside the credits, never the title.
     expect(fixCredit('Harry looked at the stone', titles)).toBe('Harry looked at the stone');
     expect(fixCredit('Body and the saucer is stone', titles)).toBe('Body and the saucer is stone');
+  });
+});
+
+describe('forwardRun', () => {
+  it('drops one line matched far ahead instead of every line after it', () => {
+    const pts = [[0, 100], [5, 112], [8, 5000], [10, 125], [15, 138], [20, 150]];
+    expect(forwardRun(pts).map((x) => x[1])).toEqual([100, 112, 125, 138, 150]);
+  });
+  it('drops a stray line matched far behind', () => {
+    const pts = [[0, 100], [5, 112], [8, 3], [10, 125]];
+    expect(forwardRun(pts).map((x) => x[1])).toEqual([100, 112, 125]);
   });
 });

@@ -649,7 +649,7 @@ export function stopLooking() {
   set({ bookText: { state: 'none' } });
 }
 
-import { wordAtTime, paceOf } from './booksync.js';
+import { wordAtTime, paceOf, forwardRun } from './booksync.js';
 
 // ---- Following the book by the audio's time -------------------------------------------
 // With the ebook attached, where you are in the book is worked out from the audio time:
@@ -666,11 +666,8 @@ function anchors() {
     pts.push([s.start, s.at[0]]);
     if (s.end != null && s.end > s.start) pts.push([s.end, s.at[1]]);
   }
-  pts.sort((a, b) => a[0] - b[0]);
-  // Keep them moving forward through the book.
-  const out = [];
-  for (const p of pts) if (!out.length || p[1] >= out[out.length - 1][1]) out.push(p);
-  return out;
+  // Keep the longest run moving forward through the book (a stray far match is dropped).
+  return forwardRun(pts);
 }
 
 /**

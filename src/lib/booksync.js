@@ -8,6 +8,31 @@ export const paceOf = (pts) => {
   return Math.min(4.5, Math.max(1.2, dt > 0 ? dw / dt : 2.5));
 };
 
+/**
+ * [time, word] points in time order, kept to the longest run that moves forward through the
+ * book. One line matched to a repeated phrase far ahead (or behind) is dropped, instead of it
+ * throwing away every correct line after it.
+ */
+export function forwardRun(pts) {
+  const p = [...pts].sort((a, b) => a[0] - b[0]);
+  const ends = []; // ends[k]: index of the smallest last word of a run of length k+1
+  const prev = [];
+  for (let j = 0; j < p.length; j++) {
+    let lo = 0;
+    let hi = ends.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (p[ends[mid]][1] <= p[j][1]) lo = mid + 1;
+      else hi = mid;
+    }
+    prev[j] = lo > 0 ? ends[lo - 1] : -1;
+    ends[lo] = j;
+  }
+  const out = [];
+  for (let j = ends.length ? ends[ends.length - 1] : -1; j >= 0; j = prev[j]) out.push(p[j]);
+  return out.reverse();
+}
+
 /** The book word at an audio time, from [time, word] points (exported for tests). */
 export function wordAtTime(pts, time, total) {
   const pace = paceOf(pts);
