@@ -208,11 +208,10 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
         {book.fetching != null && <span class="fetch-badge">{Math.round((book.fetching || 0) * 100)}%</span>}
       </div>
       {/* How far you are: a thin line under the cover, not on it. */}
-      {pct > 0 && (
-        <div class="progress-under">
-          <div style={{ width: pct + '%' }} />
-        </div>
-      )}
+      {/* Always there (empty when not started), so every card in a row lines up. */}
+      <div class={'progress-under' + (pct > 0 ? '' : ' empty')}>
+        <div style={{ width: pct + '%' }} />
+      </div>
       {rec ? (
         <div class="book-card-head">
           <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
@@ -234,7 +233,7 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
         <div class="book-card-title">{String(book.title || '').replace(/^[\s\-–—_.,:;]+/, '')}</div>
       )}
       <div class="book-card-author">{book.author || ' '}</div>
-      {(rt || ss || match > 0) && (
+      {(
         <div class="book-card-badges">
           {/* How well it suits you, under the cover (not on it). */}
           {match > 0 && <span class={'card-match' + (match >= 80 ? ' hi' : '')}>{match}%</span>}

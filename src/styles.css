@@ -11977,3 +11977,11 @@ button.cr-tile.on > img {
   gap: 8px;
   align-items: center;
 }
+
+/* Book cards line up across a row: title always two lines tall, the rating row always there,
+   the progress line's space kept when not started. */
+.book-card .book-card-title { min-height: calc(2 * 1.25em); }
+.book-card .book-card-head { min-height: calc(2 * 1.25em + 9px); }
+.book-card .book-card-badges { min-height: 18px; flex-wrap: nowrap; overflow: hidden; }
+.book-card .card-ss { flex: none; width: 16px; height: 16px; font-size: 10px; border-radius: 4px; }
+.progress-under.empty { visibility: hidden; }
