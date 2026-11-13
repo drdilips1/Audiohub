@@ -104,7 +104,11 @@ function mergeBookmarks(local, remote) {
 
 // ---- auth -----------------------------------------------------------------------
 const cfg = () => account.get();
-export const configured = () => !!(cfg().url && cfg().anonKey);
+// A real server address (https://xxxx.supabase.co) — not an email typed into the wrong box.
+export const goodServer = (u) => /^https?:\/\/[^/@\s]+\.[^/@\s]+/i.test(String(u || '').trim()) && !String(u).includes('@');
+/** A server address was saved but it isn't one (e.g. an email) — Settings asks for it again. */
+export const badServer = () => !!cfg().url && !goodServer(cfg().url);
+export const configured = () => !!(cfg().url && cfg().anonKey) && goodServer(cfg().url);
 export const signedIn = () => !!cfg().refreshToken;
 
 /** https://xxxx.supabase.co, whatever was pasted after it (e.g. /rest/v1/ from the API URL). */
@@ -150,6 +154,7 @@ function saveSession(s) {
 }
 
 export function configure(url, anonKey) {
+  if (!goodServer(cleanUrl(url))) throw new Error('That isn’t a server address — paste the Project URL from Supabase (https://xxxx.supabase.co), not your email.');
   // Keep just https://xxxx.supabase.co: people often paste the API URL with /rest/v1/ on the end.
   account.patch({ url: cleanUrl(url).replace(/^(https?:\/\/[^/]+).*$/i, '$1'), anonKey: anonKey.trim() });
 }

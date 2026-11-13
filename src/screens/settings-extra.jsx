@@ -115,6 +115,7 @@ export function AccountCard() {
           return 'Sync server saved — now create your account';
         })}
       >
+        {sync.badServer() && <p class="err">The saved sync server address isn’t right (it looks like an email). Paste your Supabase Project URL and key again below.</p>}
         <p class="muted">
           Accounts sync your library, progress, addons and logins across devices. They run on your own free <b>Supabase</b> project (takes ~3 minutes):
         </p>
