@@ -209,7 +209,7 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
       </div>
       {/* How far you are: a thin line under the cover, not on it. */}
       {/* Always there (empty when not started), so every card in a row lines up. */}
-      <div class={'progress-under' + (pct > 0 ? '' : ' empty')}>
+      <div class={'progress-under' + (pct > 0 ? '' : ' unstarted')}>
         <div style={{ width: pct + '%' }} />
       </div>
       {rec ? (
