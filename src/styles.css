@@ -11997,3 +11997,8 @@ button.cr-tile.on > img {
   max-height: 2.5em;
 }
 :root .book-card .book-card-head { min-height: 0; align-items: flex-start; }
+
+/* The summary badge always shows whole: the other badges give way first. */
+.book-card .book-card-badges .card-ss { flex: none; }
+.book-card .book-card-badges .card-match { flex: none; }
+.book-card .book-card-badges .card-rating { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }

@@ -248,7 +248,8 @@ export const BookCard = memo(function BookCard({ book: raw, wide, rec = false })
               }}
             >
               <Icon name="star" size={10} fill /> {rt.rating.toFixed(1)}
-              {rt.count > 0 && <small> ({fmtCount(rt.count)})</small>}
+              {/* Short of room (match and summary badge too): just the stars, so nothing is cut off. */}
+              {rt.count > 0 && !(match > 0 && ss) && <small> ({fmtCount(rt.count)})</small>}
             </span>
           )}
           {ss && (
