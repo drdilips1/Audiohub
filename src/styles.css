@@ -11992,13 +11992,17 @@ button.cr-tile.on > img {
   line-clamp: 2;
   overflow: hidden;
   line-height: 1.25;
-  height: 2.5em;
-  min-height: 0;
-  max-height: 2.5em;
+  /* Two lines by count, not by a height in em (the phone's text-size setting draws text
+     bigger than em says, so a fixed height showed part of a third line). */
+  height: auto;
+  max-height: none;
+  min-height: 2lh;
 }
 :root .book-card .book-card-head { min-height: 0; align-items: flex-start; }
 
 /* The summary badge always shows whole: the other badges give way first. */
 .book-card .book-card-badges .card-ss { flex: none; }
 .book-card .book-card-badges .card-match { flex: none; }
-.book-card .book-card-badges .card-rating { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+.book-card .book-card-badges .card-rating { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; order: 3; }
+.book-card .book-card-badges .card-ss { order: 2; }
+.book-card .book-card-badges .card-match { order: 1; }
