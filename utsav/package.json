@@ -1,0 +1,37 @@
+{
+  "name": "utsav",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Utsav - the Indian greeting studio: AI-made cards in Indian languages, occasion reminders and one-tap sharing",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleRelease",
+    "server:sync": "cp src/lib/aiPrompt.js src/lib/design.js server/utsav-ai/"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/status-bar": "^8.0.4",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0",
+    "@preact/preset-vite": "^2.10.6",
+    "vitest": "4.1.12",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^16.5.0",
+    "@capacitor/cli": "^8.5.2"
+  }
+}

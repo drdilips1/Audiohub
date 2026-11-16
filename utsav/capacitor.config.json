@@ -1,0 +1,18 @@
+{
+  "appId": "app.utsav.greetings",
+  "appName": "Utsav",
+  "webDir": "dist",
+  "backgroundColor": "#FBF6F2",
+  "android": {
+    "backgroundColor": "#FBF6F2"
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "LIGHT"
+    },
+    "LocalNotifications": {
+      "iconColor": "#C2185B"
+    }
+  }
+}

@@ -1,0 +1,94 @@
+name: Utsav APK
+
+# Builds the Utsav Android app (utsav/) into an installable APK. It only uploads the
+# APK as a build artifact: nothing is published and AudioYam is not touched.
+on:
+  push:
+    paths:
+      - 'utsav/**'
+      - '.github/workflows/utsav-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: utsav-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: utsav
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 0.1.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: utsav/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+
+      - name: Test, lint and build the web app
+        env:
+          VITE_APP_VERSION: ${{ env.VERSION_NAME }}
+          # Optional: the Utsav AI server address (repository variable). Empty = AI only with a user's own key.
+          VITE_AI_URL: ${{ vars.UTSAV_AI_URL }}
+        run: |
+          npm ci
+          npm test
+          npm run lint
+          npm run build
+          npx cap sync android
+
+      - name: Prepare signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.UTSAV_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.UTSAV_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.UTSAV_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.UTSAV_KEY_PASSWORD }}
+        run: |
+          KS="$RUNNER_TEMP/utsav.jks"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | tr -d ' \n\r' | base64 -d > "$KS"
+            KS_PASS="${KS_PASS:-utsav-ci}"; KEY_ALIAS="${KEY_ALIAS:-utsav}"; KEY_PASS="${KEY_PASS:-$KS_PASS}"
+            echo "Signing with the permanent release key."
+          else
+            echo "::warning::No UTSAV_KEYSTORE_BASE64 secret: signing with a throwaway key, so each new build needs the old one uninstalled first."
+            KS_PASS=utsav-ci KEY_PASS=utsav-ci KEY_ALIAS=utsav
+            keytool -genkeypair -keystore "$KS" -storepass "$KS_PASS" -alias "$KEY_ALIAS" -keypass "$KEY_PASS" \
+              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Utsav,O=Utsav,C=IN"
+          fi
+          {
+            echo "UTSAV_KEYSTORE=$KS"
+            echo "UTSAV_KEYSTORE_PASSWORD=$KS_PASS"
+            echo "UTSAV_KEY_ALIAS=$KEY_ALIAS"
+            echo "UTSAV_KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        working-directory: utsav/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          mkdir -p ../out
+          cp app/build/outputs/apk/release/app-release.apk "../out/Utsav-v${VERSION_NAME}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Utsav-v${{ env.VERSION_NAME }}
+          path: utsav/out/*.apk
