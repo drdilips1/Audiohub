@@ -4,7 +4,7 @@ import globals from 'globals';
 import react from 'eslint-plugin-react';
 
 export default [
-  { ignores: ['dist/**', 'android/**', 'ios/**', 'node_modules/**', 'workers/**', 'relay/**', 'public/**', 'utsav/**'] },
+  { ignores: ['dist/**', 'android/**', 'ios/**', 'node_modules/**', 'workers/**', 'relay/**', 'public/**'] },
   {
     files: ['src/**/*.{js,jsx}'],
     plugins: { react },

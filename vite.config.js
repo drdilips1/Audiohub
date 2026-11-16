@@ -3,8 +3,6 @@ import preact from '@preact/preset-vite';
 
 export default defineConfig({
   plugins: [preact()],
-  // utsav/ is a separate app with its own tests and packages.
-  test: { exclude: ['**/node_modules/**', 'utsav/**'] },
   base: './',
   build: {
     outDir: 'dist',
