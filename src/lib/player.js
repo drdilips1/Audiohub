@@ -867,9 +867,13 @@ export async function playBook(details, { index, time, globalStart, percent, aut
     set({ book: details, tracks, playing: false });
     // Played from another copy (TorBox, a download…): your server's place for this book
     // counts too — Absorb or the web player may have gone further since.
+    // Asked at once but never waited for: a quick answer (home Wi-Fi) is used now; a slow one
+    // (away from home, server off) is checked once the book plays — it waited 4 s every time.
+    let laterPlace = null;
     if (!server && absConnected() && !details.uid.startsWith('abs:') && details.source !== 'pod') {
-      set({ phase: 'Checking your server’s place…' });
-      const place = await Promise.race([serverPlace(details).catch(() => null), new Promise((r) => setTimeout(() => r(null), 4000))]);
+      const asked = serverPlace(details).catch(() => null);
+      const place = await Promise.race([asked, delay(600).then(() => undefined)]);
+      if (place === undefined) laterPlace = asked;
       const g = place && fitted(place, totalDuration());
       if (g != null) server = { time: g, updatedAt: place.updatedAt, finished: place.finished };
     }
@@ -916,10 +920,29 @@ export async function playBook(details, { index, time, globalStart, percent, aut
     if (pref.intro && !t && (i || 0) === 0) t = pref.intro;
     // autoplay false: ready but quiet (e.g. a scene is looked up first, then it plays from there).
     await loadTrack(Math.min(i, tracks.length - 1), t, autoplay);
+    if (laterPlace && index == null && time == null && globalStart == null) {
+      const newest = Math.max(saved?.updatedAt || 0, useOther ? other.updatedAt || 0 : 0);
+      const startG = globalTime();
+      laterPlace.then((place) => moveToServerPlace(details, place, newest, startG));
+    }
   } catch (e) {
     if (await playOtherCopy(details, e, { index, time, globalStart, autoplay })) return;
     set({ loading: false, phase: '', error: e.message || String(e) });
   }
+}
+
+/**
+ * Your server's place came in after the book had started (another app went further since):
+ * carry on from there — only while you're still near where it started (not after you moved).
+ */
+function moveToServerPlace(book, place, newest, startG = null) {
+  if (!place || place.finished || state.book?.uid !== book.uid || place.updatedAt <= newest + 30e3) return;
+  const g = fitted(place, totalDuration());
+  const now = globalTime();
+  if (g == null || Math.abs(g - now) <= 15) return;
+  if (startG != null && Math.abs(now - startG) > 90) return;
+  playAt(g);
+  window.dispatchEvent(new CustomEvent('inkwell-toast', { detail: '⏩ Carrying on from your server’s place (another app went further)' }));
 }
 
 function locate(g) {
@@ -964,27 +987,14 @@ export function toggle() {
   // Back after a break: another app may have moved on (Absorb, the web player). Your
   // server's place, when it's newer than this phone's, is where this carries on.
   const saved = state.book && progress.get()[state.book.uid];
-  if (state.book && absConnected() && state.book.source !== 'pod' && !resumeChecked && Date.now() - (saved?.updatedAt || 0) > 45e3) {
-    resumeChecked = true;
+  // Asked in the background — it plays at once, and moves only if the server's place is newer.
+  if (state.book && absConnected() && state.book.source !== 'pod' && Date.now() - (saved?.updatedAt || 0) > 45e3) {
     const book = state.book;
-    set({ loading: true, phase: 'Checking your server’s place…' });
-    Promise.race([serverPlace(book).catch(() => null), new Promise((r) => setTimeout(() => r(null), 3500))]).then((place) => {
-      if (state.book !== book) return;
-      const g = place && !place.finished && place.updatedAt > (saved?.updatedAt || 0) + 30e3 ? fitted(place, totalDuration()) : null;
-      if (g != null && Math.abs(g - globalTime()) > 15) {
-        hist('seek', globalTime(), g);
-        const at = locate(g);
-        set({ loading: true, phase: 'Carrying on from your server’s place…' });
-        resumeChecked = false;
-        return loadTrack(at.i, at.t, true);
-      }
-      set({ loading: false, phase: '' });
-      toggle(); // plays (the check is skipped this once)
-      resumeChecked = false;
-    });
-    return;
+    const startG = globalTime();
+    serverPlace(book)
+      .catch(() => null)
+      .then((place) => moveToServerPlace(book, place, saved?.updatedAt || 0, startG));
   }
-  resumeChecked = false;
   // Resuming: show it, and if nothing plays within 12s (dead connection or an
   // expired link after a long pause or a call), reload this part at the same spot.
   set({ loading: true, phase: state.interrupted ? 'Taking the audio back from the call…' : 'Resuming…', interrupted: false });
@@ -1182,7 +1192,6 @@ function saveProgress(force = false) {
   }
 }
 let lastAbsSync = 0;
-let resumeChecked = false;
 /** The book is put away: close its server session (with the last place). */
 function endAbsSession() {
   if (!state.book?.uid?.startsWith('abs:')) return;
