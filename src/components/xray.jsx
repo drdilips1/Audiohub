@@ -110,6 +110,7 @@ export function XraySheet({ s }) {
               <b>{x.name}</b>
               <span>{x.role || x.about}</span>
             </div>
+            {x.chapters?.length > 0 && <small class="char-first">from {player.chapters()[x.chapters[0]]?.title?.slice(0, 24) || `part ${x.chapters[0] + 1}`}</small>}
           </li>
         ))}
       </ul>

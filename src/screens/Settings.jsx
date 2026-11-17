@@ -1414,6 +1414,23 @@ export function Settings() {
             ))}
           </div>
         </div>
+        <div class="set-row column">
+          <div>
+            <b>Motion</b>
+            <small>Small animations: the cover breathing while it plays, play ⇄ pause, a ripple on skip, the cover growing into the player, a moon for the sleep timer. Gentle follows your phone's "reduce motion".</small>
+          </div>
+          <div class="chips">
+            {[
+              ['off', 'Off'],
+              ['gentle', 'Gentle'],
+              ['full', 'Full'],
+            ].map(([m, label]) => (
+              <button class={'pill small' + ((st.motion || 'gentle') === m ? ' active' : '')} onClick={() => settings.patch({ motion: m })}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         {/* Every colour theme right here, light and dark: one tap sets the mode and the colours. */}
         {[
           ['Light', true],
@@ -1461,11 +1478,21 @@ export function Settings() {
         <Toggle label="Podcasts tab" hint="Show Podcasts in the bar at the bottom (off: hidden; podcasts you follow stay)" on={st.podcastsTab !== false} onChange={(v) => settings.patch({ podcastsTab: v })} />
         <Toggle label="Dynamic colour" hint="Tint the player and book pages from the cover art" on={st.dynamicColor} onChange={(v) => settings.patch({ dynamicColor: v })} />
         <PlayerBackgroundPicker st={st} />
+        <Toggle label="Night mode" hint="At night the player turns dark and warm, with bigger buttons, and dims itself after 20 seconds (tap to wake)" on={st.nightMode !== false} onChange={(v) => settings.patch({ nightMode: v })} />
+        {st.nightMode !== false && (
+          <Stepper label="Night starts" value={st.nightFrom ?? 22} options={[19, 20, 21, 22, 23, 0]} fmt={(v) => `${v === 0 ? 12 : v > 12 ? v - 12 : v} ${v >= 12 ? 'pm' : 'am'}`} onChange={(v) => settings.patch({ nightFrom: v })} />
+        )}
+        {st.nightMode !== false && (
+          <Stepper label="Night ends" value={st.nightTo ?? 6} options={[5, 6, 7, 8]} fmt={(v) => `${v} am`} onChange={(v) => settings.patch({ nightTo: v })} />
+        )}
       </Section>
 
       <Section icon="headphones" title="Playback">
         <Stepper label="Skip back" value={st.skipBack} options={[5, 10, 15, 30]} fmt={(v) => v + 's'} onChange={(v) => settings.patch({ skipBack: v })} />
         <Stepper label="Skip forward" value={st.skipForward} options={[10, 15, 30, 45, 60]} fmt={(v) => v + 's'} onChange={(v) => settings.patch({ skipForward: v })} />
+        <Toggle label="Scenes: find the exact spot" hint="After jumping to a scene you asked for, the app listens to a few seconds with live text and moves to the scene's own sentence (about 15 seconds more). Off: it stays at its first estimate." on={st.sceneCorrect !== false} onChange={(v) => settings.patch({ sceneCorrect: v })} />
+        <Toggle label="Back a little when you carry on" hint="5 seconds after a call or a notification paused the book, 30 seconds after a pause of a couple of hours or more — so you don't lose the thread" on={st.resumeRewind !== false} onChange={(v) => settings.patch({ resumeRewind: v })} />
+        <Toggle label="Skip credits" hint="Opening and end credits and the publisher's intro are skipped when their chapter starts (going back to one on purpose plays it)" on={st.skipCredits !== false} onChange={(v) => settings.patch({ skipCredits: v })} />
         <Toggle label="Play Up next by itself" hint="When a book ends, the next one in Up next starts (press and hold a book → Add to Up next)" on={st.upNextAuto !== false} onChange={(v) => settings.patch({ upNextAuto: v })} />
       </Section>
 

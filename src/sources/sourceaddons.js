@@ -160,6 +160,7 @@ function runOnce(addon, p, retry = 0) {
   return inflight.get(key);
 }
 
+const slowSources = new Map(); // addon id -> { fails, at }: sources that keep timing out
 async function searchOnce(addon, vars, key, { title = '', author = '', query = '' }, retry) {
   const src = addon.manifest.adapters.source;
   await takeSlot(addon);
@@ -168,12 +169,24 @@ async function searchOnce(addon, vars, key, { title = '', author = '', query = '
   const method = (req.method || 'GET').toUpperCase();
   const url = fill(req.url, vars, true);
   const headers = req.headers || {};
-  // Torrent search sites can take a while; the second go waits longer.
-  const timeout = Math.max(req.timeout || 0, retry ? 60000 : 30000);
-  const data =
-    method === 'GET'
-      ? await getJson(url, { headers, timeout, fresh: true })
-      : await sendJson(url, method, fill(req.body || {}, vars, false), headers, { timeout });
+  // Torrent search sites can take a while; the second go waits longer. A source that timed out
+  // twice in the last half hour (down, or very slow) gets only 10 s — the others aren't held up.
+  const id = addon.manifest.id;
+  const slow = slowSources.get(id);
+  const stalled = slow && slow.fails >= 2 && Date.now() - slow.at < 30 * 60e3;
+  const timeout = stalled ? 10000 : Math.max(req.timeout || 0, retry ? 60000 : 30000);
+  let data;
+  try {
+    data =
+      method === 'GET'
+        ? await getJson(url, { headers, timeout, fresh: true })
+        : await sendJson(url, method, fill(req.body || {}, vars, false), headers, { timeout });
+    slowSources.delete(id);
+  } catch (e) {
+    if (/timed out|timeout|took too long/i.test(e?.message || '')) slowSources.set(id, { fails: (slow && Date.now() - slow.at < 30 * 60e3 ? slow.fails : 0) + 1, at: Date.now() });
+    if (stalled) throw Object.assign(new Error(`${addon.manifest.name} isn't answering — skipped for now`), { final: true });
+    throw e;
+  }
 
   const res = src.response || {};
   const list = at(data, res.resultsPath);

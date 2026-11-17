@@ -209,6 +209,83 @@ async function call(p, model, prompt, json) {
   }
 }
 
+/**
+ * Ask about a picture (a book cover, a bookshelf, a screenshot): only services that can see
+ * images — Gemini and Claude (and your own, if its model can). `dataUrl`: a data: URL (JPEG).
+ */
+const PICTURE_MODEL = 'claude-sonnet-5-5';
+export const canSeeImages = () => aiOn() && PROVIDERS.some((p) => (p.id === 'gemini' || p.anthropic || p.custom) && keyOf(p));
+export async function askAiImage(prompt, dataUrl, { json = false } = {}) {
+  if (!aiOn()) throw new Error('AI is off (Settings → AI)');
+  const [, mime = 'image/jpeg', b64 = ''] = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl) || [];
+  // Claude first (reads covers and spines best), then Gemini, then your own.
+  const rank = (p) => (p.anthropic ? 0 : p.id === 'gemini' ? 1 : 2);
+  const order = PROVIDERS.filter((p) => keyOf(p) && (p.id === 'gemini' || p.anthropic || p.custom)).sort((a, b) => rank(a) - rank(b));
+  if (!order.length) throw new Error('Reading pictures needs a Gemini or Claude key (Settings → AI)');
+  let last;
+  const why = [];
+  for (const p of order) {
+    try {
+      if (p.anthropic) {
+        const { default: Anthropic } = await import('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey: keyOf(p), dangerouslyAllowBrowser: true, maxRetries: 0, timeout: 25000 });
+        const res = await client.messages.create({
+          // Pictures: Sonnet — quick and good at reading covers and pages (Opus, used for the
+          // rest, took long enough on a picture to hit the time limit).
+          model: PICTURE_MODEL,
+          max_tokens: 2000,
+          output_config: { effort: 'low' }, // reading titles off a picture: quick
+          messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } }, { type: 'text', text: prompt }] }],
+        });
+        const text = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+        if (text) return text;
+        continue;
+      }
+      // A fast model that can see (Flash, not Pro — Pro thinks for a long time first).
+      const ms = p.custom ? [] : await modelsFor(p);
+      const model = p.custom ? (await modelsFor(p))[0] : ms.find((m) => /flash/.test(m) && !/lite|thinking|image|tts|live/.test(m)) || ms.find((m) => /flash/.test(m)) || 'gemini-2.5-flash';
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 15000);
+      const send = (fast) =>
+        fetch(p.custom ? customEndpoint() : p.url, {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${keyOf(p)}` },
+          body: JSON.stringify({
+            model,
+            temperature: 0.2,
+            // Gemini: answer without "thinking" first (much faster for reading a picture).
+            ...(fast ? { reasoning_effort: 'none' } : {}),
+            messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+            ...(json && p.json ? { response_format: { type: 'json_object' } } : {}),
+          }),
+        });
+      let res = await send(p.id === 'gemini');
+      if (res.status === 400 && p.id === 'gemini') res = await send(false); // that model can't skip thinking
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data?.error?.message || `${p.name} error ${res.status}`), { status: res.status });
+      const text = (data.choices?.[0]?.message?.content || '').trim();
+      if (text) return text;
+    } catch (e) {
+      last = e;
+      // Each service's own reason (no credit left, quota used up, key not valid…), kept for
+      // Report a problem and shown together if none of them could read the picture.
+      // No answer at all (the request hung) reads differently from a refusal: that's the
+      // network (Private DNS, a VPN or ad blocker), not the key.
+      const hung = !e.status && /abort|timed? ?out|timeout|failed to fetch|network/i.test(`${e.name || ''} ${e.message || ''}`);
+      const msg = hung
+        ? `no answer in ${p.anthropic ? 25 : 15} s — something on this phone's network may be blocking it`
+        : e.status === 429
+          ? 'limit used up for now (Gemini: the free daily quota, shared by every key in the same Google project)'
+          : String(e.message || e).slice(0, 160);
+      why.push(`${p.name}: ${msg}`);
+      import('./report.js').then((r) => r.logError('AI picture', `${p.name}${e.status ? ` (HTTP ${e.status})` : ''}: ${hung ? msg : String(e.message || e).slice(0, 300)}`)).catch(() => {});
+    }
+  }
+  if (why.length) throw Object.assign(new Error(`Couldn't read the picture — ${why.join(' · ')}`), { status: last?.status });
+  throw last || new Error("Couldn't read the picture");
+}
+
 /** Pull the JSON object out of a reply (some models wrap it in prose or fences). */
 export function parseJson(text) {
   const t = text.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g, '');

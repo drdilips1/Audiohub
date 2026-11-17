@@ -1,6 +1,8 @@
 import * as qbit from './sources/qbit.js';
 import { Ask } from './screens/Ask.jsx';
 import { Stats } from './screens/Stats.jsx';
+import { Person } from './screens/Person.jsx';
+// A link, a list or a picture shared to the app from another app: Find books in it.
 import { Notes } from './screens/Notes.jsx';
 import { Downloads } from './screens/Downloads.jsx';
 import { onIncoming } from './sources/local.js';
@@ -88,7 +90,7 @@ const KeptTab = memo(function KeptTab({ Root }) {
   );
 });
 
-const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast, ask: Ask, stats: Stats, notes: Notes, downloads: Downloads };
+const ROUTES = { book: Book, browse: Browse, reader: Reader, shelf: Shelf, podcast: Podcast, ask: Ask, stats: Stats, notes: Notes, downloads: Downloads, person: Person };
 
 export function App() {
   const [route, setRoute] = useState(nav.state());

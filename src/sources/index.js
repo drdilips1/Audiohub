@@ -233,6 +233,51 @@ export async function findEditions(book) {
  * Real-Debrid files) — for the book page's "Available" row. Only your own services
  * are searched, so it's quick.
  */
+// Audiobookshelf matches the letters as typed: "Right Thing Right Now" doesn't find
+// "Right Thing, Right Now". So: the title as written, without its punctuation, the part before
+// a comma, and — when none of those finds it — the whole library list, matched here.
+let absAll = null;
+let absAllAt = 0;
+async function serverCopies(t, plain) {
+  const safe = (p) => p.catch(() => []);
+  const head = t.split(/\s*[,;–—-]\s*/)[0].trim();
+  const terms = [...new Set([t.trim(), plain, head.length >= 4 ? head : ''].filter(Boolean))];
+  const seen = new Set();
+  const out = [];
+  for (const list of await Promise.all(terms.map((q) => safe(absSrc.search(q))))) for (const b of list) if (!seen.has(b.uid) && seen.add(b.uid)) out.push(b);
+  if (out.some((b) => matches(t, `${b.title} ${b.rawName || ''}`))) return out;
+  try {
+    if (!absAll || Date.now() - absAllAt > 10 * 60e3) {
+      absAll = await absSrc.all();
+      absAllAt = Date.now();
+    }
+  } catch {}
+  return [...out, ...(absAll || []).filter((b) => !seen.has(b.uid) && matches(t, `${b.title} ${b.rawName || ''}`))];
+}
+
+/**
+ * For a long list of books (a "100 best" page): your server's whole list fetched once and
+ * matched here, instead of three server searches per book. { server, cloud } like findOwned.
+ */
+export async function findOwnedQuick(book) {
+  const t = mainTitle(book.title || '');
+  if (!words(t).length) return { server: [], cloud: [] };
+  const sn = words(String(book.author || '').split(/,|&|\band\b/)[0]).slice(-1)[0] || '';
+  const fits = (b) => matches(t, `${b.title} ${b.rawName || ''}`) && !otherBook(b.rawName || b.title, t, book.author || '') && (words(t).length >= 3 || !sn || words(`${b.author || ''} ${b.title}`).includes(sn));
+  let server = [];
+  if (enabled('abs') && absSrc.connected() && (await absSrc.serverUp().catch(() => false))) {
+    try {
+      if (!absAll || Date.now() - absAllAt > 10 * 60e3) {
+        absAll = await absSrc.all();
+        absAllAt = Date.now();
+      }
+    } catch {}
+    server = (absAll || []).filter(fits);
+  }
+  const cloudHits = (enabled('tb') && cloud.tbConnected()) || (enabled('rd') && cloud.rdConnected()) ? await cloud.search(t).catch(() => []) : [];
+  return { server, cloud: cloudHits.filter(fits) };
+}
+
 export async function findOwned(book) {
   const t = mainTitle(hasDevanagari(book.title) ? translit(book.title) : book.title);
   const plain = t.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
@@ -251,10 +296,12 @@ export async function findOwned(book) {
       const text = words(`${b.author || ''} ${b.narrator || ''} ${b.title} ${b.rawName || ''}`);
       return text.includes(sn) || (!b.author && sameTitle(b));
     });
-  const [server, cloudHits] = await Promise.all([
-    enabled('abs') && absSrc.connected() ? safe(absSrc.search(plain)) : [],
-    (enabled('tb') && cloud.tbConnected()) || (enabled('rd') && cloud.rdConnected()) ? safe(cloud.search(plain)) : [],
-  ]);
+  // TorBox / Real-Debrid and your server at once; a server that's off (or slow) isn't waited
+  // for — 4 s after the cloud has answered, what the server found by then is all there is.
+  const late = (ms) => new Promise((r) => setTimeout(() => r([]), ms));
+  const serverJob = enabled('abs') && absSrc.connected() ? absSrc.serverUp().then((up) => (up ? serverCopies(t, plain) : [])).catch(() => []) : Promise.resolve([]);
+  const cloudHits = (enabled('tb') && cloud.tbConnected()) || (enabled('rd') && cloud.rdConnected()) ? await safe(cloud.search(plain)) : [];
+  const server = await Promise.race([serverJob, late(cloudHits.length ? 4000 : 12000)]);
   return { server: byTitle(server), cloud: byTitle(cloudHits) };
 }
 

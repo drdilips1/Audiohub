@@ -20,6 +20,8 @@ import {
   sourceOf,
 } from "../sources/index.js";
 import { library, progress, toggleLibrary, useStore } from "../lib/store.js";
+import { readLater, toggleReadLater } from "../lib/readlists.js";
+import { namesIn } from "../lib/people.js";
 import { BookTags } from "../components/book-tags.jsx";
 import { fmtDuration, fmtTime } from "../lib/format.js";
 import { nav, useBackClose } from "../lib/nav.js";
@@ -31,7 +33,7 @@ import { mainTitle, searchTitle, matches, surname } from "../lib/match.js";
 import { STARTERS } from "../lib/askbook.js";
 import { SourceResults } from "../components/source-results.jsx";
 import { FixDetails } from "../components/fix-details.jsx";
-import { Available } from "../components/available.jsx";
+import { Available, useWhere } from "../components/available.jsx";
 import { SeriesCard } from "../components/series-card.jsx";
 import { useRatings, useGoodreads } from "../lib/ratings.js";
 import {
@@ -61,6 +63,8 @@ import { openExternal } from "../sources/summaries.js";
 import { useStoryShots, chooseStoryShots } from "../sources/storyshots.js";
 import { finishLine } from "../lib/stats.js";
 import { absUploads } from "../lib/absupload.js";
+import { burst } from "../lib/motion.js";
+import { DownloadIcon } from "../components/motion-icons.jsx";
 
 // Books you already have (cloud, server, addons) can still show other copies from source addons.
 const OTHER_SOURCES = new Set(["tb", "rd", "abs", "addon"]);
@@ -188,16 +192,28 @@ export function Book({ book: initial }) {
         </header>
         <div class="book-hero-content">
           <Cover book={book} class="book-cover" eager />
-          <h1>{book.title}</h1>
-          {book.author && <p class="book-author">{book.author}</p>}
-          {book.narrator && (
-            <p class="book-narrator">Read by {book.narrator}</p>
-          )}
+          {book.source !== "pod" && book.source !== "sum" && <HeroPills book={book} />}
+          <h1>{splitTitle(book).main}</h1>
+          {splitTitle(book).sub && <p class="book-sub">{splitTitle(book).sub}</p>}
           <HeroFacts book={book} tracks={tracks} />
-          <div class="book-meta">
-            <SourceBadge uid={book.uid} book={book} />
-            {book.series && <span>{book.series}</span>}
-          </div>
+          {(book.author || book.narrator) && (
+            <div class={"book-people" + (book.author && book.narrator ? "" : " one")}>
+              {book.author && (
+                <div>
+                  <small>By</small>
+                  <PeopleLinks names={book.author} role="author" />
+                </div>
+              )}
+              {book.author && book.narrator && <i />}
+              {book.narrator && (
+                <div>
+                  <small>Read by</small>
+                  <PeopleLinks names={book.narrator} role="narrator" />
+                </div>
+              )}
+            </div>
+          )}
+          <WhereBadges book={book} />
           {!loading &&
             !book.cover &&
             book.source !== "pod" &&
@@ -246,7 +262,9 @@ export function Book({ book: initial }) {
             {isCurrent && ps.playing
               ? "Pause"
               : pct > 0 && !prog.finished
-                ? `Resume · ${pct}%`
+                ? prog.total > 0
+                  ? `Resume · ${fmtDuration(Math.max(0, prog.total - (prog.global || 0)))} left`
+                  : `Resume · ${pct}%`
                 : "Listen now"}
           </button>
         )}
@@ -302,14 +320,15 @@ export function Book({ book: initial }) {
                 .catch((e) => e.message !== "cancelled" && toast(e.message));
             }}
           >
-            {dl?.status === "downloading" ? <span class="spinner small" /> : <Icon name={dl?.status === "done" ? "check" : "download"} size={20} />}
+            <DownloadIcon dl={dl} size={20} />
           </button>
         )}
         {book.source !== "pod" && (
           <button
             class={"btn secondary big sq" + (saved ? " liked" : "")}
             aria-label={saved ? "Remove from library" : "Add to library"}
-            onClick={() => {
+            onClick={(e) => {
+              if (!saved) burst(e.currentTarget);
               toggleLibrary(book);
               toast(saved ? "Removed from your library" : "Added to your library");
             }}
@@ -827,34 +846,126 @@ function BookCheck({ check }) {
 }
 
 /** Under the title, two quiet lines: length · parts · year · language, then the ratings. */
+/** Names that open the person's page (authors, narrators). */
+function PeopleLinks({ names, role }) {
+  const list = namesIn(names).slice(0, 2);
+  if (!list.length) return <b>{names}</b>;
+  return (
+    <b>
+      {list.map((n, i) => (
+        <>
+          {i > 0 && " & "}
+          <a class="person-link" onClick={() => nav.push("person", { name: n, role })}>
+            {n}
+          </a>
+        </>
+      ))}
+    </b>
+  );
+}
+
+/** "Title: Subtitle" → { main, sub } (or the book's own subtitle). */
+function splitTitle(book) {
+  const t = String(book.title || "");
+  if (book.subtitle) return { main: t, sub: book.subtitle };
+  const m = /^(.{3,}?):\s+(.{3,})$/.exec(t);
+  return m ? { main: m[1], sub: m[2] } : { main: t, sub: "" };
+}
+
+const stars = (r) => {
+  const full = Math.floor(r);
+  const half = r - full >= 0.25 && r - full < 0.75;
+  const n = full + (r - full >= 0.75 ? 1 : 0);
+  return "★".repeat(n) + (half ? "½" : "");
+};
+
+/** Where it plays from: the copy's own place, and wherever else you have it (phone, server, cloud). */
+const CATALOG = /^(audible|itunes|apple|gr|goodreads|hc|hardcover|ol|openlibrary|gb|google|discover|sum)$/i;
+function WhereBadges({ book }) {
+  const where = useWhere(book.uid);
+  const catalog = book.kind === "discover" || CATALOG.test(String(book.source || ""));
+  if (catalog && !where.length) return null;
+  return (
+    <div class="book-meta">
+      {!catalog && <SourceBadge uid={book.uid} book={book} />}
+      {where.map((w) => (
+        <span class="badge where">{w}</span>
+      ))}
+    </div>
+  );
+}
+
+/** Under the cover: your thumbs (the verdict further down) and Read later. */
+function HeroPills({ book }) {
+  const later = useStore(readLater);
+  const on = !!later[book.uid];
+  const verdict = useStore(myRatings)[rateKey(book)]?.verdict || "";
+  return (
+    <div class="book-pills">
+      <span class="book-pill thumbs">
+        {[
+          ["like", "👍", "Liked it"],
+          ["dislike", "👎", "Not for me"],
+        ].map(([k, emoji, label]) => (
+          <button
+            class={verdict === k ? "on" : ""}
+            aria-label={label}
+            onClick={() => {
+              const off = verdict === k;
+              rateBook(book, { verdict: off ? "" : k });
+              toast(off ? "Rating removed" : k === "like" ? "👍 Liked — more like this" : "👎 Noted — fewer like this");
+            }}
+          >
+            {emoji}
+          </button>
+        ))}
+      </span>
+      <button
+        class={"book-pill" + (on ? " on" : "")}
+        onClick={(e) => {
+          if (!on) burst(e.currentTarget);
+          toggleReadLater(book);
+          toast(on ? "Off Read later" : "Added to Read later");
+        }}
+      >
+        {on ? "✓ Read later" : "＋ Read later"}
+      </button>
+    </div>
+  );
+}
+
 function HeroFacts({ book, tracks }) {
   const { goodreads, audible } = useRatings(book);
   // When the lookups don't answer (busy, offline): the book's own catalogue stars (Audible results carry them).
   const own = !goodreads && !audible && book.rating > 0 ? { rating: Number(book.rating), count: Number(book.ratings) || 0 } : null;
+  const kind = book.source === "pod" ? "Podcast" : book.kind === "text" ? "Ebook" : "Audiobook";
   const facts = [
+    kind,
     book.duration > 0 && fmtDuration(book.duration),
     tracks.length > 1 && `${tracks.length} parts`,
+    book.series && String(book.series).slice(0, 40),
     book.year,
-    book.language && String(book.language).slice(0, 12),
   ].filter(Boolean);
-  const rates = [
-    goodreads && { r: goodreads, label: "Goodreads", d: 2 },
-    audible && { r: audible, label: "Audible", d: 1 },
-    own && { r: own, label: "", d: 1 },
-  ].filter(Boolean);
+  const genres = (book.genres || book.subjects || []).map((g) => (typeof g === "string" ? g : g?.name)).filter(Boolean).slice(0, 3);
+  // The main rating big, with stars; Goodreads under it.
+  const main = audible || own || null;
+  const second = goodreads;
+  const big = main || second;
   return (
     <>
-      {facts.length > 0 && <p class="book-facts">{facts.join(" · ")}</p>}
-      {rates.length > 0 && (
-        <div class="book-rates">
-          {rates.map(({ r, label, d }) => (
-            <button class="book-rate" onClick={() => r.url && openExternal(r.url)}>
-              <Icon name="star" size={13} fill /> <b>{r.rating.toFixed(d)}</b>
-              {label ? ` ${label}` : ""}
-              {r.count > 0 ? ` · ${fmtK(r.count)}` : ""}
-            </button>
-          ))}
-        </div>
+      <p class="book-facts">{facts.join(" · ")}</p>
+      {genres.length > 0 && <p class="book-genres">{genres.join(" · ")}</p>}
+      {big && (
+        <button class="book-bigrate" onClick={() => big.url && openExternal(big.url)}>
+          <b>{big.rating.toFixed(1)}</b> <span class="stars">{stars(big.rating)}</span>
+          {big.count > 0 && <em>{fmtK(big.count)} ratings</em>}
+          {!main && <small> on Goodreads</small>}
+        </button>
+      )}
+      {main && second && (
+        <button class="book-grrate" onClick={() => second.url && openExternal(second.url)}>
+          {second.rating.toFixed(1)} on Goodreads{second.count > 0 ? ` (${second.count.toLocaleString()} ratings)` : ""}
+        </button>
       )}
     </>
   );

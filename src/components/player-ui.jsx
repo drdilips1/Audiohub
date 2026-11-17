@@ -1,11 +1,14 @@
 import { BgImage } from './bg-image.jsx';
 import { wallpaperUrl, useCustomWallpaper } from '../lib/wallpaper.js';
 import { loadImage } from '../lib/image.js';
+import { CatchUp } from './catchup.jsx';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import * as player from '../lib/player.js';
 import { isNative as isNativeEngine } from '../lib/engine.js';
 import { Cover, toast, SourceBadge } from './common.jsx';
 import { Icon, SkipIcon } from './icons.jsx';
+import { PlayPauseIcon } from './motion-icons.jsx';
+import { ripple, openFrom, squash } from '../lib/motion.js';
 import { fmtTime } from '../lib/format.js';
 import { coverColor } from '../lib/color.js';
 import { nav, useBackClose } from '../lib/nav.js';
@@ -89,7 +92,7 @@ export function MiniPlayer() {
   if (!s.book) return null;
   const pct = s.duration ? (s.time / s.duration) * 100 : 0;
   return (
-    <div class="mini-player" style={color ? { '--dyn': color } : null} onClick={() => nav.openOverlay('player')}>
+    <div class="mini-player" style={color ? { '--dyn': color } : null} onClick={(e) => openFrom(e.currentTarget.querySelector('.mini-cover'), () => nav.openOverlay('player'))}>
       <div class="mini-progress" style={{ width: pct + '%' }} />
       <Cover book={s.book} class="mini-cover" />
       <div class="mini-meta">
@@ -113,6 +116,7 @@ export function MiniPlayer() {
         aria-label="Back"
         onClick={(e) => {
           e.stopPropagation();
+          ripple(e.currentTarget);
           player.skip(-settings.get().skipBack);
         }}
       >
@@ -126,7 +130,7 @@ export function MiniPlayer() {
           player.toggle();
         }}
       >
-        {s.loading ? <span class="spinner" /> : <Icon name={s.playing ? 'pause' : 'play'} size={20} />}
+        {s.loading ? <span class="spinner" /> : <PlayPauseIcon playing={s.playing} size={20} />}
       </button>
       <button
         class="icon-btn mini-close"
@@ -150,6 +154,56 @@ const SLEEP = [5, 10, 15, 30, 45, 60, 90];
  * (Not "Chapter 8 of 10 · Chapter 6" — with an intro and credits counted, the list number
  * isn't the book's chapter number.) A title that's only a number: "Chapter 3 of 33".
  */
+/** Night mode on now? (Settings → Appearance: from `nightFrom` to `nightTo`, hours.) */
+export function isNight(st) {
+  if (!st.nightMode) return false;
+  const h = new Date().getHours();
+  const from = st.nightFrom ?? 22;
+  const to = st.nightTo ?? 6;
+  return from > to ? h >= from || h < to : h >= from && h < to;
+}
+
+const chapterAt = (chapters, g) => (chapters.length > 1 ? chapters.find((c) => g >= c.start && g < (c.end || Infinity)) : null);
+
+/** Sleep timer on: a moon rises over the cover and a few stars twinkle. */
+function SleepSky() {
+  return (
+    <div class="fp-sky" aria-hidden="true">
+      <span class="fp-moon" />
+      <i style={{ left: '14%', top: '30%', animationDelay: '0s' }} />
+      <i style={{ left: '78%', top: '18%', animationDelay: '1.1s' }} />
+      <i style={{ left: '88%', top: '52%', animationDelay: '2.2s' }} />
+      <i style={{ left: '30%', top: '12%', animationDelay: '0.6s' }} />
+      <i style={{ left: '6%', top: '62%', animationDelay: '1.6s' }} />
+      <i style={{ left: '94%', top: '80%', animationDelay: '0.3s' }} />
+      <i style={{ left: '52%', top: '6%', animationDelay: '2.6s' }} />
+    </div>
+  );
+}
+
+/** A thin line around the cover filling up through the chapter. */
+function ChapterRing({ chapters, g }) {
+  const c = chapterAt(chapters, g);
+  if (!c || !(c.end > c.start)) return null;
+  const pct = Math.max(0, Math.min(100, ((g - c.start) / (c.end - c.start)) * 100));
+  return (
+    // A new chapter (the last one done): a gold light runs once round the cover.
+    <svg class="fp-ring-svg" key={c.start} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <rect x="1" y="1" width="98" height="98" rx="7.5" pathLength="100" class="fp-ring-bg" />
+      <rect x="1" y="1" width="98" height="98" rx="7.5" pathLength="100" class="fp-ring-on" style={{ strokeDasharray: `${pct} 100` }} />
+      <rect x="1" y="1" width="98" height="98" rx="7.5" pathLength="100" class="fp-ring-sweep" />
+    </svg>
+  );
+}
+
+/** "12 min left in chapter" (at the speed you listen). */
+function ChapterLeft({ chapters, g, rate }) {
+  const c = chapterAt(chapters, g);
+  if (!c || !(c.end > c.start)) return null;
+  const left = Math.max(0, (c.end - g) / (rate || 1));
+  return <span class="fp-chleft">{left < 60 ? 'Under a minute' : left < 3600 ? `${Math.round(left / 60)} min` : fmtTime(left)} left in chapter</span>;
+}
+
 function chapterLabel(chapters, g) {
   let i = chapters.findIndex((c) => g >= c.start && g < (c.end || Infinity));
   if (i < 0) i = 0;
@@ -179,12 +233,45 @@ export function FullPlayer() {
     return () => clearInterval(iv);
   }, [s.sleepUntil]);
   const held = useRef(false); // a finger is on the slider
+  // A far jump (a scene, a page photo, a chapter): a streak runs along the bar to the new spot.
+  const lastPos = useRef(null);
+  const [sweep, setSweep] = useState(null); // { from, to, k } in % of this part
+  useEffect(() => {
+    const d = s.duration || s.tracks?.[s.index]?.duration || 0;
+    const prev = lastPos.current;
+    lastPos.current = { t: s.time, i: s.index, uid: s.book?.uid };
+    if (!prev || !d || prev.uid !== s.book?.uid || prev.i !== s.index || scrub != null) return;
+    if (Math.abs(s.time - prev.t) > 45) {
+      setSweep({ from: (prev.t / d) * 100, to: (s.time / d) * 100, k: Date.now() });
+      setTimeout(() => setSweep(null), 900);
+    }
+  }, [s.time, s.index, s.book?.uid]);
+  // Another book: the player fades over into its colours (not a jump).
+  const [swap, setSwap] = useState(false);
+  const firstUid = useRef(s.book?.uid);
+  useEffect(() => {
+    if (!s.book?.uid || s.book.uid === firstUid.current) return;
+    firstUid.current = s.book.uid;
+    setSwap(true);
+    const t = setTimeout(() => setSwap(false), 700);
+    return () => clearTimeout(t);
+  }, [s.book?.uid]);
   // A drag left over (no finger on it for a few seconds): follow the playing time again.
   useEffect(() => {
     if (scrub == null) return;
     const id = setTimeout(() => !held.current && setScrub(null), 4000);
     return () => clearTimeout(id);
   }, [scrub]);
+  // Night mode (after the hour set in Settings): warm and dark, the screen dims when left alone.
+  const night = isNight(st);
+  const [dimmed, setDimmed] = useState(false);
+  const dimTimer = useRef(null);
+  const wake = () => {
+    setDimmed(false);
+    clearTimeout(dimTimer.current);
+    if (isNight(settings.get())) dimTimer.current = setTimeout(() => setDimmed(true), 20000);
+  };
+  useEffect(() => (wake(), () => clearTimeout(dimTimer.current)), [night]);
   if (!s.book) return null;
   const dur = s.duration || s.tracks[s.index]?.duration || 0;
   const t = scrub ?? s.time;
@@ -196,7 +283,8 @@ export function FullPlayer() {
 
   return (
     <div
-      class={'full-player' + (showText ? ' text-mode' : '')}
+      class={'full-player' + (showText ? ' text-mode' : '') + (night ? ' night' : '') + (night && dimmed ? ' dimmed' : '') + (swap ? ' mo-swap' : '') + (s.sleepUntil > 0 ? ' sleeping' : '')}
+      onPointerDown={wake}
       style={{ ...(color ? { '--dyn': color } : {}), transform: drag ? `translateY(${drag}px)` : undefined, transition: drag ? 'none' : undefined }}
       onTouchStart={(e) => {
         if (e.target.closest('input,.sheet,.transcript')) return;
@@ -238,13 +326,20 @@ export function FullPlayer() {
         <TranscriptView s={s} />
       ) : (
         <div class={'fp-art' + (s.playing ? ' playing' : '')}>
-          <Cover book={s.book} eager />
+          <div class="fp-glow" aria-hidden="true" />
+          {s.sleepUntil > 0 && <SleepSky key={s.sleepUntil} />}
+          <div class="fp-ring">
+            <Cover book={s.book} eager />
+            <ChapterRing chapters={chapters} g={g} />
+            {bms.some((b) => Math.abs((b.global ?? -1e9) - g) < 90) && <span class="fp-ribbon" aria-label="Bookmarked here" />}
+          </div>
         </div>
       )}
 
       {!showText && (
         <>
       <div class="fp-meta">
+        <ChapterLeft chapters={chapters} g={g} rate={s.rate} />
         <h2>{s.book.title}</h2>
         <p>
           {s.book.author}
@@ -253,15 +348,15 @@ export function FullPlayer() {
         {/* Chapter (one tap to the list) and X-Ray, as pills. */}
         <div class="fp-pills">
           {chapters.length > 1 ? (
-            <button class="fp-chapters" onClick={() => setSheet('chapters')}>
+            <button class="fp-chapters mo-flash" key={chapterLabel(chapters, g)} onClick={() => setSheet('chapters')}>
               <Icon name="list" size={15} />
-              <span>{chapterLabel(chapters, g)}</span>
+              <span class="fp-ch-label">{chapterLabel(chapters, g)}</span>
             </button>
           ) : (
             s.tracks.length > 1 && (
               <button class="fp-chapters" onClick={() => setSheet('chapters')}>
                 <Icon name="list" size={15} />
-                <span>{s.tracks[s.index]?.title || `Part ${s.index + 1}`}</span>
+                <span class="fp-ch-label" key={s.index}>{s.tracks[s.index]?.title || `Part ${s.index + 1}`}</span>
               </button>
             )
           )}
@@ -294,7 +389,10 @@ export function FullPlayer() {
       </div>
 
 
-      <div class="fp-scrub">
+      <div class={"fp-scrub" + (s.playing ? " playing" : "")}>
+        {sweep && (
+          <span class="mo-sweep" key={sweep.k} style={{ left: `${Math.min(sweep.from, sweep.to)}%`, width: `${Math.abs(sweep.to - sweep.from)}%`, '--dir': sweep.to >= sweep.from ? 1 : -1 }} />
+        )}
         <input
           type="range"
           min="0"
@@ -336,13 +434,13 @@ export function FullPlayer() {
         <button class="icon-btn lg" onClick={() => player.prev()} aria-label="Previous">
           <Icon name="prev" size={24} />
         </button>
-        <button class="icon-btn lg" onClick={() => player.skip(-st.skipBack)} aria-label={`Back ${st.skipBack}s`}>
+        <button class="icon-btn lg" onClick={(e) => (ripple(e.currentTarget), player.skip(-st.skipBack))} aria-label={`Back ${st.skipBack}s`}>
           <SkipIcon seconds={st.skipBack} size={36} />
         </button>
-        <button class="play-btn big" onClick={() => player.toggle()} aria-label={s.playing ? 'Pause' : 'Play'}>
-          {s.loading ? <span class="spinner" /> : <Icon name={s.playing ? 'pause' : 'play'} size={34} />}
+        <button class="play-btn big" onClick={(e) => (squash(e.currentTarget), player.toggle())} aria-label={s.playing ? 'Pause' : 'Play'}>
+          {s.loading ? <span class="spinner" /> : <PlayPauseIcon playing={s.playing} size={34} />}
         </button>
-        <button class="icon-btn lg" onClick={() => player.skip(st.skipForward)} aria-label={`Forward ${st.skipForward}s`}>
+        <button class="icon-btn lg" onClick={(e) => (ripple(e.currentTarget), player.skip(st.skipForward))} aria-label={`Forward ${st.skipForward}s`}>
           <SkipIcon seconds={st.skipForward} forward size={36} />
         </button>
         <button class="icon-btn lg" onClick={() => player.next()} aria-label="Next">
@@ -365,6 +463,8 @@ export function FullPlayer() {
           </button>
         </div>
       )}
+
+      <CatchUp book={s.book} />
 
       {aiOn() && <Signature book={s.book} openXray={() => setSheet('xray')} />}
 
@@ -408,7 +508,7 @@ export function FullPlayer() {
           }}
         >
           <Icon name="bookmark" size={16} />
-          <small>{bms.length ? `Mark · ${bms.length}` : 'Mark'}</small>
+          <small>{bms.length ? `Bookmark · ${bms.length}` : 'Bookmark'}</small>
         </button>
         <button class="chip-btn" onClick={() => setSheet('more')} aria-label="More">
           <Icon name="dots" size={18} stroke={3.5} />
@@ -420,13 +520,13 @@ export function FullPlayer() {
       {showText && (
         // Text, full screen: the words take the screen; a slim strip keeps play / skip / speed.
         <div class="text-strip">
-          <button class="icon-btn" onClick={() => player.skip(-st.skipBack)} aria-label={`Back ${st.skipBack}s`}>
+          <button class="icon-btn" onClick={(e) => (ripple(e.currentTarget), player.skip(-st.skipBack))} aria-label={`Back ${st.skipBack}s`}>
             <SkipIcon seconds={st.skipBack} size={26} />
           </button>
           <button class="play-btn" onClick={() => player.toggle()} aria-label={s.playing ? 'Pause' : 'Play'}>
-            {s.loading ? <span class="spinner small" /> : <Icon name={s.playing ? 'pause' : 'play'} size={22} />}
+            {s.loading ? <span class="spinner small" /> : <PlayPauseIcon playing={s.playing} size={22} />}
           </button>
-          <button class="icon-btn" onClick={() => player.skip(st.skipForward)} aria-label={`Forward ${st.skipForward}s`}>
+          <button class="icon-btn" onClick={(e) => (ripple(e.currentTarget), player.skip(st.skipForward))} aria-label={`Forward ${st.skipForward}s`}>
             <SkipIcon seconds={st.skipForward} forward size={26} />
           </button>
           <div

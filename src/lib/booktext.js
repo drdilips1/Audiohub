@@ -248,11 +248,12 @@ import('./store.js').then(({ addons }) => addons.subscribe(() => tried.set({})))
 const finding = new Map();
 
 /** Find, keep and attach this audiobook's ebook; resolves the ebook (book summary) or null. */
-export function autoFindEbook(book) {
+export function autoFindEbook(book, { force = false } = {}) {
   if (!book?.uid || book.source === 'pod' || book.kind === 'text') return Promise.resolve(null);
   const have = ebookFor(book);
   if (have) return Promise.resolve(have);
-  if (Date.now() - (tried.get()[book.uid] || 0) < 86400e3) return Promise.resolve(null);
+  // Nothing found lately: looked again after a day — or now, when asked for (a page photo).
+  if (!force && Date.now() - (tried.get()[book.uid] || 0) < 86400e3) return Promise.resolve(null);
   if (!finding.has(book.uid))
     finding.set(
       book.uid,

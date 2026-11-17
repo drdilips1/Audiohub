@@ -1,23 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { Grid, Empty, BookCover, toast, AskButton, BookCard } from '../components/common.jsx';
+import { Grid, Empty, BookCover, toast, BookCard } from '../components/common.jsx';
 import { Icon } from '../components/icons.jsx';
 import { library, progress, useStore, forgetBook, persisted, clearPodcastHistory, bookTags } from '../lib/store.js';
 import { allTags } from '../components/book-tags.jsx';
 import { localSrc } from '../sources/index.js';
 import { fmtDuration } from '../lib/format.js';
-import { metaNow, metaFixes, coverNow, guessCovers, setFix, fixFor } from '../lib/meta.js';
+import { hoursListened } from '../lib/stats.js';
+import { metaNow, metaFixes, needsCover, autoCovers, typedCovers } from '../lib/meta.js';
 import { longPress } from '../components/book-actions.jsx';
 import { seriesOf } from '../lib/series.js';
 import { oneEach } from '../lib/works.js';
 import { downloads, removeDownload } from '../lib/downloads.js';
 import { forgetEbook, savedEbooks } from '../lib/epub.js';
-import { nav, useBackClose } from '../lib/nav.js';
+import { nav } from '../lib/nav.js';
 import { podcasts } from '../sources/podcasts.js';
 import { ShowGrid } from './Podcasts.jsx';
 import { EbookSearchBox, EbookSearchResults } from '../components/ebook-search.jsx';
-import { hoursListened } from '../lib/stats.js';
-import { readLater, readElsewhere } from '../lib/readlists.js';
+import { readLater, readElsewhere, removeReadLater } from '../lib/readlists.js';
 import { myRatings, alreadyRead } from '../lib/taste.js';
+import { LibraryHome, LibMenu } from '../components/library-home.jsx';
 
 const TABS = [
   ['progress', 'Continue'],
@@ -118,7 +119,9 @@ const SORTS = [
   ['series', 'Series'],
 ];
 const surname = (name) => String(name).split(',')[0].trim().split(/\s+/).pop() || '';
-const libView = persisted('libraryView', { list: false, sort: 'recent', tab: 'progress', where: 'all' });
+export const libView = persisted('libraryView', { list: false, sort: 'recent', tab: 'progress', where: 'all', open: false });
+// The app opens on Library's front page (the shelves), not inside the last shelf you looked at.
+libView.set((v) => ({ ...v, open: false }));
 const lengthOf = (b) => b.duration || metaNow(b)?.runtime || b.size || 0;
 // Phone and cloud books often get their author from the online lookup.
 const authorOf = (b) => metaNow(b)?.author || b.author || '';
@@ -152,6 +155,9 @@ export function Library() {
   const where = view.where || 'all';
   const mode = view.mode || (view.list ? 'list' : 'grid');
   const setTab = (t) => libView.set((v) => ({ ...v, tab: t, where: 'all' }));
+  const detail = !!view.open;
+  const openTab = (t) => (libView.set((v) => ({ ...v, tab: t, where: 'all', open: true })), window.scrollTo(0, 0));
+  const closeTab = () => (libView.set((v) => ({ ...v, open: false })), setEditing(false), window.scrollTo(0, 0));
   const setWhere = (w) => libView.set((v) => ({ ...v, where: w }));
   const [editing, setEditing] = useState(false);
   const [ebookQ, setEbookQ] = useState('');
@@ -243,8 +249,15 @@ export function Library() {
 
   return (
     <div class="screen library">
-      <div class="library-head">
-        <h1 class="screen-title">Library</h1>
+      <div class={'library-head' + (detail ? ' in-shelf' : '')}>
+        {detail ? (
+          <button class="lib-back" onClick={closeTab} aria-label="Back to Library">
+            <Icon name="back" size={20} />
+            <h1 class="screen-title">{(TABS.find(([k]) => k === tab) || [])[1] || 'Library'}</h1>
+          </button>
+        ) : (
+          <h1 class="screen-title">Library</h1>
+        )}
         <div class="library-head-actions">
           <button
             class={'icon-btn glass' + (finding ? ' active' : '')}
@@ -256,16 +269,7 @@ export function Library() {
           >
             <Icon name="search" size={19} />
           </button>
-          <button class="icon-btn glass" onClick={() => nav.push('notes')} aria-label="Notes and bookmarks">
-            <Icon name="bookmark" size={19} />
-          </button>
-          <button class="icon-btn glass" onClick={() => nav.push('stats')} aria-label="Listening stats">
-            <Icon name="chart" size={20} />
-          </button>
-          <button class={'pill small' + (editing ? ' active' : '')} onClick={() => setEditing(!editing)}>
-            {editing ? 'Done' : 'Edit'}
-          </button>
-          <AskButton />
+          <LibMenu editing={editing} setEditing={setEditing} canEdit={detail && tab !== 'podcasts'} />
         </div>
       </div>
       {finding && (
@@ -295,21 +299,11 @@ export function Library() {
         </>
       ) : (
         <>
-      <button class="stats" onClick={() => nav.push('stats')} aria-label="Listening stats">
-        <div>
-          <b>{stats.books}</b>
-          <span>started</span>
-        </div>
-        <div>
-          <b>{stats.hours}</b>
-          <span>hours listened</span>
-        </div>
-        <div>
-          <b>{stats.done}</b>
-          <span>finished</span>
-        </div>
-      </button>
-      <div class="segmented scroll">
+      {!detail ? (
+        <LibraryHome groups={groups} stats={stats} openTab={openTab} />
+      ) : (
+        <>
+      <div class="segmented scroll lib-tabs">
         {TABS.map(([k, label]) => (
           <button class={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
             {label}
@@ -343,23 +337,24 @@ export function Library() {
       )}
       {tab !== 'podcasts' && items.length > 1 && (
         <div class="lib-tools">
-          <div class="lib-sort">
-            {SORTS.map(([k, label]) => (
-              <button class={'pill small' + (view.sort === k ? ' active' : '')} onClick={() => libView.set((v) => ({ ...v, sort: k }))}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <label class="lib-pick">
+            <span>Sort</span>
+            <select value={view.sort} onChange={(e) => libView.set((v) => ({ ...v, sort: e.currentTarget.value }))}>
+              {SORTS.map(([k, label]) => (
+                <option value={k}>{label}</option>
+              ))}
+            </select>
+          </label>
           <div class="lib-views" role="group" aria-label="Show as">
             {VIEWS.map(([k, icon, label]) => (
               <button class={'icon-btn' + (mode === k ? ' active' : '')} aria-label={`Show as ${label}`} onClick={() => libView.set((v) => ({ ...v, mode: k, list: k === 'list' }))}>
-                <Icon name={icon} size={18} />
+                <Icon name={icon} size={17} />
               </button>
             ))}
           </div>
         </div>
       )}
-      {tab !== 'podcasts' && <MissingCovers items={items} local={local} />}
+      {tab !== 'podcasts' && <MissingCovers items={items} local={local} silent />}
       {subs && where === 'phone' && !items.length ? (
         <PhoneEmpty />
       ) : tab === 'podcasts' ? (
@@ -433,6 +428,8 @@ export function Library() {
           .
         </Empty>
         )
+      )}
+        </>
       )}
         </>
       )}
@@ -587,6 +584,10 @@ function PhoneEmpty() {
 
 /** Remove a book from the library: saved copy, reading/listening history and, for ebooks, the file kept on the phone. */
 async function remove(book, tab) {
+  if (tab === 'later') {
+    removeReadLater(book);
+    return toast('Off Read later');
+  }
   if (tab === 'downloaded') {
     if (book.kind === 'text') {
       await forgetEbook(book.uid);
@@ -648,116 +649,52 @@ function SeriesGroups({ items, mode = 'grid', prog }) {
  * Library), then shows every guess in one grid to look over — untick a wrong one, tap a book
  * to choose another of the covers found for it — and saves the ticked ones.
  */
-function MissingCovers({ items, local }) {
+// Missing covers: found and saved automatically (Apple audiobooks → Apple Books → Audible →
+// Google Books, the first that is clearly the book) — on its own when the Library opens, or
+// with the button. No choosing.
+let coversRunning = false;
+function MissingCovers({ items, local, silent = false }) {
   useStore(metaFixes);
+  useStore(typedCovers);
   const [run, setRun] = useState(null); // { done, total, found }
-  const [review, setReview] = useState(null); // [{ book, pick, options }]
-  const phoneCover = (b) => b.source === 'loc' && (local.books || []).find((x) => x.uid === b.uid)?.cover;
-  const missing = items.filter((b) => !coverNow(b) && !phoneCover(b));
-  if (!missing.length && !run && !review) return null;
-  const go = async () => {
+  const phoneCover = (b) => (b.source === 'loc' && (local.books || []).find((x) => x.uid === b.uid)?.cover) || '';
+  const missing = items.filter((b) => needsCover(b, phoneCover(b)));
+  const go = async (quiet = false) => {
+    if (run || coversRunning || !missing.length) return;
+    coversRunning = true;
     setRun({ done: 0, total: missing.length, found: 0 });
-    const list = await guessCovers(missing, (done, total, found) => setRun({ done, total, found })).catch(() => []);
+    const r = await autoCovers(
+      missing,
+      (b, cover) => b.source === 'loc' && localSrc.setCover?.(b.uid, cover),
+      (done, total, found) => setRun({ done, total, found })
+    ).catch(() => ({ found: 0, total: missing.length }));
+    coversRunning = false;
     setRun(null);
-    if (!list.some((x) => x.options.length)) return toast('No covers found for these — try “Find cover & details” on a book');
-    setReview(list);
+    if (!quiet || r.found) toast(r.found ? `Added ${r.found} cover${r.found === 1 ? '' : 's'}${r.total > r.found ? ` · ${r.total - r.found} not found` : ''}` : 'No covers found for these — try “Find cover & details” on a book');
   };
+  // On its own whenever there are books without covers (more appear as you scroll and their
+  // covers turn out not to load); books with nothing found wait a day, so it doesn't repeat.
+  useEffect(() => {
+    if (missing.length && !coversRunning) {
+      const t = setTimeout(() => go(true), 2500);
+      return () => clearTimeout(t);
+    }
+  }, [missing.length]);
+  if ((!missing.length && !run) || (silent && !run)) return null;
   return (
-    <>
-      <button class="btn ghost-wide lib-manage" disabled={!!run} onClick={go}>
-        {run ? (
-          <>
-            <span class="spinner small" /> Finding covers {run.done}/{run.total} · {run.found} found
-          </>
-        ) : (
-          <>
-            <Icon name="covers" size={16} /> Find {missing.length} missing cover{missing.length === 1 ? '' : 's'}
-          </>
-        )}
-      </button>
-      {review && <CoverReview list={review} close={() => setReview(null)} />}
-    </>
+    <button class="btn ghost-wide lib-manage" disabled={!!run} onClick={() => go(false)}>
+      {run ? (
+        <>
+          <span class="spinner small" /> Adding covers {run.done}/{run.total} · {run.found} found
+        </>
+      ) : (
+        <>
+          <Icon name="covers" size={16} /> Add {missing.length} missing cover{missing.length === 1 ? '' : 's'}
+        </>
+      )}
+    </button>
   );
 }
 
-/** The covers found, one tile per book: ticked ones are saved; tap a book for its other covers. */
-function CoverReview({ list, close }) {
-  // uid -> the chosen cover ('' = leave this book as it is)
-  const [chosen, setChosen] = useState(() => Object.fromEntries(list.map((x) => [x.book.uid, x.pick?.cover || ''])));
-  const [open, setOpen] = useState(null); // the book whose other covers are shown
-  useBackClose(true, () => (open ? setOpen(null) : close()));
-  const ticked = list.filter((x) => chosen[x.book.uid]);
-  const save = () => {
-    for (const x of ticked) {
-      const cover = chosen[x.book.uid];
-      setFix(x.book.uid, { ...(fixFor(x.book.uid) || {}), cover });
-      // A phone book keeps its cover with its file details too (survives rescans), like a picked one.
-      if (x.book.source === 'loc') localSrc.setCover?.(x.book.uid, cover);
-    }
-    toast(`Saved ${ticked.length} cover${ticked.length === 1 ? '' : 's'}`);
-    close();
-  };
-  const cur = open && list.find((x) => x.book.uid === open);
-  return (
-    <div class="sheet-backdrop" onClick={close}>
-      <div class="sheet cover-review" onClick={(e) => e.stopPropagation()}>
-        <div class="sheet-handle" />
-        {cur ? (
-          <>
-            <button class="link-btn" onClick={() => setOpen(null)}>
-              <Icon name="back" size={14} /> All books
-            </button>
-            <h3>{cur.book.title}</h3>
-            <p class="muted small">{cur.options.length ? 'Tap the right cover.' : 'Nothing found for this one — try “Find cover & details” on its page.'}</p>
-            <div class="cr-grid">
-              {cur.options.map((m) => (
-                <button class={'cr-tile' + (chosen[cur.book.uid] === m.cover ? ' on' : '')} onClick={() => (setChosen((c) => ({ ...c, [cur.book.uid]: m.cover })), setOpen(null))}>
-                  <img src={m.cover} loading="lazy" alt="" />
-                  <small>{m.from}</small>
-                </button>
-              ))}
-            </div>
-            {chosen[cur.book.uid] && (
-              <button class="btn ghost-wide" onClick={() => (setChosen((c) => ({ ...c, [cur.book.uid]: '' })), setOpen(null))}>
-                Leave this book without a cover
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            <h3>Check the covers</h3>
-            <p class="muted small">
-              {ticked.length} of {list.length} ready. Tap ✓ to leave one out; tap a book to choose another cover.
-            </p>
-            <div class="cr-grid">
-              {list.map((x) => {
-                const c = chosen[x.book.uid];
-                return (
-                  <div class={'cr-tile' + (c ? ' on' : ' off')}>
-                    <button class="cr-pic" onClick={() => setOpen(x.book.uid)}>
-                      {c ? <img src={c} loading="lazy" alt="" /> : <span class="cr-none">{x.options.length ? `${x.options.length} to choose from` : 'Not found'}</span>}
-                    </button>
-                    {c && (
-                      <button class="cr-tick" aria-label="Leave this one out" onClick={() => setChosen((m) => ({ ...m, [x.book.uid]: '' }))}>
-                        <Icon name="check" size={14} />
-                      </button>
-                    )}
-                    <small>{x.book.title}</small>
-                  </div>
-                );
-              })}
-            </div>
-            <div class="cr-actions">
-              <button class="btn ghost-wide" onClick={close}>
-                Cancel
-              </button>
-              <button class="btn primary" disabled={!ticked.length} onClick={save}>
-                Save {ticked.length} cover{ticked.length === 1 ? '' : 's'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+
+

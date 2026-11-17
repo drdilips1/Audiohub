@@ -217,8 +217,11 @@ const absDown = () => Object.assign(new Error("Couldn't reach your Audiobookshel
 // torrent's name, plus the author's first or last name unless the title is long.
 function sameAs(a, text, hay) {
   if (a.kind === 'text') return false;
-  const t = mainTitle(a.title);
-  if (!words(t).length || !matches(t, text)) return false;
+  // The server's title, or one part of it around a dash ("Right Thing, Right Now - Justice in an
+  // Unjust World": a subtitle the book asked for doesn't have).
+  const whole = mainTitle(a.title);
+  const t = [whole, ...whole.split(/\s+[-–—|]\s+/)].find((p) => words(p).length >= (p === whole ? 1 : 2) && matches(p, text));
+  if (!t) return false;
   const names = String(a.author || '').split(/,|&|\band\b/).flatMap((n) => {
     const w = words(n).filter((x) => x.length >= 3);
     return w.length ? [w[0], w[w.length - 1]] : [];

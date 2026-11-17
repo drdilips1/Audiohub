@@ -23,6 +23,7 @@ function fromAudible(p, market = '') {
     cover: img['500'] || img['1024'] || '',
     year: (p.release_date || '').slice(0, 4),
     released: p.release_date ? Date.parse(p.release_date) || 0 : 0,
+    ...(p.sample_url ? { sample: p.sample_url } : {}),
     duration: p.runtime_length_min ? p.runtime_length_min * 60 : 0,
     series: s ? `${s.title}${s.sequence ? ` #${s.sequence}` : ''}` : '',
     description: stripHtml(p.publisher_summary || p.merchandising_summary || ''),

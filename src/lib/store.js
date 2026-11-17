@@ -110,6 +110,9 @@ export const settings = persisted('settings', {
   playerBg: 'cover', // cover | living | plain | photo | wall:<name>
   playerDim: 0.45, // how much the player background is darkened (0–0.8)
   dynamicColor: true,
+  nightMode: true, // the player turns warm and dark at night (nightFrom–nightTo, hours)
+  nightFrom: 22,
+  nightTo: 6,
   skipBack: 15,
   skipForward: 30,
   speed: 1,

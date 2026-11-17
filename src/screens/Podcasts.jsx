@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../components/icons.jsx';
 import { toast, Empty, TopBar, AskButton } from '../components/common.jsx';
-import { useStore, progress, useStoreKey, useSelect } from '../lib/store.js';
+import { useStore, progress, useStoreKey, useSelect, persisted } from '../lib/store.js';
 import { nav } from '../lib/nav.js';
 import { fmtDuration } from '../lib/format.js';
 import * as player from '../lib/player.js';
@@ -124,51 +124,52 @@ export function EpisodeRow({ ep, podcast, showShow = false }) {
   const current = ps.book?.uid === ep.uid;
   const pct = prog && !prog.finished ? Math.round((prog.percent || 0) * 100) : 0;
   const left = ep.duration && prog && !prog.finished ? ep.duration - (prog.global || prog.time || 0) : 0;
+  const art = ep.image || ep.podcast?.cover || podcast?.cover;
+  const showName = ep.podcast?.title || ep.show || podcast?.title || '';
+  const meta = [showShow && showName, ep.duration ? (left > 60 ? `${fmtDuration(left)} left` : fmtDuration(ep.duration)) : '', ago(ep.date), dl?.status === 'done' ? 'Downloaded' : dl?.status === 'downloading' ? 'Downloading…' : ''].filter(Boolean);
   return (
-    <div class={'ep' + (played ? ' played' : '') + (current ? ' current' : '')}>
+    <div class={'ep ep2' + (played ? ' played' : '') + (current ? ' current' : '')}>
       <div class="ep-main" onClick={() => setOpen(!open)}>
-        {showShow && (ep.image || ep.podcast?.cover || podcast?.cover) && <Thumb class="ep-art" src={ep.image || ep.podcast?.cover || podcast?.cover} size={120} />}
+        {art ? <Thumb class="ep-art" src={art} size={120} /> : <div class="ep-art ep-art-ph">{showName[0] || '♪'}</div>}
         <div class="ep-text">
-          {showShow && <small class="ep-show">{ep.podcast?.title || ep.show || podcast?.title}</small>}
           <b>{ep.title}</b>
-          <small>
-            {ago(ep.date)}
-            {ep.duration ? ` · ${left > 60 ? `${fmtDuration(left)} left` : fmtDuration(ep.duration)}` : ''}
-            {played ? ' · Played' : ''}
-            {dl?.status === 'done' ? ' · Downloaded' : dl?.status === 'downloading' ? ' · Downloading…' : ''}
-          </small>
-          {pct > 0 && (
-            <div class="progress-mini ep-prog">
-              <div style={{ width: pct + '%' }} />
-            </div>
-          )}
+          <small>{meta.join(' · ')}</small>
         </div>
+        <button
+          class={'ep-ring' + (played ? ' done' : '')}
+          aria-label={played ? 'Played — play again' : current && ps.playing ? 'Pause' : 'Play'}
+          onClick={(e) => (e.stopPropagation(), current ? player.toggle() : playEpisode(ep, podcast))}
+        >
+          <svg viewBox="0 0 38 38" aria-hidden="true">
+            <circle cx="19" cy="19" r="16" class="ep-ring-track" />
+            {pct > 0 && <circle cx="19" cy="19" r="16" class="ep-ring-arc" pathLength="100" stroke-dasharray={`${pct} 100`} transform="rotate(-90 19 19)" />}
+            {played && !current ? <path d="m13 19 4 4 8-9" class="ep-ring-tick" /> : current && ps.playing ? <path d="M14.5 13h3v12h-3zM20.5 13h3v12h-3z" class="ep-ring-fill" /> : <path d="M16 13v12l10-6z" class="ep-ring-fill" />}
+          </svg>
+        </button>
       </div>
-      <div class="ep-actions">
-        <button class="icon-btn ep-play" aria-label={current && ps.playing ? 'Pause' : 'Play'} onClick={() => (current ? player.toggle() : playEpisode(ep, podcast))}>
-          <Icon name={current && ps.playing ? 'pause' : 'play'} size={18} />
-        </button>
-        <button class={'icon-btn' + (queued ? ' on' : '')} aria-label={queued ? 'Remove from Up Next' : 'Add to Up Next'} onClick={() => (queued ? pod.dequeue(ep.uid) : (pod.enqueue(ep, podcast || ep.podcast), toast('Added to Up Next')))}>
-          <Icon name={queued ? 'check' : 'list'} size={18} />
-        </button>
-        {canDownload && dl?.status !== 'done' && (
-          <button
-            class="icon-btn"
-            aria-label="Download"
-            disabled={dl?.status === 'downloading'}
-            onClick={() =>
-              downloadBook(pod.asBook(ep, podcast || ep.podcast))
-                .then(() => toast('Episode downloaded'))
-                .catch((e) => toast(e.message))
-            }
-          >
-            <Icon name="download" size={18} />
+      {open && (
+        <div class="ep-actions ep2-actions">
+          <button class={'pill small' + (queued ? ' active' : '')} onClick={() => (queued ? pod.dequeue(ep.uid) : (pod.enqueue(ep, podcast || ep.podcast), toast('Added to Up next')))}>
+            <Icon name={queued ? 'check' : 'list'} size={14} /> {queued ? 'In Up next' : 'Up next'}
           </button>
-        )}
-        <button class="icon-btn" aria-label={played ? 'Mark unplayed' : 'Mark played'} onClick={() => pod.markPlayed(ep, !played)}>
-          <Icon name="check" size={16} />
-        </button>
-      </div>
+          {canDownload && dl?.status !== 'done' && (
+            <button
+              class="pill small"
+              disabled={dl?.status === 'downloading'}
+              onClick={() =>
+                downloadBook(pod.asBook(ep, podcast || ep.podcast))
+                  .then(() => toast('Episode downloaded'))
+                  .catch((e) => toast(e.message))
+              }
+            >
+              <Icon name="download" size={14} /> Download
+            </button>
+          )}
+          <button class="pill small" onClick={() => pod.markPlayed(ep, !played)}>
+            <Icon name="check" size={14} /> {played ? 'Mark unplayed' : 'Mark played'}
+          </button>
+        </div>
+      )}
       {open && (
         <div class="ep-votes">
           <button class={'pill small' + (vote === 1 ? ' active' : '')} onClick={() => pod.voteEpisode(ep, 1)}>
@@ -186,6 +187,13 @@ export function EpisodeRow({ ep, podcast, showShow = false }) {
     </div>
   );
 }
+
+const podTab = persisted('podTab', 'listen');
+const PTABS = [
+  ['listen', 'Listen'],
+  ['shows', 'Shows'],
+  ['discover', 'Discover'],
+];
 
 export function Podcasts() {
   const p = useStore(pod.podcasts);
@@ -252,132 +260,267 @@ export function Podcasts() {
   const unplayed = (latest || []).filter((e) => !pod.isPlayed(e) && !pod.isHidden(e) && passes(e, epFilter, dls, prog)).slice(0, 25);
   const picks = latest ? pod.recommendedEpisodes(latest, prog) : [];
 
+  const tab = useStore(podTab);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [allQ, setAllQ] = useState(false);
+  // New episodes per show (for the number on its artwork).
+  const newBy = {};
+  for (const e of (latest || []).filter((x) => !pod.isPlayed(x) && !pod.isHidden(x))) {
+    const k = e.feedUrl || e.podcast?.feedUrl || '';
+    if (k) newBy[k] = (newBy[k] || 0) + 1;
+  }
+  // The episode you're part-way through.
+  const nowEp = (() => {
+    const cur = Object.entries(prog)
+      .filter(([, x]) => x?.book?.source === 'pod' && !x.finished && (x.time || x.global || 0) > 30)
+      .sort((x, y) => (y[1].updatedAt || 0) - (x[1].updatedAt || 0))[0];
+    if (!cur) return null;
+    const [uid, x] = cur;
+    const ep = (latest || []).find((e) => e.uid === uid) || p.queue.find((e) => e.uid === uid);
+    return { uid, x, ep };
+  })();
+  const queueSecs = p.queue.reduce((t, e) => t + (e.duration || 0), 0);
+  const [shortLen, setShortLen] = useState('20');
+  const shortEps = (latest || [])
+    .filter((e) => !pod.isPlayed(e) && !pod.isHidden(e) && e.duration > 0)
+    .filter((e) => (shortLen === '20' ? e.duration < 20 * 60 : shortLen === '45' ? e.duration >= 20 * 60 && e.duration < 45 * 60 : e.duration >= 45 * 60))
+    .slice(0, 6);
+  useEffect(() => {
+    if (tab !== 'discover' || charts) return;
+    pod.top().then(setCharts).catch(() => setCharts([]));
+  }, [tab]);
+  const Head = ({ icon, title, onMore, more = 'See all' }) => (
+    <div class="d-head">
+      <span class="d-ico">
+        <Icon name={icon} size={20} />
+      </span>
+      <h3>{title}</h3>
+      {onMore && (
+        <button class="d-more" onClick={onMore}>
+          {more} <Icon name="arrow" size={15} />
+        </button>
+      )}
+    </div>
+  );
+  const opml = (
+    <section class="d-sec pod-opml">
+      <button class="pill small" onClick={() => fileRef.current?.click()}>
+        <Icon name="upload" size={14} /> Import from another app (OPML)
+      </button>
+      {p.subs.length > 0 && (
+        <button
+          class="pill small"
+          onClick={() => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([pod.exportOpml()], { type: 'text/x-opml' }));
+            a.download = 'kathava-podcasts.opml';
+            a.click();
+          }}
+        >
+          <Icon name="download" size={14} /> Export OPML
+        </button>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".opml,.xml,text/xml,text/x-opml"
+        hidden
+        onChange={async (e) => {
+          const f = e.currentTarget.files?.[0];
+          if (!f) return;
+          setBusy(true);
+          try {
+            toast(await pod.importOpml(await f.text()));
+          } catch (err) {
+            toast(err.message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </section>
+  );
+
   return (
-    <div class="screen podcasts">
+    <div class="screen podcasts pod2">
       <header class="pod-head">
         <h1 class="screen-title">Podcasts</h1>
         <div class="pod-tools">
+          <button class="icon-btn" aria-label="Search podcasts" onClick={() => setSearchOpen(!searchOpen)}>
+            <Icon name="search" size={21} />
+          </button>
           <AskButton />
           <button class="icon-btn" aria-label="Refresh" disabled={busy} onClick={refresh}>
-            {busy ? <span class="spinner small" /> : <Icon name="down" size={18} />}
+            {busy ? <span class="spinner small" /> : <Icon name="replay" size={19} />}
           </button>
         </div>
       </header>
-      <div class="search-box">
-        <Icon name="search" size={20} />
-        <input value={q} placeholder="Search podcasts or paste a feed link" onInput={(e) => setQ(e.currentTarget.value)} enterkeyhint="search" />
-        {q && (
-          <button class="icon-btn" onClick={() => setQ('')} aria-label="Clear">
-            <Icon name="close" size={18} />
-          </button>
-        )}
-      </div>
+      {(searchOpen || q) && (
+        <div class="search-box">
+          <Icon name="search" size={20} />
+          <input value={q} autoFocus placeholder="Search podcasts or paste a feed link" onInput={(e) => setQ(e.currentTarget.value)} enterkeyhint="search" />
+          {q && (
+            <button class="icon-btn" onClick={() => (setQ(''), setSearchOpen(false))} aria-label="Clear">
+              <Icon name="close" size={18} />
+            </button>
+          )}
+        </div>
+      )}
       {isFeed && (
         <button class="btn ghost-wide" onClick={() => nav.push('podcast', { show: { feedUrl: q.trim(), title: '' } })}>
           <Icon name="search" size={16} /> Preview this feed
         </button>
       )}
-
       {searching && !results && <p class="muted pad">Searching…</p>}
       {results ? (
-        <section class="pad">
-          <h3 class="section-label">Results {searching && <span class="spinner" />}</h3>
+        <section class="d-sec">
+          <Head icon="search" title="Results" />
           <ShowGrid shows={results} />
           {!results.length && <p class="muted">No podcasts found.</p>}
         </section>
       ) : (
         <>
-          {p.queue.length > 0 && (
-            <section class="pad">
-              <h3 class="section-label">
-                <Icon name="list" size={16} /> Up next <small>{p.queue.length}</small>
-              </h3>
-              {p.queue.slice(0, 20).map((ep) => (
-                <EpisodeRow ep={ep} showShow />
-              ))}
-            </section>
-          )}
-          {p.subs.length > 0 && (
-            <section class="pad">
-              <h3 class="section-label">
-                <Icon name="headphones" size={16} /> Subscriptions <small>{p.subs.length}</small>
-              </h3>
-              <ShowGrid shows={p.subs} small />
-            </section>
-          )}
-          {picks.length > 0 && (
-            <section class="pad">
-              <h3 class="section-label">
-                <Icon name="star" size={16} /> Recommended episodes
-              </h3>
-              <p class="muted small">From shows you like and finish, about what you liked. Rate an episode (open it) to steer this.</p>
-              {picks.map((ep) => (
-                <EpisodeRow ep={ep} podcast={ep.podcast} showShow />
-              ))}
-            </section>
-          )}
-          {p.subs.length > 0 && (
-            <section class="pad">
-              <h3 class="section-label">
-                <Icon name="sparkle" size={16} /> New episodes
-              </h3>
-              <EpisodeFilters value={epFilter} onChange={setEpFilter} />
-              {latest === null ? (
-                <p class="muted">
-                  <span class="spinner small" /> Checking your podcasts…
-                </p>
-              ) : unplayed.length ? (
-                unplayed.map((ep) => <EpisodeRow ep={ep} podcast={ep.podcast} showShow />)
-              ) : (
-                <p class="muted">{epFilter === 'all' ? "You're all caught up." : 'Nothing new matches this filter.'}</p>
-              )}
-            </section>
-          )}
-          {!p.subs.length && (
-            <section class="pad">
-              <Empty icon="headphones" title="Find your podcasts">
-                Search above, paste a feed link, or import an OPML file from another app (AntennaPod, Pocket Casts…).
-              </Empty>
-              <h3 class="section-label">Top podcasts</h3>
-              {charts === null ? <p class="muted">Loading…</p> : <ShowGrid shows={charts} />}
-            </section>
-          )}
-          <section class="pad pod-opml">
-            <button class="pill small" onClick={() => fileRef.current?.click()}>
-              <Icon name="upload" size={14} /> Import OPML
-            </button>
-            {p.subs.length > 0 && (
-              <button
-                class="pill small"
-                onClick={() => {
-                  const a = document.createElement('a');
-                  a.href = URL.createObjectURL(new Blob([pod.exportOpml()], { type: 'text/x-opml' }));
-                  a.download = 'kathava-podcasts.opml';
-                  a.click();
-                }}
-              >
-                <Icon name="download" size={14} /> Export OPML
+          <div class="d-tabs pod-tabs">
+            {PTABS.map(([k, l]) => (
+              <button class={tab === k ? 'on' : ''} onClick={() => podTab.set(k)}>
+                {l}
               </button>
-            )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".opml,.xml,text/xml,text/x-opml"
-              hidden
-              onChange={async (e) => {
-                const f = e.currentTarget.files?.[0];
-                if (!f) return;
-                setBusy(true);
-                try {
-                  toast(await pod.importOpml(await f.text()));
-                } catch (err) {
-                  toast(err.message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            />
-          </section>
+            ))}
+          </div>
+
+          {tab === 'listen' && (
+            <>
+              {nowEp && (
+                <section class="d-sec">
+                  <Head icon="headphones" title="Now listening" />
+                  <button class="d-card pod-now" onClick={() => (nowEp.ep ? playEpisode(nowEp.ep, nowEp.ep.podcast) : nav.openOverlay('player'))}>
+                    {nowEp.x.book.cover ? <Thumb class="pod-now-art" src={nowEp.x.book.cover} size={300} /> : <div class="pod-now-art ep-art-ph">♪</div>}
+                    <div class="pod-now-m">
+                      <em>{nowEp.x.book.author}</em>
+                      <b>{nowEp.x.book.title}</b>
+                      <div class="pod-now-foot">
+                        <div class="d-prog">
+                          <i style={{ width: `${Math.round((nowEp.x.percent || 0) * 100)}%` }} />
+                        </div>
+                        <span>{nowEp.x.total ? `${fmtDuration(Math.max(0, nowEp.x.total - (nowEp.x.global || nowEp.x.time || 0)))} left` : ''}</span>
+                      </div>
+                    </div>
+                    <span class="d-play">
+                      <Icon name="play" size={18} />
+                    </span>
+                  </button>
+                </section>
+              )}
+              {p.subs.length > 0 && (
+                <section class="d-sec">
+                  <Head icon="podcast" title="Your shows" onMore={() => podTab.set('shows')} />
+                  <div class="pod-strip">
+                    {p.subs.map((sh) => (
+                      <button class="pod-strip-show" onClick={() => nav.push('podcast', { show: sh })}>
+                        {sh.cover ? <Thumb src={sh.cover} size={180} /> : <div class="show-ph">{sh.title?.[0]}</div>}
+                        {newBy[sh.feedUrl] > 0 && <span class="pod-new">{newBy[sh.feedUrl] > 9 ? '9+' : newBy[sh.feedUrl]}</span>}
+                        <small>{sh.title}</small>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {p.queue.length > 0 && (
+                <section class="d-sec">
+                  <Head icon="list" title="Up next" more={allQ ? 'Less' : 'See all'} onMore={p.queue.length > 3 ? () => setAllQ(!allQ) : null} />
+                  <p class="d-note">
+                    {p.queue.length} episode{p.queue.length === 1 ? '' : 's'}
+                    {queueSecs ? ` · ${fmtDuration(queueSecs)}` : ''}
+                  </p>
+                  <div class="d-card pod-list">
+                    {p.queue.slice(0, allQ ? 30 : 3).map((ep) => (
+                      <EpisodeRow ep={ep} showShow />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {p.subs.length > 0 ? (
+                <section class="d-sec">
+                  <Head icon="sparkle" title="New episodes" />
+                  <EpisodeFilters value={epFilter} onChange={setEpFilter} />
+                  {latest === null ? (
+                    <p class="muted">
+                      <span class="spinner small" /> Checking your podcasts…
+                    </p>
+                  ) : unplayed.length ? (
+                    unplayed.map((ep) => <EpisodeRow ep={ep} podcast={ep.podcast} showShow />)
+                  ) : (
+                    <p class="muted">{epFilter === 'all' ? "You're all caught up." : 'Nothing new matches this filter.'}</p>
+                  )}
+                </section>
+              ) : (
+                <section class="d-sec">
+                  <Empty icon="headphones" title="Find your podcasts">
+                    Tap the search icon, paste a feed link, or import from another app (Shows tab).
+                  </Empty>
+                  <button class="btn ghost-wide" onClick={() => podTab.set('discover')}>
+                    <Icon name="compass" size={16} /> See top podcasts
+                  </button>
+                </section>
+              )}
+            </>
+          )}
+
+          {tab === 'shows' && (
+            <>
+              <section class="d-sec">
+                <Head icon="podcast" title={`Your shows${p.subs.length ? ` · ${p.subs.length}` : ''}`} />
+                {p.subs.length ? <ShowGrid shows={p.subs} small /> : <p class="muted">No shows yet — search for one, or import from another app below.</p>}
+              </section>
+              {opml}
+            </>
+          )}
+
+          {tab === 'discover' && (
+            <>
+              {picks.length > 0 && (
+                <section class="d-sec">
+                  <Head icon="star" title="Recommended episodes" />
+                  <div class="pod-recs">
+                    {picks.slice(0, 10).map((ep) => (
+                      <button class="d-card pod-rec" onClick={() => playEpisode(ep, ep.podcast)}>
+                        {ep.image || ep.podcast?.cover ? <Thumb class="pod-rec-art" src={ep.image || ep.podcast?.cover} size={400} /> : <div class="pod-rec-art ep-art-ph">♪</div>}
+                        <div class="pod-rec-m">
+                          <b>{ep.title}</b>
+                          <small>
+                            {ep.podcast?.title || ep.show}
+                            {ep.duration ? ` · ${fmtDuration(ep.duration)}` : ''}
+                          </small>
+                          {ep.why && <em>{ep.why}</em>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {(latest || []).length > 0 && (
+                <section class="d-sec">
+                  <Head icon="clock" title="Short listens" />
+                  <div class="d-eq pod-eq3">
+                    {[
+                      ['20', 'Under 20 min'],
+                      ['45', '20–45 min'],
+                      ['long', '45 min+'],
+                    ].map(([k, l]) => (
+                      <button class={shortLen === k ? 'on' : ''} onClick={() => setShortLen(k)}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                  {shortEps.length ? shortEps.map((ep) => <EpisodeRow ep={ep} podcast={ep.podcast} showShow />) : <p class="muted">Nothing new that length in your shows.</p>}
+                </section>
+              )}
+              <section class="d-sec">
+                <Head icon="grid" title="Top podcasts" />
+                {charts === null ? <p class="muted">Loading…</p> : <ShowGrid shows={charts} />}
+              </section>
+            </>
+          )}
         </>
       )}
       <div class="footer-space" />

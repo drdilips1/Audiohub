@@ -32,7 +32,9 @@ export async function runSaid(said) {
       return nav.push('ask', { book: r.book, description: r.book?.description || '', question: said.trim(), here: !!r.here, askId: `${Date.now()}`, voice: true });
     }
     nav.openOverlay('player');
-    toast(`▶ ${r.scene || r.book.title}${r.where ? ` · ${r.where}` : ''}`);
+    // Not found: the reason stays up long enough to read.
+    if (r.notFound) return toast(r.scene, 8000);
+    toast(`▶ ${r.scene || r.book.title}${r.where ? ` · ${r.where}` : ''}`, 4000);
   } catch (e) {
     toast(e.message);
     if (e.want) import('../screens/Discover.jsx').then((m) => m.openSearch(`${e.want.title} ${e.want.author || ''}`.trim()));

@@ -16,6 +16,16 @@ function numberWords(n) {
   return [String(n)];
 }
 
+/** How a heading may give chapter n: "chapter 27", "chapter twenty seven", "chapter twenty-seven" (one word in the index). */
+function numberHeads(n) {
+  if (!(n > 0)) return [];
+  const w = numberWords(n);
+  const out = [['chapter', String(n)], ['chapter', ...w]];
+  if (w.length > 1) out.push(['chapter', w.join('')]);
+  return out;
+}
+const NUMBER_WORD = /^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(one|two|three|four|five|six|seven|eight|nine)?)$/;
+
 /** Every position where these words come one after another in the book. */
 function phraseAt(keys, words) {
   const out = [];
@@ -38,7 +48,7 @@ function headingVariants(title, bookTitle) {
   const out = [];
   if (own) out.push(own);
   const n = (String(title).match(/(\d+)(?!.*\d)/) || [])[1];
-  if (n && +n < 200) out.push(['chapter', String(+n)], ['chapter', ...numberWords(+n)]);
+  if (n && +n < 200) out.push(...numberHeads(+n));
   return out;
 }
 
@@ -72,8 +82,73 @@ export function anchorsFor(bt, chapters, total, bookTitle, from = 0) {
       pos = pick;
     }
   }
-  anchors.push({ tok: keys.length, g: total });
+  // Audio chapters with only numbers for names ("Track 01", "Part 3", "05") — their numbers
+  // needn't be the book's (an opening-credits track shifts them all) — or few headings matched
+  // by name: pair the ebook's own chapter headings with the audio's chapters in order, when
+  // the counts agree (allowing an opening-credits part and an end-credits part in the audio).
+  const bookWords = new Set(norm(bookTitle));
+  const numbered = chapters.filter((c) => !norm(c.title).some((w) => !GENERIC.has(w) && !/^\d+$/.test(w) && !bookWords.has(w))).length >= chapters.length * 0.7;
+  if (numbered || anchors.length - 1 < Math.max(2, Math.ceil(chapters.length * 0.3))) {
+    const heads = headingsInText(bt).filter((t) => t >= (numbered ? 0 : anchors[anchors.length - 1]?.tok || 0));
+    const diff = chapters.length - heads.length;
+    if (heads.length >= 3 && diff >= 0 && diff <= 2) {
+      const off = diff; // audio parts before the first heading (credits, intro)
+      const paired = [{ tok: 0, g: from }];
+      for (let i = 0; i < heads.length; i++) {
+        const c = chapters[i + off];
+        if (c && c.start > paired[paired.length - 1].g && heads[i] > paired[paired.length - 1].tok) paired.push({ tok: heads[i], g: c.start });
+      }
+      if (numbered ? paired.length >= heads.length : paired.length > anchors.length) {
+        paired.push({ tok: storyEnd(keys, paired[paired.length - 1].tok), g: total });
+        return paired;
+      }
+    }
+  }
+  anchors.push({ tok: storyEnd(keys, anchors[anchors.length - 1].tok), g: total });
   return anchors;
+}
+
+const NUMWORD = { test: (w) => NUMBER_WORD.test(w || '') || /^[ivxlc]+$/.test(w || '') };
+/**
+ * The ebook's real chapter headings in order ("Chapter 1", "Chapter Seven", "Prologue",
+ * "Epilogue"), skipping the contents pages (where headings come one after another).
+ */
+export function headingsInText(bt) {
+  const keys = bt.keys;
+  const at = [];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const w = keys[i];
+    if ((w === 'chapter' && NUMWORD.test(keys[i + 1])) || ((w === 'prologue' || w === 'epilogue') && (i === 0 || !/^(the|a|this|his|her|of)$/.test(keys[i - 1])))) at.push(i);
+  }
+  // A real heading has a good stretch of text before the next one.
+  return at.filter((t, k) => (at[k + 1] ?? keys.length) - t > 250);
+}
+
+/**
+ * Where a remembered line is in the book: the first run of `n` of its words (in order) found
+ * in the text, longest run first. null when no run of at least 4 words is there.
+ */
+export function quoteAt(bt, quote, from = 0, to = Infinity) {
+  const q = norm(quote);
+  if (q.length < 6) return null;
+  const keys = bt.keys;
+  const hi = Math.min(keys.length, to);
+  // Not the title pages and contents (a run like "Harry Potter and the …" is there too): from
+  // the first real chapter heading, or past the first 2% of the book.
+  const heads = headingsInText(bt);
+  const start = Math.max(from, heads.length ? heads[0] : Math.floor(keys.length * 0.02));
+  // At least six words in a row, three of them telling (a few common words match anywhere).
+  for (let n = Math.min(10, q.length); n >= 6; n--)
+    for (let s = 0; s + n <= q.length; s++) {
+      const run = q.slice(s, s + n);
+      if (run.filter((w) => !STOP.has(w)).length < 3) continue;
+      for (let i = Math.max(0, start); i + n <= hi; i++) {
+        let ok = true;
+        for (let k = 0; k < n && ok; k++) ok = keys[i + k] === run[k];
+        if (ok) return i;
+      }
+    }
+  return null;
 }
 
 /** The audio time of a place in the text (between the nearest anchors, in proportion). */
@@ -125,13 +200,44 @@ export function sceneInText(bt, keywords, range = null, { strict = false, target
     if (distinct >= 2 && (!best || s > best.s + 1e-9)) best = { s, start, distinct };
   }
   if (!best || best.distinct < Math.min(2, weight.size)) return null;
-  // The scene starts at the first of its words in that stretch.
-  let tok = best.start;
-  for (let i = best.start; i < Math.min(keys.length, best.start + W); i++)
-    if (weight.has(keys[i])) {
-      tok = i;
-      break;
+  // Names of more than one word ("House Cup", "Mirror of Erised"): where they appear as a
+  // phrase is a much surer sign — prefer the best stretch that holds one, when it's close.
+  const phrases = (keywords || []).map((k) => norm(k).filter((w) => !STOP.has(w) || norm(k).length <= 3)).filter((p) => p.length >= 2);
+  if (phrases.length) {
+    let pBest = null;
+    for (const ph of phrases)
+      for (const at of phraseAt(keys, ph)) {
+        if (at < lo || at >= hi) continue;
+        // Score the stretch starting a little before the phrase.
+        const st = Math.max(lo, at - 60);
+        const seen = new Set();
+        let sc = 0;
+        for (let i = st; i < Math.min(hi, st + W); i++) if (weight.has(keys[i]) && !seen.has(keys[i])) (seen.add(keys[i]), (sc += weight.get(keys[i])));
+        sc *= 1.6; // a phrase match is worth a lot
+        if (target != null && range) sc *= 1 + 0.35 * Math.max(0, 1 - Math.abs(st - target) / Math.max(1, range[1] - range[0]));
+        if (!pBest || sc > pBest.sc) pBest = { sc, at, distinct: seen.size };
+      }
+    if (pBest && pBest.distinct >= 2 && pBest.sc >= best.s * 0.9) {
+      if (details) details.hit = { s: pBest.sc, distinct: pBest.distinct, phrase: true };
+      return pBest.at;
     }
+  }
+  // Where in that 300-word stretch (about two minutes of audio) the scene is: the densest
+  // 80 words of its telling words — not the first one that happens to appear, which put the
+  // start up to a couple of minutes early.
+  let tok = best.start;
+  {
+    const S = 80;
+    const end = Math.min(keys.length, best.start + W);
+    let bestS = -1;
+    for (let i = best.start; i < end; i++) {
+      if (!weight.has(keys[i])) continue;
+      const seen = new Set();
+      let sc = 0;
+      for (let k = i; k < Math.min(end, i + S); k++) if (weight.has(keys[k]) && !seen.has(keys[k])) (seen.add(keys[k]), (sc += weight.get(keys[k])));
+      if (sc > bestS + 1e-9) (bestS = sc), (tok = i);
+    }
+  }
   if (details) details.hit = { s: best.s, distinct: best.distinct };
   return tok;
 }
@@ -145,7 +251,6 @@ export function chapterRange(bt, chapter, chapterTitle) {
   const keys = bt.keys;
   const n = Number(chapter) || 0;
   const title = norm(chapterTitle).filter((w) => !GENERIC.has(w));
-  const numberHeads = (k) => (k > 0 ? [['chapter', String(k)], ['chapter', ...numberWords(k)]] : []);
   const heads = (k, words) => {
     const at = [...new Set(numberHeads(k).flatMap((v) => phraseAt(keys, v)))];
     // A number heading with the title just after it is the surest; the title alone next.
@@ -168,11 +273,27 @@ export function chapterRange(bt, chapter, chapterTitle) {
   if (next != null) end = next;
   else
     for (let i = start + 500; i < keys.length - 1; i++)
-      if (keys[i] === 'chapter' && /^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty)$/.test(keys[i + 1])) {
+      if (keys[i] === 'chapter' && NUMBER_WORD.test(keys[i + 1])) {
         end = i;
         break;
       }
+  // The last chapter: it ends where the back matter starts (acknowledgements, about the author,
+  // also by…), not at the end of the file — else its end was stretched over the back pages.
+  if (next == null) end = Math.min(end, backMatterAfter(keys, start + 500) ?? end);
   return [start, end];
+}
+
+/** Where the story's words end: the back pages after the last chapter, else the end of the text. */
+const storyEnd = (keys, lastTok) => backMatterAfter(keys, lastTok + 500) ?? keys.length;
+
+/** Where the book's back pages begin after `from` (word position), or null. */
+export function backMatterAfter(keys, from) {
+  const at = (i, ...w) => w.every((x, k) => keys[i + k] === x);
+  for (let i = Math.max(0, from); i < keys.length - 2; i++) {
+    const w = keys[i];
+    if (w === 'acknowledgements' || w === 'acknowledgments' || w === 'afterword' || at(i, 'about', 'the', 'author') || at(i, 'also', 'by') || at(i, 'the', 'end') || at(i, 'reading', 'group', 'guide')) return i;
+  }
+  return null;
 }
 
 /** The chapter the AI named, as a stretch of the text (between its anchor and the next). */
@@ -187,11 +308,42 @@ export function rangeOf(anchors, chapters, ci) {
 /** Where the chapter holding a place in the text begins (its heading), or null. */
 export function chapterStartBefore(bt, tok) {
   const keys = bt.keys;
-  const isNum = (w) => /^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)$/.test(w || '');
+  const isNum = (w) => NUMBER_WORD.test(w || '');
   for (let i = Math.min(tok, keys.length - 2); i >= 0; i--) {
     if (keys[i] !== 'chapter' || !isNum(keys[i + 1])) continue;
     // Not the contents pages: a real heading has text after it, not another heading.
     if (!keys.slice(i + 3, i + 300).some((w, k, a) => w === 'chapter' && isNum(a[k + 1]))) return i;
   }
   return null;
+}
+
+/**
+ * A stretch of the text cut into numbered passages of about `size` words, each starting at a
+ * paragraph where it can (for the AI to read and say where a scene starts). A stretch longer
+ * than `max` words is cut down around `near`.
+ */
+export function passagesOf(bt, range, { size = 90, max = 6500, near = null } = {}) {
+  let [lo, hi] = range;
+  hi = Math.min(bt.tokens.length, hi);
+  lo = Math.max(0, lo);
+  if (hi - lo > max) {
+    const mid = near != null && near >= lo && near < hi ? near : (lo + hi) >> 1;
+    lo = Math.max(lo, Math.min(hi - max, mid - (max >> 1)));
+    hi = lo + max;
+  }
+  const paraStarts = new Set(bt.starts || []);
+  const out = [];
+  let i = lo;
+  while (i < hi) {
+    let end = Math.min(hi, i + size);
+    // End at a paragraph start nearby (up to 40 words on), so passages read whole.
+    for (let k = end; k < Math.min(hi, end + 40); k++)
+      if (paraStarts.has(k)) {
+        end = k;
+        break;
+      }
+    out.push({ tok: i, text: bt.tokens.slice(i, end).join(' ') });
+    i = end;
+  }
+  return out;
 }

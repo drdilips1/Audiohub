@@ -15,6 +15,8 @@ import { persisted, settings, library, progress, bookmarks, addons, abs, debrid,
 import { cleanUrl } from './http.js';
 import { ttsCfg } from './tts.js';
 import { myRatings } from './taste.js';
+import { readLater, readLaterGone, withoutGone } from './readlists.js';
+import { following } from './people.js';
 
 const BAKED_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const BAKED_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -55,6 +57,11 @@ const SECTIONS = {
   kindle: { store: kindle, secret: true, merge: mergeKindle },
   bookTags: { store: bookTags },
   highlights: { store: highlights, merge: mergeHighlights },
+  // Read later (removals first, so a book removed on one device doesn't come back from another)
+  // and the authors / narrators you follow.
+  readLaterGone: { store: readLaterGone, merge: mergeLatest },
+  readLater: { store: readLater, merge: (l, r) => withoutGone(mergeById(l, r)) },
+  following: { store: following },
 };
 
 // Installs from before the server was built in saved an empty address — use the built-in one.
@@ -66,6 +73,12 @@ let applying = false;
 // ---- merging ------------------------------------------------------------------
 function mergeById(local, remote) {
   return { ...remote, ...local };
+}
+// uid -> time: the later time of the two sides.
+function mergeLatest(local, remote) {
+  const out = { ...(remote || {}) };
+  for (const [k, t] of Object.entries(local || {})) out[k] = Math.max(Number(t) || 0, Number(out[k]) || 0);
+  return out;
 }
 function mergeNewest(local, remote) {
   const out = { ...local };

@@ -4,20 +4,54 @@
 import { persisted, summarize, progress } from './store.js';
 import { rateBook, markAlreadyRead, myRatings, alreadyRead, rateKey } from './taste.js';
 import { mainTitle } from './match.js';
+import { sameWork } from './works.js';
 
 export const readLater = persisted('readLater', {}); // uid -> { book, at }
+// Removed from Read later: uid -> when. Synced too, so another device's copy of the list
+// doesn't bring a removed book back (a plain merge of both lists would).
+export const readLaterGone = persisted('readLaterGone', {});
 export const isReadLater = (b, all = readLater.get()) => !!(b?.uid && all[b.uid]);
+/** Off the list: this copy and any other copy of the same book on it. */
+export function removeReadLater(b) {
+  if (!b?.uid) return;
+  const all = readLater.get();
+  const uids = Object.keys(all).filter((uid) => uid === b.uid || (all[uid]?.book && sameWork(all[uid].book, b)));
+  if (!uids.includes(b.uid)) uids.push(b.uid);
+  const now = Date.now();
+  readLaterGone.set((g) => {
+    const next = { ...g };
+    for (const uid of uids) next[uid] = now;
+    // Only recent removals matter (an old copy of the list); keep the list small.
+    for (const [uid, t] of Object.entries(next)) if (now - t > 180 * 864e5) delete next[uid];
+    return next;
+  });
+  readLater.set((list) => Object.fromEntries(Object.entries(list).filter(([uid]) => !uids.includes(uid))));
+}
 export function toggleReadLater(b) {
   if (!b?.uid) return false;
   const on = !isReadLater(b);
-  readLater.set((all) => {
-    const next = { ...all };
-    if (on) next[b.uid] = { book: summarize(b), at: Date.now() };
-    else delete next[b.uid];
+  if (!on) {
+    removeReadLater(b);
+    return false;
+  }
+  readLaterGone.set((g) => {
+    if (!g[b.uid]) return g;
+    const next = { ...g };
+    delete next[b.uid];
     return next;
   });
-  return on;
+  readLater.set((all) => ({ ...all, [b.uid]: { book: summarize(b), at: Date.now() } }));
+  return true;
 }
+/** Drop books removed (here or on another device) after they were added. */
+export function withoutGone(list, gone = readLaterGone.get()) {
+  return Object.fromEntries(Object.entries(list || {}).filter(([uid, x]) => !(gone?.[uid] && gone[uid] >= (x?.at || 0))));
+}
+readLaterGone.subscribe((g) => {
+  const list = readLater.get();
+  const kept = withoutGone(list, g);
+  if (Object.keys(kept).length !== Object.keys(list).length) readLater.set(kept);
+});
 /** Started or finished: off the Read later list (it's no longer "later"). */
 progress.subscribe((p) => {
   const later = readLater.get();

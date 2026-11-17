@@ -3,7 +3,7 @@
 // prepares a book the car picks (as when you tap Play), and takes back the places books
 // reached when they played from the car with the app closed.
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { progress, library, persisted, abs } from './store.js';
+import { progress, library, persisted, abs, debrid } from './store.js';
 import { downloads } from './downloads.js';
 
 const ON = Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('InkwellPlayer');
@@ -38,6 +38,35 @@ const item = (uid, b, p) => ({
   time: p?.time || 0,
 });
 
+// TorBox books: how the car fetches their parts itself (fresh links each time, so they never
+// expire) — worked out by the app for the books in your car lists.
+const recipes = persisted('carRecipes', {}); // uid -> { at, parts }
+const isTb = (uid) => /^tb:/.test(uid || '');
+let filling = false;
+async function fillRecipes(uids) {
+  if (filling) return;
+  const want = uids.filter((u) => isTb(u) && Date.now() - (recipes.get()[u]?.at || 0) > 12 * 3600e3).slice(0, 30);
+  if (!want.length) return;
+  filling = true;
+  try {
+    const { tbRecipe } = await import('../sources/debrid.js');
+    const lists = {};
+    const got = {};
+    for (const uid of want) {
+      const r = await tbRecipe({ uid }, lists).catch(() => null);
+      got[uid] = r ? { at: Date.now(), parts: r.parts } : { at: Date.now(), parts: [] };
+    }
+    recipes.set((all) => {
+      const next = { ...all, ...got };
+      // Only books still in the car's lists are kept.
+      return Object.fromEntries(Object.entries(next).sort((a, b) => b[1].at - a[1].at).slice(0, 60));
+    });
+  } finally {
+    filling = false;
+  }
+}
+
+const recipeOf = (uid) => (recipes.get()[uid]?.parts?.length ? recipes.get()[uid].parts : undefined);
 function catalog() {
   const prog = progress.get();
   const dls = downloads.get();
@@ -45,11 +74,15 @@ function catalog() {
   const recent = audio.sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
   const parts = (uid) => {
     const d = dls[uid];
-    return d?.status === 'done' && d.tracks?.length ? d.tracks.map((t, i) => ({ url: t.uri, title: t.title || `Part ${i + 1}` })) : undefined;
+    if (d?.status === 'done' && d.tracks?.length) return d.tracks.map((t, i) => ({ url: t.uri, title: t.title || `Part ${i + 1}` }));
+    // A podcast episode: its own audio link (plays in the car with the app closed too).
+    const b = prog[uid]?.book;
+    if (b?.source === 'pod' && b.tracks?.[0]?.url) return b.tracks.map((t, i) => ({ url: t.url, title: t.title || b.title || `Part ${i + 1}` }));
+    return undefined;
   };
   return {
-    continue: recent.filter(([, p]) => !p.finished).slice(0, 15).map(([uid, p]) => ({ ...item(uid, p.book, p), parts: parts(uid), stream: streams.get()[uid] })),
-    recent: recent.slice(0, 25).map(([uid, p]) => ({ ...item(uid, p.book, p), parts: parts(uid), stream: streams.get()[uid] })),
+    continue: recent.filter(([, p]) => !p.finished).slice(0, 15).map(([uid, p]) => ({ ...item(uid, p.book, p), parts: parts(uid), stream: streams.get()[uid], recipe: recipeOf(uid) })),
+    recent: recent.slice(0, 25).map(([uid, p]) => ({ ...item(uid, p.book, p), parts: parts(uid), stream: streams.get()[uid], recipe: recipeOf(uid) })),
     downloaded: Object.entries(dls)
       .filter(([, d]) => d?.status === 'done' && d.tracks?.length && d.book)
       .sort((a, b) => (b[1].finishedAt || 0) - (a[1].finishedAt || 0))
@@ -63,7 +96,9 @@ let timer = 0;
 function push() {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    const json = JSON.stringify(catalog());
+    const c = catalog();
+    fillRecipes([...c.continue, ...c.recent].map((x) => x.id)).catch(() => {});
+    const json = JSON.stringify(c);
     if (json === last) return;
     last = json;
     Native.setCarCatalog({ json }).catch(() => {});
@@ -92,6 +127,18 @@ if (ON) {
   progress.subscribe(push);
   downloads.subscribe(push);
   streams.subscribe(push);
+  recipes.subscribe(push);
+  // Your TorBox key, kept by the phone for the car (as your server's sign-in is).
+  let tbSent = null;
+  const pushTb = async () => {
+    const { torboxKey } = await import('../sources/debrid.js');
+    const key = torboxKey();
+    if (key === tbSent) return;
+    tbSent = key;
+    Native.setCarTorbox({ key }).catch(() => {});
+  };
+  pushTb();
+  debrid.subscribe(() => pushTb().catch(() => {}));
   // Keep the playing book's links (checked now and then; only stored when they change).
   setInterval(() => keepStreams().catch(() => {}), 20000);
   push();
@@ -173,7 +220,18 @@ if (ON) {
     const pool = [...Object.values(progress.get()).map((p) => p?.book), ...Object.values(library.get()), ...Object.values(downloads.get()).map((d) => d?.book)].filter((b) => b?.uid && !/^pod:/.test(b.uid));
     const score = (b) => words.filter((w) => `${b.title || ''} ${b.author || ''}`.toLowerCase().includes(w)).length;
     const best = pool.map((b) => [b, score(b)]).sort((a, b) => b[1] - a[1])[0];
-    if (best && best[1] * 2 >= words.length) return playBook(best[0]);
+    if (best && best[1] * 2 >= words.length && !/\b(where|when|scene|moment|chapter|part|back|forward|skip|sleep|speed|pause|stop|resume)\b/i.test(query)) return playBook(best[0]);
+    // Anything else said to the car goes to the app's voice button: a command ("back 30
+    // seconds", "sleep in 20 minutes"), a scene ("play the part where…"), a chapter, a book or a
+    // question (answered aloud).
+    if (words.length >= 2) {
+      try {
+        const { runSaid } = await import('../components/scene-cmd.jsx');
+        await runSaid(String(query).replace(/\b(on|in|using|with) audio ?hub\+?.*$/i, '').trim());
+        await Native.carReady().catch(() => {});
+        return;
+      } catch {}
+    }
     // Not yours yet: your cloud and server copies, then the best torrent from your sources —
     // as the app's own "play …" voice command does.
     const want = wantOf(query);
@@ -276,7 +334,8 @@ async function playResult({ result, provider, want }) {
 async function playBook(book) {
   try {
     const [{ getDetails }, player] = await Promise.all([import('../sources/index.js'), import('./player.js')]);
-    const details = await getDetails(book);
+    // A podcast episode is ready to play as it is (its audio link is in it).
+    const details = book.source === 'pod' && book.tracks?.length ? book : await getDetails(book, { fast: true });
     await player.playBook(details);
     // Started (whichever way it got there): the car plays it too.
     await Native.carReady({ id: player.getState().book?.uid || book.uid }).catch(() => {});

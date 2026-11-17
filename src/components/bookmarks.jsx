@@ -1,3 +1,4 @@
+import { useEffect } from 'preact/hooks';
 // Bookmarks outside the player: on the book's page and in Notes. Tap one to play the
 // book from that moment (straight in if it's the book playing now).
 import { Icon } from './icons.jsx';
@@ -80,6 +81,10 @@ export function Rows({ uid, book, list, onPlay }) {
 export function BookBookmarks({ book }) {
   const all = useStore(bookmarks);
   const list = all[book.uid] || [];
+  // Old bookmarks named only by a line's first words: given a proper name in the background.
+  useEffect(() => {
+    if (list.length) import('../lib/bookmarkname.js').then((m) => m.renamePlain(book)).catch(() => {});
+  }, [book.uid, list.length]);
   if (!list.length) return null;
   return (
     <section class="pad">

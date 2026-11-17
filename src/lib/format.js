@@ -80,9 +80,13 @@ export function greeting() {
  * Open Library, Google Books), so a big banner isn't a blown-up thumbnail.
  */
 /** A sharp but not huge cover for cards and rows (about 500 px): small thumbnails look blurry. */
+// Covers from your own server carry the address and sign-in used when the book was saved:
+// the server's code swaps in the address that answers now and the current sign-in.
+let coverFix = (u) => u;
+export const setCoverFix = (fn) => (coverFix = fn);
 export function cardCover(url) {
   if (!url) return url;
-  let u = String(url);
+  let u = coverFix(String(url));
   if (/media-amazon\.com|images-amazon\.com|ssl-images-amazon/.test(u)) u = u.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png)/i, '._SL500_.$1');
   else if (/mzstatic\.com/.test(u)) u = u.replace(/\/\d+x\d+(bb|cc)?(-\d+)?\.(jpg|png|webp)$/i, '/600x600bb.$3');
   else if (/covers\.openlibrary\.org/.test(u)) u = u.replace(/-S\.jpg/, '-M.jpg');

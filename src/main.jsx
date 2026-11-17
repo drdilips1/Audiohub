@@ -7,6 +7,7 @@ import './lib/keep.js';
 import './lib/history.js';
 import './lib/upnext.js';
 import './lib/car.js';
+import './lib/motion.js';
 
 // Studio look (v4): everyone moves onto the orange-on-black/white Studio theme once;
 // later choices (Settings → Appearance) stick.

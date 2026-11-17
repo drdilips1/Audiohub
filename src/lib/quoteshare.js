@@ -129,7 +129,7 @@ export function findQuoteBlock(blocks, quote) {
 }
 
 // ---- sharing -------------------------------------------------------------------
-async function coverData(url) {
+export async function coverData(url) {
   if (!url) return null;
   try {
     if (native) {
@@ -149,7 +149,7 @@ async function coverData(url) {
   }
 }
 
-const loadImg = (src) =>
+export const loadImg = (src) =>
   new Promise((ok, bad) => {
     const i = new Image();
     i.onload = () => ok(i);

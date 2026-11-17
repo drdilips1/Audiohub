@@ -14,12 +14,15 @@ import { Icon } from '../components/icons.jsx';
 import { ia, gb, ol, absSrc, addonSrc, cloud, localSrc, hc, gr, enabled, sourceOrder, sourceRank } from '../sources/index.js';
 import { Fragment } from 'preact';
 import { sameWork } from '../lib/works.js';
+import { FollowRow } from '../components/follow-row.jsx';
 import { progress, settings, addons, abs, debrid, hardcover, goodreads, useStore, persisted, library, toggleLibrary, hideFromContinue } from '../lib/store.js';
-import { fmtDuration, hiResCover } from '../lib/format.js';
+import { greeting, firstName, fmtDuration, hiResCover } from '../lib/format.js';
 import { useSquareCover } from '../lib/meta.js';
 import { UpNextRow, PlanRow } from '../components/up-next.jsx';
+import { account } from '../lib/sync.js';
 import { nav, useBackClose } from '../lib/nav.js';
 import { GENRES } from './genres.js';
+import { tasteShelves, moreLike } from '../lib/shelves.js';
 import { HINDI_ALL } from './hindi.js';
 import { audible } from '../sources/catalogs.js';
 import { waitlist, cancel, playNow } from '../lib/waitlist.js';
@@ -146,6 +149,17 @@ async function newReleases() {
 async function topThisMonth() {
   const r = await topicPool();
   return r.slice(0, 20).map((b, i) => ({ ...b, rank: i + 1 }));
+}
+
+/**
+ * Shelves that say why: "Because you enjoyed …", "More from authors you love", "Narrators like
+ * the ones you love", "A little outside your comfort zone", and one per "More like this".
+ * Only the ones there's something to build from (a new listener sees none yet).
+ */
+function TasteShelves() {
+  const ml = useStore(moreLike);
+  const shelves = useMemo(() => tasteShelves(), [ml]);
+  return shelves.map((sh) => <Row key={sh.key} title={sh.title} subtitle={sh.subtitle} icon="sparkle" cacheKey={'shelf:' + sh.key} rec load={sh.load} deps={[sh.key]} />);
 }
 
 /** Explore categories: colourful tiles, two rows that scroll sideways. */
@@ -493,11 +507,31 @@ function ContinueRow() {
   const [[, top], ...rest] = items;
   return (
     <section class="continue-section">
+      <div class="d-head home-head">
+        <span class="d-ico">
+          <Icon name="headphones" size={20} />
+        </span>
+        <h3>{top.kind === 'text' ? 'Continue reading' : 'Continue listening'}</h3>
+        {/* Your other unfinished books: Library → Continue (no row of them here). */}
+        {rest.length > 0 && (
+          <button
+            class="d-more"
+            onClick={() =>
+              import('./Library.jsx').then((m) => {
+                m.libView.set((v) => ({ ...v, tab: 'progress', where: 'all', open: true }));
+                nav.tab('library');
+              })
+            }
+          >
+            All {items.length} <Icon name="arrow" size={15} />
+          </button>
+        )}
+      </div>
       {/* The book you were last on, big; the others in a row below. */}
       <button class="continue-big" onClick={() => open(top)}>
         <ContinueCover key={topUidKey(top)} book={top.book} big />
         <div class="continue-big-text">
-          <em>{top.kind === 'text' ? 'Continue reading' : 'Continue listening'}</em>
+          <em>{top.book.narrator ? `Read by ${String(top.book.narrator).split(',')[0]}` : top.kind === 'text' ? 'Reading' : 'Listening'}</em>
           <b>{top.book.title}</b>
           {top.book.author && <small>{top.book.author}</small>}
           <div class="progress-bar">
@@ -512,26 +546,7 @@ function ContinueRow() {
         </span>
         <Hide p={top} />
       </button>
-      {rest.length > 0 && (
-        <div class="row-scroll continue">
-          {rest.map(([uid, p]) => (
-            <button key={uid} class="continue-card" onClick={() => open(p)}>
-              <ContinueCover key={uid} book={p.book} />
-              <div class="continue-meta">
-                <b>{p.book.title}</b>
-                <span>{left(p)}</span>
-                <div class="progress-bar">
-                  <div style={{ width: Math.round((p.percent || 0) * 100) + '%' }} />
-                </div>
-              </div>
-              <span class="continue-play">
-                <Icon name={p.kind === 'text' ? 'book' : 'play'} size={16} />
-              </span>
-              <Hide p={p} />
-            </button>
-          ))}
-        </div>
-      )}
+
     </section>
   );
 }
@@ -630,6 +645,7 @@ function ThemeDice() {
 
 export function Home() {
   const st = useStore(settings);
+  const acct = useStore(account);
   const addonList = useStore(addons);
   const absCfg = useStore(abs);
   const deb = useStore(debrid);
@@ -691,38 +707,26 @@ export function Home() {
         </>
       ),
   };
+  const me = firstName(st.myName, acct);
   return (
     <div class="screen home">
-      <header class="home-top">
-        <div class="home-logo">
-          <svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="ay-g1" gradientUnits="userSpaceOnUse" x1="110" y1="120" x2="400" y2="420"><stop offset="0" stopColor="#7cf0ff"/><stop offset=".5" stopColor="#a78bfa"/><stop offset="1" stopColor="#ff7ab6"/></linearGradient>
-<linearGradient id="ay-cup" gradientUnits="userSpaceOnUse" x1="100" y1="150" x2="410" y2="250"><stop offset="0" stopColor="#7cf0ff"/><stop offset="1" stopColor="#ff7ab6"/></linearGradient>
-<linearGradient id="ay-bgd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#171235"/><stop offset="1" stopColor="#07080f"/></linearGradient>
-<radialGradient id="ay-glow" cx="0.3" cy="0.2" r="0.8"><stop offset="0" stopColor="#8b5cf6" stopOpacity=".35"/><stop offset="1" stopColor="#8b5cf6" stopOpacity="0"/></radialGradient></defs><rect width="512" height="512" rx="120" fill="url(#ay-bgd)"/><rect width="512" height="512" rx="120" fill="url(#ay-glow)"/><g transform="translate(0 10)"><path d="M128 178 a128 128 0 0 1 256 0" fill="none" stroke="#fff" strokeOpacity=".94" strokeWidth="20" strokeLinecap="round"/>
-<g fill="none" stroke="#fff" strokeOpacity=".85" strokeWidth="18" strokeLinecap="round"><path d="M224 164 a46 46 0 0 1 64 0"/><path d="M200 132 a80 80 0 0 1 112 0"/></g>
-<g fill="none" stroke="url(#ay-g1)" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round"><path d="M150 208 L256 318 L362 208"/><path d="M256 318 V420"/></g>
-<rect x="96" y="172" width="62" height="94" rx="28" fill="url(#ay-cup)"/><rect x="354" y="172" width="62" height="94" rx="28" fill="url(#ay-cup)"/></g></svg>
-          <div class="home-hello">
-            <b>
-              Audio<span class="ay-y">Y</span>am
-            </b>
-            <small class="home-tagline">
-              <span class="ay-y">Y</span>our books, <span class="ay-y">Y</span>our way
-            </small>
-          </div>
+      <header class="home-top home-bar">
+        <div class="home-brand">
+          <Icon name="headphones" size={24} /> AudioYam
         </div>
         <div class="home-top-actions">
-          <button class="icon-btn glass drive-btn" onClick={() => openDrive()} aria-label="Driving mode">
+          <button class="icon-btn drive-btn" onClick={() => openDrive()} aria-label="Driving mode">
             <Icon name="car" />
           </button>
           <SceneButton />
-          <AskButton glass />
+          <AskButton />
           <ThemeDice />
-          <button class="icon-btn glass home-search" onClick={() => nav.tab('discover')} aria-label="Search">
+          <button class="icon-btn home-search" onClick={() => nav.tab('discover')} aria-label="Search">
             <Icon name="search" />
           </button>
         </div>
       </header>
+      <Greeting me={me} />
 
       {homeOrder(st).map((id) => {
         if (homeHidden(st).includes(id)) return null;
@@ -733,6 +737,7 @@ export function Home() {
             return (
               <Fragment key={id}>
                 <ContinueRow />
+                <FollowRow />
                 <WaitingRow />
               </Fragment>
             );
@@ -741,7 +746,12 @@ export function Home() {
           case 'plan':
             return <PlanRow key={id} />;
           case 'rec':
-            return <Row key={id} title="Recommended for you" subtitle={settings.get().tasteFiction ? "From your listening and ratings" : "Non-fiction from your listening and ratings"} icon="sparkle" cacheKey="homeRec" shuffle rec load={recommendedForYou} deps={[]} />;
+            return (
+              <Fragment key={id}>
+                <Row title="Recommended for you" subtitle={settings.get().tasteFiction ? "From your listening and ratings" : "Non-fiction from your listening and ratings"} icon="sparkle" cacheKey="homeRec" shuffle rec load={recommendedForYou} deps={[]} />
+                <TasteShelves />
+              </Fragment>
+            );
           case 'new':
             return <Row key={id} title="New releases" subtitle={`New in ${topicNames()}`} icon="flame" cacheKey="homeNew" shuffle rec load={newReleases} deps={[]} />;
           case 'top':
@@ -751,9 +761,12 @@ export function Home() {
           case 'sources':
             return (
               <Fragment key={id}>
-                {sourceOrder().map((k) => (
-                  <Fragment key={k}>{blocks[k]}</Fragment>
-                ))}
+                <YourBooks />
+                {sourceOrder()
+                  .filter((k) => !YOURS.includes(k))
+                  .map((k) => (
+                    <Fragment key={k}>{blocks[k]}</Fragment>
+                  ))}
               </Fragment>
             );
           default:
@@ -766,6 +779,95 @@ export function Home() {
       {editing && <HomeEditor onClose={() => setEditing(false)} />}
       <div class="footer-space" />
     </div>
+  );
+}
+
+// ---- Greeting and Your books --------------------------------------------------------
+
+/** "Good evening, Dilip" and how long is left in the book you're on. */
+function Greeting({ me }) {
+  const prog = useStore(progress);
+  const cur = useMemo(
+    () =>
+      Object.values(prog)
+        .filter((p) => p?.book && !p.finished && !p.hidden && p.kind !== 'text' && p.total > 0)
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0],
+    [prog]
+  );
+  return (
+    <div class="home-greet">
+      <h1>{me ? `${greeting()}, ${me}` : greeting()}</h1>
+      {cur && (
+        <p>
+          {fmtDuration(Math.max(0, cur.total - (cur.global || 0)))} left in {cur.book.title}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Your services' books: one tile each (how many, tap for all), and one "Recently added" row
+// across them all, instead of a long row per service.
+// Your server keeps its own rows (in progress, recently added); the tile just opens it.
+const YOURS = ['loc', 'tb', 'rd'];
+function yourSources() {
+  const out = [];
+  if (localSrc.connected() && enabled('loc')) out.push({ k: 'loc', icon: 'headphones', name: 'On this phone', sub: 'Audiobooks in your folders', load: audioOnly(localSrc.library) });
+  if (cloud.tbConnected() && enabled('tb')) out.push({ k: 'tb', icon: 'cloud', name: 'TorBox', sub: 'Audiobooks in your TorBox cloud', load: audioOnly(cloud.torboxLibrary) });
+  if (cloud.rdConnected() && enabled('rd')) out.push({ k: 'rd', icon: 'cloud', name: 'Real-Debrid', sub: 'Audiobooks in your Real-Debrid cloud', load: audioOnly(cloud.realdebridLibrary) });
+  if (absSrc.connected() && enabled('abs')) out.push({ k: 'abs', icon: 'server', name: 'Your server', sub: 'Audiobookshelf · your whole library', load: absSrc.all });
+  return out;
+}
+const yourCounts = persisted('yourBookCounts', {});
+const tagFrom = { loc: 'Phone', tb: 'TorBox', rd: 'Real-Debrid', abs: 'Server' };
+async function recentAcross() {
+  const lists = await Promise.all(
+    yourSources().filter((s) => s.k !== 'abs').map(async (s) => {
+      const r = await s.load().catch(() => []);
+      return (r || []).map((b, i) => ({ ...b, _from: s.k, _i: i }));
+    })
+  );
+  const all = lists.flat();
+  const dated = all.some((b) => b.addedAt);
+  return (dated ? all.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0) || a._i - b._i) : all.sort((a, b) => a._i - b._i))
+    .slice(0, 24)
+    .map(({ _i, _from, ...b }) => b);
+}
+function YourBooks() {
+  const counts = useStore(yourCounts);
+  const list = yourSources();
+  useEffect(() => {
+    let alive = true;
+    for (const s of list)
+      s.load()
+        .then((r) => alive && Array.isArray(r) && yourCounts.set((c) => ({ ...c, [s.k]: r.length })))
+        .catch(() => {});
+    return () => (alive = false);
+  }, [list.map((s) => s.k).join()]);
+  if (!list.length) return null;
+  return (
+    <>
+      <section class="d-sec home-yours">
+        <div class="d-head">
+          <span class="d-ico">
+            <Icon name="grid" size={20} />
+          </span>
+          <h3>Your books</h3>
+        </div>
+        <div class={'yours-tiles n' + Math.min(list.length, 4)}>
+          {list.map((s) => (
+            <button class="yours-tile" onClick={() => nav.push('shelf', { title: s.name, subtitle: s.sub, load: s.load })}>
+              <span class="yours-i">
+                <Icon name={s.icon} size={18} />
+              </span>
+              <b>{counts[s.k] ?? '…'}</b>
+              <small>{s.name}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+      {list.some((s) => s.k !== 'abs') && <Row title="Recently added" subtitle={list.filter((s) => s.k !== 'abs').map((s) => tagFrom[s.k]).join(' · ')} icon="clock" cacheKey="homeRecentAll" load={recentAcross} deps={[list.map((s) => s.k).join()]} />}
+    </>
   );
 }
 

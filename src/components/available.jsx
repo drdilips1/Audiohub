@@ -23,6 +23,28 @@ const SVC = { tb: 'TorBox', rd: 'Real-Debrid', abs: 'Audiobookshelf', torbox: 'T
  * ebooks, your Audiobookshelf and TorBox / Real-Debrid files, and source results that
  * play at once. Audiobook pages show ebooks too, and the other way round.
  */
+// Where you have this book (phone, Audiobookshelf, TorBox…), for the label under the title.
+const whereSubs = new Set();
+let whereNow = {};
+export function useWhere(uid) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const f = () => tick((x) => x + 1);
+    whereSubs.add(f);
+    return () => whereSubs.delete(f);
+  }, []);
+  return whereNow[uid] || [];
+}
+const placeOf = (c) => {
+  const sub = String(c.sub || '').toLowerCase();
+  if (/on this phone|downloaded|saved on phone|in this folder/.test(sub)) return 'On this phone';
+  if (/audiobookshelf/.test(sub)) return 'Audiobookshelf';
+  if (/torbox/.test(sub)) return 'TorBox';
+  if (/real-debrid/.test(sub)) return 'Real-Debrid';
+  if (/your cloud/.test(sub)) return 'Your cloud';
+  return '';
+};
+
 export function Available({ book, editions }) {
   const local = useStore(localSrc.localCfg);
   const dls = useStore(downloads);
@@ -124,6 +146,13 @@ export function Available({ book, editions }) {
       setBusy('');
     }
   };
+
+  useEffect(() => {
+    const places = [...new Set(chips.map(placeOf).filter(Boolean))];
+    if ((whereNow[book.uid] || []).join() === places.join()) return;
+    whereNow = { ...whereNow, [book.uid]: places };
+    whereSubs.forEach((f) => f());
+  }, [chips, book.uid]);
 
   const searching = book.kind === 'discover' && (!editions || quick?.pending);
   if (!chips.length && !searching) return null;

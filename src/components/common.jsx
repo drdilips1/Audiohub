@@ -8,7 +8,7 @@ import { nav } from '../lib/nav.js';
 import { progress as progressStore, useStoreKey, persisted, useStore, settings } from '../lib/store.js';
 import { useImage, coverFrame, frameStyle, frameTall } from '../lib/image.js';
 import { longPress } from './book-actions.jsx';
-import { useSquareCover, fixFor, coverFailed, coverLoaded } from '../lib/meta.js';
+import { useSquareCover, fixFor, coverFailed, coverLoaded, markTyped } from '../lib/meta.js';
 import { activePalette, isInk } from '../lib/theme.js';
 import { useMeta } from '../lib/meta.js';
 import { useTileRating } from '../lib/ratings.js';
@@ -30,6 +30,10 @@ export function Cover({ book, class: cls = '', eager }) {
   const [ratio, setRatio] = useState(0);
   const [failed, setFailed] = useState(!book?.cover);
   useEffect(() => setFailed(!book?.cover || proxyFailed), [book?.cover, proxyFailed]);
+  // Showing the typed title instead of a picture: noted, so "missing covers" finds a real one.
+  useEffect(() => {
+    if (book?.uid && book.source !== 'pod') markTyped(book.uid, !!failed);
+  }, [failed, book?.uid]);
   const hue = hashHue(book?.title || '');
   const [frame, setFrame] = useState(null);
   // A different book (or picture) here: start over (tall/whole, the trimmed frame).
@@ -88,7 +92,7 @@ export function SourceBadge({ uid, book }) {
   const plain = isInk(activePalette(useStore(settings))) && PLAIN[key];
   if (plain) return <span class="badge">{plain}</span>;
   // Books from places without a source entry (e.g. direct ebook links) get a plain badge.
-  const s = SOURCES[key] || { short: book?.addon || (book?.kind === 'text' ? 'Ebook' : 'Book'), hue: 210 };
+  const s = SOURCES[key] || { short: book?.addon || (key === 'pod' || book?.source === 'pod' ? 'Podcast' : book?.kind === 'text' ? 'Ebook' : 'Book'), hue: 210 };
   const label = key === 'addon' ? book?.addonName || s.short : book?.via === 'lv' ? 'LibriVox' : s.short;
   return (
     <span class="badge" style={{ '--h': key === 'ia' && book?.via === 'lv' ? SOURCES.lv.hue : s.hue }}>
@@ -450,9 +454,12 @@ export function Toaster() {
   toastSet = setMsg;
   useEffect(() => {
     if (!msg) return;
-    const t = setTimeout(() => setMsg(null), 2600);
+    const t = setTimeout(() => setMsg(null), msg.ms || 2600);
     return () => clearTimeout(t);
   }, [msg]);
   return msg ? <div class="toast">{msg.text || msg}</div> : null;
 }
-export const toast = (text) => toastSet?.({ text, t: Date.now() });
+/** A short message at the bottom; `ms` keeps an important one up longer. */
+export const toast = (text, ms = 0) => toastSet?.({ text, t: Date.now(), ms });
+// Messages from code that can't import this file (the player).
+if (typeof window !== 'undefined') window.addEventListener('inkwell-toast', (e) => toast(e.detail));

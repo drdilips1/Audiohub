@@ -2,6 +2,7 @@
 // bookmarks, progress persistence and system media controls. Audio output is
 // delegated to an engine (native Media3 on Android, <audio> on the web).
 import * as stats from './stats.js';
+import { catchUpFor } from './resume.js';
 import { createEngine } from './engine.js';
 import { progress, bookmarks, settings, summarize, persisted } from './store.js';
 import { syncProgress, switchTracks, closeSession, serverPlace, mirrorPlace, connected as absConnected } from '../sources/audiobookshelf.js';
@@ -10,6 +11,11 @@ import { applyLocal, isDownloaded, downloads } from './downloads.js';
 import { otherCopyProgress, sameWork } from './works.js';
 import { estimateDuration, copyPlace, partByPercent, fitted } from './place.js';
 import { samePhoneBook } from './match.js';
+import { localCfg } from '../sources/local.js';
+import { fixFor } from './meta.js';
+
+/** The cover the app shows for a book (your pick, a phone book's own) — for the lock screen too. */
+const artworkOf = (b) => fixFor(b?.uid)?.cover || (b?.source === 'loc' && (localCfg.get().books || []).find((x) => x.uid === b.uid)?.cover) || b?.cover || '';
 
 // ---- safety net: a part that won't play --------------------------------------
 // First a fresh link and one more try; then another copy of the same book you
@@ -257,6 +263,7 @@ const handlers = {
       handlers.ended();
     }
     if (state.sleepUntil && Date.now() >= state.sleepUntil) fadeOutAndPause();
+    if (state.playing && settings.get().skipCredits !== false) skipCredits();
     // "End of chapter" inside one long file (an M4B with chapter marks): stop at the mark.
     if (state.sleepChapterEnd && globalTime() >= state.sleepChapterEnd - 0.3) {
       set({ sleepChapterEnd: null, sleepEndOfTrack: false });
@@ -265,6 +272,10 @@ const handlers = {
   },
   playing(on) {
     if (on) loadingAt = null;
+    // Back after a break: a few seconds again, so the sentence you were in isn't lost
+    // (5 s after a call or a notification, 30 s after a pause of hours). Not after a jump.
+    if (on) catchUp();
+    else if (state.book && !paused) paused = { at: Date.now(), g: globalTime(), call: !!state.interrupted };
     set({ playing: on, ...(on ? { loading: false, error: null, phase: '', interrupted: false } : {}) });
     if (on) clearTimeout(resumeTimer), clearTimeout(stallTimer), (stallTimer = null);
     if (!on) saveProgress(true), stats.tick(false);
@@ -285,6 +296,7 @@ const handlers = {
     if (state.loading) set({ loading: false, phase: '' });
   },
   interrupted(on) {
+    if (on && state.book) paused = { at: paused?.at || Date.now(), g: paused?.g ?? globalTime(), call: true };
     if (on) set({ playing: false, loading: false, phase: '', interrupted: true });
     else set({ interrupted: false });
   },
@@ -451,7 +463,7 @@ async function loadTrack(i, startAt = 0, autoplay = true) {
       autoplay,
       rate: state.rate,
       headers: t.headers,
-      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '', bookId: b.uid },
+      meta: { title: t.title || b.title, artist: b.author || '', album: b.title, artwork: artworkOf(b), bookId: b.uid },
     });
     if (!autoplay) set({ loading: false, phase: '' });
     // One long file with chapter marks inside (M4B): read them, for the chapter list,
@@ -499,7 +511,7 @@ async function queueAhead(token) {
       break; // e.g. still downloading on TorBox: the app starts it itself later
     }
     if (token !== loadToken || !t.url) break;
-    items.push({ url: t.url, title: t.title || b.title, artist: b.author || '', album: b.title, artwork: b.cover || '' });
+    items.push({ url: t.url, title: t.title || b.title, artist: b.author || '', album: b.title, artwork: artworkOf(b) });
   }
   if (token === loadToken) engine.queue(items).catch?.(() => {});
 }
@@ -872,6 +884,21 @@ const hist = (type, g = globalTime(), to) => {
 // --- controls ---------------------------------------------------------------
 let resumeTimer = null;
 
+// Where and when the book stopped, and whether a call / notification stopped it.
+let paused = null;
+function catchUp() {
+  const p = paused;
+  paused = null;
+  if (!p || !state.book) return;
+  // Only where it stopped: after you've moved (a jump, a chapter, another book) it plays from there.
+  if (Math.abs(globalTime() - p.g) > 3) return;
+  const back = catchUpFor(p, Date.now(), settings.get());
+  if (back > 0 && state.time > 1) {
+    seekTo(Math.max(0, state.time - back));
+    window.dispatchEvent(new CustomEvent('inkwell-toast', { detail: `⏪ Back ${back} s to pick up the thread` }));
+  }
+}
+
 export function toggle() {
   if (state.preparing) return; // starts by itself when the download finishes
   if (state.error) return loadTrack(state.index, state.time); // retry after a failure
@@ -1107,8 +1134,33 @@ function endAbsSession() {
   closeSession(moved ? globalTime() : null, totalDuration());
 }
 
+// Opening credits, the publisher's intro and end credits: skipped (Settings → Playback).
+const CREDITS = /^(\d+\s*[-–.:]?\s*)?((opening|closing|end|ending)\s+credits|credits|intro(duction)?\s+(music|credits)|publisher'?s?\s+(intro|introduction|note)|audible\s+(intro|outro)|outro)$/i;
+let creditsDone = '';
+function skipCredits() {
+  const list = chapters();
+  if (list.length < 3) return;
+  const g = globalTime();
+  const i = list.findIndex((c) => g >= c.start && g < (c.end || Infinity));
+  const c = list[i];
+  if (!c || !CREDITS.test(String(c.title || '').trim())) return;
+  const key = `${state.book?.uid}|${i}`;
+  if (creditsDone === key) return; // skipped once; going back to it on purpose plays it
+  creditsDone = key;
+  if (i < list.length - 1) {
+    playAt(list[i + 1].start);
+    window.dispatchEvent(new CustomEvent('inkwell-toast', { detail: `⏭ Skipped “${c.title}”` }));
+  } else if (i > 0) {
+    // The end credits at the very end: the book is done.
+    engine.pause();
+  }
+}
+
+/** Where the sleep timer stopped each book, for "You drifted off — catch up". */
+export const driftedOff = persisted('driftedOff', {});
 function fadeOutAndPause() {
   hist('sleep');
+  if (state.book?.uid) driftedOff.set({ [state.book.uid]: { g: globalTime(), at: Date.now() } });
   set({ sleepUntil: null });
   let step = 0;
   const iv = setInterval(() => {

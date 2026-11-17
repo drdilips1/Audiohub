@@ -2,9 +2,9 @@
 // works out the book and where the scene is (which chapter, how far in, a line from it);
 // the book is found on your phone, in your downloads, books you've played, then your
 // Audiobookshelf and TorBox / Real-Debrid; it starts 30 seconds before the scene.
-import { askAi, parseJson } from './ai.js';
+import { askAi, parseJson, aiReady } from './ai.js';
 import { mainTitle, matches, words } from './match.js';
-import { progress, settings } from './store.js';
+import { progress, settings, bookmarks } from './store.js';
 import { downloads } from './downloads.js';
 import { localCfg } from '../sources/local.js';
 import { getDetails, findOwned } from '../sources/index.js';
@@ -58,10 +58,15 @@ async function findCopies(want, onHand = false) {
   // The book's own title: "The Secret" is not "The Secret History" — extra words are allowed
   // only when they're the author's name, a year or the usual noise ("Unabridged").
   const authorWords = new Set(words(want.author));
+  // A copy's title can carry a subtitle after a dash ("Right Thing, Right Now - Justice in an
+  // Unjust World") or the author before one ("Ryan Holiday - Right Thing, Right Now"): any one
+  // part that is the book's title will do.
   const fits = (title) => {
     if (!title || !matches(t, title)) return false;
     const mine = new Set(words(t));
-    return words(mainTitle(title)).every((w) => mine.has(w) || authorWords.has(w) || NOISE.has(w) || /^\d+$/.test(w));
+    const whole = mainTitle(title);
+    const parts = [whole, ...whole.split(/\s+[-–—|]\s+/)];
+    return parts.some((p) => words(p).length && words(p).every((w) => mine.has(w) || authorWords.has(w) || NOISE.has(w) || /^\d+$/.test(w)) && matches(t, p));
   };
   const same = (b) => fits(b.title) || (!b.title && fits(b.rawName));
   // The whole series in one audiobook ("Harry Potter (Pottermore)" for "Harry Potter and the
@@ -107,7 +112,15 @@ async function fromSources(want, step) {
   const ebookish = /\b(epub|pdf|mobi|azw3?|ebook)\b/i;
   const list = [...found.values()]
     .flat()
-    .filter((r) => r && !r.loose && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`));
+    .filter((r) => r && !r.loose && (r.magnet || r.hash) && r.contentType !== 'ebook' && !ebookish.test(`${r.title} ${r.format || ''}`))
+    // The torrent's own name has to be this book (all the title's words, and the author's surname
+    // when it says one) — not whatever a search turned up for a few of its words.
+    .filter((r) => {
+      const name = `${r.title || ''} ${r.rawName || ''}`;
+      if (!matches(mainTitle(want.title), name)) return false;
+      const sn = surname(want.author);
+      return !sn || !r.author || words(`${r.author} ${name}`).includes(sn);
+    });
   if (!list.length) return null;
   const ready = (r) => (provider === 'torbox' ? r.cache?.torbox : r.cache?.realdebrid) || false;
   list.sort((x, y) => Number(ready(y)) - Number(ready(x)) || (y.seeders || 0) - (x.seeders || 0));
@@ -143,11 +156,21 @@ function pickChapter(chapters, want) {
     const re = new RegExp(`(^|\\D)0*${n}(\\D|$)`);
     const byNum = chapters.findIndex((c) => re.test(c.title || '') && !/part|disc|cd/i.test((c.title || '').replace(/chapter/i, '')));
     if (byNum >= 0) return byNum;
+    // "Chapter Six - …": the number in words.
+    const W = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty'.split(' ');
+    const TEN = ['', '', 'twenty', 'thirty', 'forty', 'fifty'];
+    const spelled = n <= 20 ? W[n] : n < 60 ? `${TEN[Math.floor(n / 10)]}${n % 10 ? '[\\s-]+' + W[n % 10] : ''}` : '';
+    if (spelled) {
+      const rw = new RegExp(`\\bchapter\\s+${spelled}\\b`, 'i');
+      const byWord = chapters.findIndex((c) => rw.test(c.title || ''));
+      if (byWord >= 0) return byWord;
+    }
     // Opening credits / prologue before chapter 1 shift the count.
     const first = chapters.findIndex((c) => !/credit|intro|prolog|dedicat|title|opening|copyright/i.test(c.title || ''));
     return Math.min(chapters.length - 1, Math.max(0, first) + n - 1);
   }
-  return /prolog/i.test(want.chapterTitle || '') ? Math.max(0, chapters.findIndex((c) => /prolog/i.test(c.title || ''))) : 0;
+  // Nothing to go on: no guess (the start of chapter 1 is not the scene).
+  return /prolog/i.test(want.chapterTitle || '') ? Math.max(0, chapters.findIndex((c) => /prolog/i.test(c.title || ''))) : -1;
 }
 
 /** The moment in what you've heard with the transcript on (book seconds), if the quote is there. */
@@ -193,21 +216,45 @@ const loaded = (quiet = false) =>
     setTimeout(() => done(false), 25e3);
   });
 
+const textMemo = new Map();
+
+/** The ebook of the book asked for and its words: { eb, bt }, or { eb: null }. Read once per book. */
+function ebookText(book, want) {
+  const key = `${book.uid}|${want.title}`;
+  if (textMemo.has(key)) return textMemo.get(key);
+  const job = (async () => {
+    const { ebookFor, ebookByTitle, autoFindEbook, textOfEbook } = await import('./booktext.js');
+    const names = [want.title, want.book].filter(Boolean);
+    const fits = (eb) => eb && names.some((n) => matches(mainTitle(n), `${eb.title || ''} ${eb.ebookName || ''}`));
+    // The ebook of the book asked for — never another book of the same series.
+    let eb = [ebookFor(book)].find(fits) || names.map((n) => ebookByTitle(n, want.author)).find(Boolean) || null;
+    if (!eb && names.some((n) => matches(mainTitle(n), book.title || ''))) eb = await Promise.race([autoFindEbook(book, { force: !!want.forceEbook }), new Promise((r) => setTimeout(() => r(null), want.forceEbook ? 60e3 : 40e3))]);
+    if (!fits(eb)) return { eb: null };
+    return { eb, bt: await textOfEbook(eb) };
+  })();
+  textMemo.clear(); // one book's words at a time (they're large)
+  textMemo.set(key, job);
+  job.catch(() => textMemo.delete(key));
+  return job;
+}
+
 /** The scene's time, found in the book's ebook (when there is one): { g, where } or null. */
-async function inEbook(book, want, part) {
-  const { ebookFor, ebookByTitle, autoFindEbook, textOfEbook } = await import('./booktext.js');
-  const names = [want.title, want.book].filter(Boolean);
-  const fits = (eb) => eb && names.some((n) => matches(mainTitle(n), `${eb.title || ''} ${eb.ebookName || ''}`));
-  // The ebook of the book asked for — never another book of the same series.
-  let eb = [ebookFor(book)].find(fits) || names.map((n) => ebookByTitle(n, want.author)).find(Boolean) || null;
-  if (!eb && names.some((n) => matches(mainTitle(n), book.title || ''))) eb = await Promise.race([autoFindEbook(book), new Promise((r) => setTimeout(() => r(null), 40e3))]);
-  if (!fits(eb)) return null;
-  const bt = await textOfEbook(eb);
-  const total = player.totalDuration();
-  if (!total || !part.length) return null;
+async function inEbook(book, want, part, diag = {}, said = '', step = () => {}) {
+  const { eb, bt } = await ebookText(book, want);
+  if (!eb) return (diag.ebook = ''), null;
+  diag.ebook = eb.title || eb.ebookName || 'yes';
+  // The book's length: the player's, else where its last chapter ends (a book just opened
+  // didn't report one yet and the scene fell back to a guess).
+  const total = player.totalDuration() || part[part.length - 1]?.end || Number(book.duration) || 0;
+  if (!total || !part.length) return (diag.noLength = true), null;
   const { anchorsFor, timeOf, sceneInText, rangeOf } = await import('./scenefind.js');
-  const end = part[part.length - 1].end || total;
-  const anchors = anchorsFor(bt, part, end, want.title, part[0].start);
+  // End credits (and closing music) after the story aren't the book's words: the text's end is
+  // tied to the end of the last story part, not the end of the credits — else a scene near the
+  // end of the last chapter landed in the credits.
+  let body = part;
+  while (body.length > 2 && /credits?|outro|closing|end of (the )?book|epilogue music/i.test(body[body.length - 1].title || '') && !/chapter/i.test(body[body.length - 1].title || '')) body = body.slice(0, -1);
+  const end = body[body.length - 1].end || total;
+  const anchors = anchorsFor(bt, body, end, want.title, body[0].start);
   const ci = want.chapterTitle || want.chapter ? pickChapter(part, want) : -1;
   const words = [...(want.keywords || []), want.quote || ''];
   // The chapter the AI named, found in the ebook itself: the scene is looked for there
@@ -217,19 +264,165 @@ async function inEbook(book, want, part) {
   const inCh = Math.min(0.95, Math.max(0, Number(want.at) || 0));
   const inside = {};
   const anywhere = {};
-  let tok = ch ? sceneInText(bt, words, ch, { strict: true, target: ch[0] + inCh * (ch[1] - ch[0]), details: inside }) : null;
+  // A line the AI remembers from the scene, found word for word: the surest of all.
+  const { quoteAt } = await import('./scenefind.js');
+  // In the chapter the AI named when it's known; anywhere in the book only when there's no chapter to go on.
+  let exact = want.quote ? (ch ? quoteAt(bt, want.quote, ch[0], ch[1]) : quoteAt(bt, want.quote)) : null;
+  // Not word for word (words read off a photo: a hyphen at a line's end, a curly quote, one word
+  // misread): found by its overlapping three-word pieces instead, the way a heard line is found —
+  // near the page's share of the book first when its page number is known.
+  if (exact == null && want.quote) {
+    const { locate } = await import('./booktext.js');
+    const near = want.bookAt > 0 ? Math.round(want.bookAt * bt.keys.length) : ch ? ch[0] : null;
+    const l = locate(bt, want.quote, near);
+    if (l) (exact = l.from), (diag.loose = true);
+  }
+  let tok = exact ?? (ch ? sceneInText(bt, words, ch, { strict: true, target: ch[0] + inCh * (ch[1] - ch[0]), details: inside }) : null);
   // The whole book too: the AI can name the wrong chapter (the egg is talked about in two). If
   // somewhere else has clearly more of the scene's telling words, that's the scene.
   const all = sceneInText(bt, words, null, { details: anywhere });
   if (tok == null) tok = all ?? sceneInText(bt, words, rangeOf(anchors, part, ci));
-  else if (all != null && anywhere.hit && inside.hit && (anywhere.hit.distinct > inside.hit.distinct + 1 || anywhere.hit.s > inside.hit.s * 1.4)) tok = all;
+  else if (exact == null && all != null && anywhere.hit && inside.hit && (anywhere.hit.distinct > inside.hit.distinct + 1 || anywhere.hit.s > inside.hit.s * 1.4)) tok = all;
+  diag.how = exact != null ? 'exact line' : tok == null ? 'not in the text' : inside.hit?.phrase || anywhere.hit?.phrase ? 'name as a phrase' : 'telling words';
+  diag.anchors = anchors.length;
+  // The AI reads the chapter itself and says which passage the scene starts in — the same
+  // knowledge that answers a typed question well, now pointed at the book's own words (the
+  // telling words alone land a few minutes off, or in another chapter that shares the names).
+  if (exact == null && aiReady()) {
+    const { chapterStartBefore: headBefore } = await import('./scenefind.js');
+    // The stretch holding a place in the text: its chapter (from the heading before it).
+    const around = (t) => {
+      const h = headBefore(bt, t);
+      return h != null && t - h < 9000 ? [h, t + 4000] : [Math.max(0, t - 2500), t + 2500];
+    };
+    // The chapter the AI named first; where the telling words gather first when that's elsewhere.
+    const tries = [];
+    if (tok != null && (!ch || tok < ch[0] || tok >= ch[1])) tries.push([around(tok), tok]);
+    if (ch) tries.push([ch, tok != null && tok >= ch[0] && tok < ch[1] ? tok : Math.round(ch[0] + inCh * (ch[1] - ch[0]))]);
+    else if (all != null && all !== tok) tries.push([around(all), all]);
+    step('Reading the chapter…');
+    let pick = null;
+    for (const [range, near] of tries.slice(0, 2)) {
+      pick = await aiReads(bt, range, want, said, near).catch((e) => ((diag.readError = e.message), null));
+      if (pick != null) break;
+    }
+    if (pick != null) (tok = pick), (diag.how = 'AI read the chapter');
+    else if (tries.length) diag.read = 'not found by reading';
+  }
   if (tok == null) return null;
-  const g = timeOf(anchors, tok);
+  let g = timeOf(anchors, tok);
+  // Inside the audiobook's own chapter (its start and end are exact): the same share of the way
+  // through as in the ebook's chapter — closer than spreading the time across the whole book.
+  const head0 = ch && tok >= ch[0] && tok < ch[1] ? ch : null;
+  // Seconds of audio per word here (to turn a few words off into seconds when correcting).
+  let pace = 0;
+  {
+    let a = anchors[0];
+    let b = anchors[anchors.length - 1];
+    for (let i = 1; i < anchors.length; i++) if (anchors[i].tok >= tok) ((a = anchors[i - 1]), (b = anchors[i]), (i = anchors.length));
+    pace = (b.g - a.g) / Math.max(1, b.tok - a.tok);
+  }
+  if (head0) {
+    const cs = timeOf(anchors, head0[0]);
+    const ac = part.find((c) => Math.abs(c.start - cs) < 90 && (c.end || 0) > c.start);
+    if (ac) {
+      const ce = timeOf(anchors, head0[1]);
+      // The audio chapter is this ebook chapter (they end about together too).
+      if (Math.abs(ac.end - ce) < 150) {
+        g = ac.start + ((tok - head0[0]) / Math.max(1, head0[1] - head0[0])) * (ac.end - ac.start);
+        pace = (ac.end - ac.start) / Math.max(1, head0[1] - head0[0]);
+        diag.local = true;
+      }
+    }
+  }
+  if (!(pace > 0.1 && pace < 1.5)) pace = 0.4; // about 150 words a minute
   const at = part.findIndex((c) => g >= c.start && g < (c.end || Infinity));
   // The start of the chapter it's in (for "play the chapter where …").
   const { chapterStartBefore } = await import('./scenefind.js');
   const head = ch && tok >= ch[0] && tok < ch[1] ? ch[0] : chapterStartBefore(bt, tok);
-  return { g, chapterG: head != null ? timeOf(anchors, head) : null, where: `${part[at]?.title || 'found'} · from the ebook` };
+  return { g, tok, bt, pace, chapterG: head != null ? timeOf(anchors, head) : null, where: `${part[at]?.title || 'found'} · from the ebook` };
+}
+
+/**
+ * The AI reads a stretch of the ebook (a chapter) cut into numbered passages and says which
+ * one the scene starts in: its word position, or null when it says the scene isn't there.
+ */
+async function aiReads(bt, range, want, said, near = null) {
+  const { passagesOf } = await import('./scenefind.js');
+  // About 4,000 words (a quick read for the AI), around where the scene likely is.
+  const ps = passagesOf(bt, range, { near, max: 4000 });
+  if (ps.length < 2) return null;
+  const text = ps.map((p, i) => `[${i + 1}] ${p.text}`).join('\n');
+  const raw = await askAi(
+    `A listener asked their audiobook app for a moment in "${want.title}": "${String(said || want.scene).slice(0, 200)}"${want.scene ? ` (the moment: ${want.scene})` : ''}.
+Below is part of the book's own text, in numbered passages. Read it and find the passage where that moment STARTS — where it begins happening, not where it is mentioned or remembered later. If the moment isn't in this text, say 0.
+${text}
+Reply with JSON only: {"passage": <number>, "sure": true|false}`,
+    { json: true }
+  );
+  const r = parseJson(raw) || {};
+  const n = Math.round(Number(r.passage) || 0);
+  if (n < 1 || n > ps.length) return null;
+  return ps[n - 1].tok;
+}
+
+const say = (text) => window.dispatchEvent(new CustomEvent('inkwell-toast', { detail: text }));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * After the jump: the live transcript reads the next few seconds (it runs ahead of the
+ * playback), those words are found in the ebook, and the book moves by the difference to the
+ * scene's own sentence (a few seconds before it). Nothing changes when it was already right,
+ * when nothing could be heard in time, or when you moved on meanwhile.
+ */
+async function correctScene({ tok, bt, pace }, g) {
+  const T = await import('./transcript.js');
+  const { locate } = await import('./booktext.js');
+  if (!T.transcriptAvailable) return;
+  const ps0 = player.getState();
+  if (!ps0.book) return;
+  const uid = ps0.book.uid;
+  const wasOpen = T.transcriptCfg.get().open;
+  let latest = null;
+  const un = T.subscribeTranscript((st) => (latest = st));
+  say('🎯 Finding the exact spot…');
+  try {
+    await sleep(800);
+    const startAt = player.getState().time; // part seconds where it now plays from
+    T.follow(player.getState());
+    const t0 = Date.now();
+    let heard = null;
+    while (Date.now() - t0 < 25000) {
+      await sleep(1000);
+      const ps = player.getState();
+      if (ps.book?.uid !== uid) return; // another book
+      if (Math.abs(player.globalTime() - (g - LEAD)) > 120) return; // you moved on
+      if (latest?.status === 'no-model' || latest?.status === 'error') return;
+      if (latest?.key !== `${uid}#${ps.index}`) continue;
+      const segs = (latest.segments || []).filter((x) => x.start >= startAt - 2 && x.start <= startAt + 60);
+      const words = segs.reduce((n, x) => n + x.text.split(/\s+/).length, 0);
+      if (words >= 30) {
+        heard = { at: segs[0].start, text: segs.map((x) => x.text).join(' ') };
+        break;
+      }
+    }
+    if (!heard) return;
+    const loc = locate(bt, heard.text, tok);
+    if (!loc) return;
+    const ps = player.getState();
+    const heardG = player.trackOffset(ps.index) + heard.at;
+    // Where the scene's first word really is in the audio, and a few seconds before it.
+    const sceneG = heardG + (tok - loc.from) * pace;
+    const target = Math.max(0, sceneG - 5);
+    const off = target - player.globalTime();
+    if (Math.abs(off) < 12) return say('🎯 Right at the scene');
+    if (Math.abs(sceneG - g) > 600) return; // too far from the estimate to trust
+    player.playAt(target);
+    say(`🎯 Moved ${off > 0 ? 'on' : 'back'} ${Math.round(Math.abs(off))} s to the scene`);
+  } finally {
+    un();
+    if (!wasOpen && !T.transcriptCfg.get().open) T.stopTranscript();
+  }
 }
 
 /**
@@ -266,7 +459,8 @@ export async function playScene(said, step = () => {}, preset = null) {
   }
   // Not yours yet: just play it — the best torrent from your sources (instant in TorBox /
   // Real-Debrid first, then the most seeds), through your debrid service.
-  if (!details && justBook) details = await fromSources(want, step).catch(() => null);
+  // (A page you took a photo of plays the book from there even when it isn't yours yet.)
+  if (!details && (justBook || want.anySource)) details = await fromSources(want, step).catch(() => null);
   if (!details) {
     const e = new Error(copies.length ? `Couldn't open your copy of ${want.title} — showing it in Search` : `${want.title} isn't in your library — showing it in Search`);
     e.want = want;
@@ -279,16 +473,52 @@ export async function playScene(said, step = () => {}, preset = null) {
     if (!player.getState().playing) player.toggle();
     return { book: details, scene: details.title, where: 'from where you left off' };
   }
+  // The ebook's words load while the book's chapters arrive.
+  ebookText(details, want).catch(() => {});
+  // Opened just now: it plays from where you left off while the scene is looked for (a
+  // minute of silence before), then moves to the scene.
+  const playingMeanwhile = details.uid !== now.book?.uid || !now.playing;
+  if (playingMeanwhile && !player.getState().playing) player.toggle();
   let g = null;
   let where = '';
+  // A book just opened: a single file's own chapters (M4B) arrive a moment after it loads —
+  // without them the whole book was one chapter and the scene landed far off.
+  if (player.chapters().length <= 1) {
+    step('Reading the book’s chapters…');
+    await new Promise((resolve) => {
+      if (player.chapters().length > 1) return resolve();
+      let un = null;
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        un?.();
+        resolve();
+      };
+      un = player.subscribe(() => player.chapters().length > 1 && finish());
+      setTimeout(finish, 12000);
+    });
+  }
   const chapters = volumeOf(player.chapters(), details, want);
   step('Finding the scene in the book…');
-  const hit = await inEbook(details, want, chapters).catch(() => null);
+  // What happened at each step goes into Report a problem, so a scene that isn't found can be fixed.
+  const diag = { scene: want.scene || '', chapter: want.chapter || 0, chapterTitle: want.chapterTitle || '', keywords: (want.keywords || []).filter(Boolean).length, quote: !!want.quote, chapters: chapters.length };
+  const hit = await inEbook(details, want, chapters, diag, said, step).catch((e) => ((diag.ebookError = e.message), null));
   let chapterG = null;
   if (hit) ({ g, where, chapterG } = hit);
   if (g == null) {
     g = findHeard(details.uid, want.quote, chapters);
     if (g != null) where = 'where you heard it';
+  }
+  // A page photo with no ebook to search: how far into the book that page is (page 143 of 288),
+  // the same share of the way into the audiobook — a few minutes off at most, not the start.
+  if (g == null && want.bookAt > 0 && want.bookAt < 1) {
+    const total = player.totalDuration() || chapters[chapters.length - 1]?.end || Number(details.duration) || 0;
+    if (total) {
+      g = Math.min(0.98, want.bookAt) * total;
+      where = `about page ${want.page} of ${want.pages} · no ebook to find the line`;
+      diag.page = `${want.page}/${want.pages}`;
+    }
   }
   if (g == null) {
     const ci = pickChapter(chapters, want);
@@ -309,11 +539,16 @@ export async function playScene(said, step = () => {}, preset = null) {
     player.playAt(start);
     return { book: details, scene: want.scene ? `The chapter: ${want.scene}` : '', where: `start of ${own?.title || 'the chapter'}${where.includes('ebook') ? ' · from the ebook' : ''}` };
   }
+  diag.found = g != null ? where : 'no';
+  import('./report.js').then((r) => r.logError('Play a scene', `“${String(said).slice(0, 80)}” in ${details.title}: ${JSON.stringify(diag)}`)).catch(() => {});
   if (g != null) player.playAt(g - LEAD);
+  // Listen and correct: hear where it really landed and move to the scene's own sentence.
+  if (g != null && hit?.tok != null && settings.get().sceneCorrect !== false) correctScene(hit, g).catch(() => {});
   else {
-    // Not found: say so, rather than quietly carrying on from where you were.
+    // Not found: say so plainly (and why), rather than quietly carrying on from where you were.
     if (!player.getState().playing) player.toggle();
-    return { book: details, scene: `Couldn't find that scene${(want.keywords || []).length ? '' : ' (no ebook or chapter to go on)'} — playing from where you left off`, where: '' };
+    const why = !diag.ebook ? 'there is no ebook of this book to search — attach one in the player (Live text → Get the ebook), then ask again' : !diag.keywords && !diag.quote ? 'the AI gave no details of that moment to look for' : "those details aren't in the ebook";
+    return { book: details, scene: `Couldn't find that scene: ${why}. Playing from where you left off.`, where: '', notFound: true };
   }
   return { book: details, scene: want.scene || '', where };
 }
@@ -328,6 +563,7 @@ const AMOUNT = /(\d+(?:\.\d+)?|a|an|one|two|three|four|five|six|seven|eight|nine
 /** A command worked out without the AI: { action, seconds, chapter, speed, minutes } or null. */
 function quick(said) {
   const t = String(said || '').toLowerCase().replace(/[^\p{L}\p{N}.\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(where am i|where are we|where was i|what('s| is) happening( now)?|what chapter( is this| am i in)?|kahan (hoon|hai|pahuncha))$/.test(t)) return { action: 'where' };
   if (!t || /\b(when|where|scene|part where)\b/.test(t)) return null;
   const amount = (def) => {
     const m = t.match(AMOUNT);
@@ -337,6 +573,8 @@ function quick(said) {
   };
   if (/^(pause|stop|hold on|wait|ruko|roko|rok do|band karo)\b/.test(t)) return { action: 'pause' };
   if (/^(resume|continue|carry on|unpause|keep (going|playing)|play|start|chalao|chalu karo|shuru karo)( (it|again|playing|the book|please|now))*$/.test(t)) return { action: 'resume' };
+  if (/\b(start|play|begin)\b.*\b(this|the) (chapter|part) (again|over)\b|\brestart (this |the )?(chapter|part)\b|\b(chapter|part) (from the )?(start|beginning)\b/.test(t)) return { action: 'restart_chapter' };
+  if (/^(repeat|say) (that|it)( again)?$|^what did (he|she|they) (just )?say$|^(sorry|pardon|come again)$/.test(t)) return { action: 'rewind', seconds: 20 };
   if (/\b(next|agla|agle) (chapter|part|track)\b/.test(t) || /^skip (this |the )?(chapter|part)$/.test(t)) return { action: 'next_chapter' };
   if (/\b(previous|last|pichla|pichhle|pichle) (chapter|part|track)\b/.test(t)) return { action: 'previous_chapter' };
   const ch = t.match(/^(?:go to |play |start |jump to |skip to |open )?(?:chapter|part) (\d+|[a-z]+)$/);
@@ -353,14 +591,49 @@ function quick(said) {
     return { action: 'sleep', minutes: amount(0) ? Math.round(amount(0) / 60) || amount(0) : 30 };
   }
   if (/^(add (a )?)?bookmark( (this|it|here))?$|^mark (this|it|here)$|^save (this|the) (spot|place|moment)$/.test(t)) return { action: 'bookmark' };
+  if (/^(remember|note|keep|save) (this|that)( (bit|part|moment|idea|one))?( for later)?$|^yaad (rakho|rakhna)$/.test(t)) return { action: 'remember' };
   return null;
 }
+
+const PLAYVERB = /^\s*(please\s+)?(play|replay|go to|jump to|take me to|skip to|start (from|at)|listen to|put on|chalao|sunao|lagao)\b/i;
 
 /** Sounds like a command for the player or a book/scene to play (not a question)? */
 export const isCommand = (said) => !!quick(said) || /^(play|go to|jump to|take me to|skip to|start (from|at)|open|resume|continue|chalao|sunao)\b/i.test(String(said || '').trim());
 
-const CONTROLS = new Set(['pause', 'resume', 'rewind', 'forward', 'next_chapter', 'previous_chapter', 'go_chapter', 'speed', 'sleep', 'bookmark']);
+const CONTROLS = new Set(['pause', 'resume', 'rewind', 'forward', 'next_chapter', 'previous_chapter', 'go_chapter', 'restart_chapter', 'speed', 'sleep', 'bookmark', 'remember', 'where']);
 const mmss = (s) => (s >= 60 ? `${Math.round((s / 60) * 10) / 10} min` : `${Math.round(s)} s`);
+
+/** What was just read: the live transcript's last minutes, else the ebook's words up to here. */
+async function justHeard(book) {
+  const { hearing } = await import('./askbook.js');
+  const h = hearing(book)?.heard || '';
+  if (h.split(/\s+/).length > 40) return h;
+  const { bookTextBefore } = await import('./transcript.js');
+  return bookTextBefore(player.globalTime(), 400) || h;
+}
+
+/** "Chapter 12, about halfway — Harry has just found the mirror." (said aloud in the car) */
+async function whereAmI(book) {
+  const chapters = player.chapters();
+  const g = player.globalTime();
+  const ci = chapters.findIndex((c) => g >= c.start && g < (c.end || Infinity));
+  const c = chapters[ci];
+  const part = c && c.end > c.start ? (g - c.start) / (c.end - c.start) : null;
+  const how = part == null ? '' : part < 0.15 ? 'just started' : part < 0.4 ? 'about a third in' : part < 0.62 ? 'about halfway' : part < 0.85 ? 'past halfway' : 'nearly at the end';
+  const total = player.totalDuration();
+  let line = c ? `${c.title || `Part ${ci + 1}`}${how ? `, ${how}` : ''}` : '';
+  if (total) line += `${line ? ' — ' : ''}${Math.round((g / total) * 100)}% of the book`;
+  if (aiReady()) {
+    try {
+      const text = await justHeard(book);
+      if (text) {
+        const what = (await askAi(`In one short spoken sentence, what is happening right now at the end of this passage from "${book.title}"? Nothing after it. Reply with the sentence only.\n"""${text.slice(-2500)}"""`)).trim().split('\n')[0];
+        if (what) line += `. ${what}`;
+      }
+    } catch {}
+  }
+  return line || 'Somewhere in the book';
+}
 
 /** Do a control on what's playing; resolves the message to show. */
 async function control(c) {
@@ -391,6 +664,7 @@ async function control(c) {
       const g = player.globalTime();
       let ci = chapters.findIndex((x) => g >= x.start && g < (x.end || Infinity));
       if (c.action === 'next_chapter') ci += 1;
+      else if (c.action === 'restart_chapter') ci = Math.max(0, ci);
       else if (c.action === 'previous_chapter') ci -= 1;
       else ci = pickChapter(chapters, { chapter: c.chapter });
       if (ci < 0 || ci >= chapters.length) throw new Error(c.action === 'go_chapter' ? `There's no chapter ${c.chapter}` : 'No more chapters that way');
@@ -414,6 +688,22 @@ async function control(c) {
       import('./bookmarkname.js').then((x) => x.nameBookmark(s.book, bm)).catch(() => {});
       return '🔖 Bookmarked';
     }
+    case 'remember': {
+      // A bookmark named after the moment, with a line of what was happening as its note (in Notes).
+      const bm = player.addBookmark();
+      (async () => {
+        const { nameBookmark } = await import('./bookmarkname.js');
+        await nameBookmark(s.book, bm);
+        if (!aiReady()) return;
+        const text = await justHeard(s.book);
+        if (!text) return;
+        const note = (await askAi(`In one short sentence, what is happening or being said at the end of this passage from "${s.book.title}"? Reply with the sentence only.\n"""${text.slice(-2500)}"""`)).trim().split('\n')[0].slice(0, 220);
+        if (note) bookmarks.set((all) => ({ ...all, [s.book.uid]: (all[s.book.uid] || []).map((b) => (b.createdAt === bm.createdAt ? { ...b, note } : b)) }));
+      })().catch(() => {});
+      return '🧠 Remembered — it’s in Notes';
+    }
+    case 'where':
+      return whereAmI(s.book);
   }
   throw new Error("Didn't catch that");
 }
@@ -436,17 +726,23 @@ export async function runCommand(said, step = () => {}, withAi = true) {
   const want = await understand(said);
   const action = want?.action && want.action !== 'unknown' ? want.action : want?.title ? (want.moment === false ? 'play_book' : 'scene') : 'unknown';
   if (CONTROLS.has(action)) return { message: await control({ ...want, action }), action };
+  // "Play …" always plays audio — never a written answer read out (the AI sometimes took
+  // "play the house cup ceremony" for a question).
+  if (PLAYVERB.test(said) && action !== 'find') {
+    if (!want?.title) throw new Error(`Couldn't tell which book or scene to play — try "play <title>" or "play the part where … in <title>"`);
+    const isMoment = want.moment !== false && (want.scene || (want.keywords || []).filter(Boolean).length || want.chapter || want.chapterTitle);
+    return playScene(said, step, isMoment ? { ...want, action: 'scene', moment: true } : { ...want, action: 'play_book', moment: false });
+  }
   if (action === 'question') return { question: true, ...questionBook(want) };
   if (action === 'find') return { find: true, query: said.trim() };
   // Anything else: a question for Ask AI (never "didn't catch that").
   if (action === 'unknown' || !want?.title) return { question: true, ...questionBook(want || {}) };
-  // Jumping to a scene ("play when…", "the chapter where…") is switched off for now — it wasn't
-  // reliable enough. Such a request goes to Ask AI as a question instead.
-  // (Words of the title itself don't count: "play Where the Crawdads Sing" is a book.)
+  // A scene ("play when…", "the chapter where…", "the part where…"): find that moment and play
+  // from there. (Words of the title itself don't count: "play Where the Crawdads Sing" is a book.)
   const titleWords = new Set(words(want.title || ''));
   const rest = String(said).toLowerCase().split(/\s+/).filter((w) => !titleWords.has(w.replace(/[^\p{L}\p{N}']/gu, ''))).join(' ');
-  const sceneish = /\b(where|when|scene|moment|jab|jahan|jisme)\b/i.test(rest);
-  if (action === 'scene' || (action === 'play_book' && sceneish)) return { question: true, ...questionBook(want) };
+  const sceneish = /\b(where|when|scene|moment|part|jab|jahan|jisme)\b/i.test(rest);
+  if (action === 'scene' || (action === 'play_book' && sceneish)) return playScene(said, step, { ...want, action: 'scene', moment: true });
   want.moment = false;
   return playScene(said, step, want);
 }
@@ -469,4 +765,56 @@ async function quickBook(said) {
   const want = { action: 'play_book', moment: false, title: m[1].trim(), author: (m[2] || '').trim() };
   const copies = await findCopies(want, true);
   return copies.length ? want : null;
+}
+
+// ---- Driving mode: three buttons, each its own kind of request ---------------------------
+const SCENEISH = /\b(where|when|scene|moment|part|chapter where|jab|jahan|jisme)\b/i;
+
+/** "In this book": a scene to play, a command, or a question about the book playing. */
+export async function runInBook(said, step = () => {}) {
+  const q = quick(said);
+  if (q) return { message: await control(q), action: q.action };
+  const book = player.getState().book;
+  if (!book) throw new Error('Nothing is playing — use “Play something else” first');
+  // A moment to play: in this book, whatever the words. Anything starting "play …" is always
+  // audio, never a question answered aloud.
+  // "Play Atomic Habits" (another book, by its title) is played as asked, not looked for in this one.
+  if (PLAYVERB.test(said) && !SCENEISH.test(said) && (await quickBook(said))) return runCommand(said, step, true);
+  if (PLAYVERB.test(said) || (SCENEISH.test(said) && /\b(play|go|jump|take me|skip|start|open|find)\b/i.test(said))) {
+    const title = mainTitle(book.title);
+    const withBook = matches(title, said) ? said : `${said} in ${title}`;
+    return playScene(withBook, step, null);
+  }
+  // Anything else: a question about this book (answered aloud).
+  return { question: true, book, here: true };
+}
+
+/** "Play something else": a book, the next in the series, or something to find. */
+export async function runPlay(said, step = () => {}) {
+  const t = String(said || '').toLowerCase();
+  if (/\bnext (book|one|part|volume)\b.*\bseries\b|\bseries\b.*\bnext\b|^(play )?(the )?next book$/.test(t)) {
+    const cur = player.getState().book;
+    const { seriesOf, seriesBooks, statusIn, nextIn } = await import('./series.js');
+    const sr = cur && seriesOf(cur);
+    if (!sr?.name) throw new Error("This book isn't part of a series I know");
+    step(`Finding the next ${sr.name} book…`);
+    const list = statusIn(await seriesBooks(sr.name, cur.author));
+    const here = list.findIndex((x) => matches(mainTitle(cur.title), x.book.title));
+    const next = (here >= 0 ? list.slice(here + 1).find((x) => x.state !== 'finished') : null) || nextIn(list);
+    if (!next) throw new Error(`No next book found in ${sr.name}`);
+    return playScene(`play ${next.book.title}`, step, { action: 'play_book', moment: false, title: next.book.title, author: next.book.author || cur.author || '' });
+  }
+  const r = await runCommand(/^(play|listen to|start|put on)\b/i.test(said) ? said : `play ${said}`, step, aiReady());
+  // Said "play …" but named no book ("play something funny"): nothing read out — say what's needed.
+  if ((r.question || r.find) && PLAYVERB.test(said)) return { message: 'Say the book’s title to play it — or ask “recommend something …” for ideas' };
+  // Not a book to play: books to find (answered aloud), never a question about the current book.
+  if (r.question) return { find: true, query: said.trim() };
+  return r;
+}
+
+/** "Quick command": controls only, no AI. */
+export async function runQuickCommand(said) {
+  const q = quick(said);
+  if (!q) throw new Error('That isn’t a quick command — try “back one minute”, “next chapter”, “sleep in 20 minutes” or “faster”');
+  return { message: await control(q), action: q.action };
 }

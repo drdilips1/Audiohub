@@ -148,6 +148,27 @@ const TB_KINDS = [
   ['webdl', 'w', 'web_id'],
 ];
 
+/**
+ * How the car fetches a TorBox book's parts itself (app closed): each part's file, in the same
+ * order the app plays them. { parts: [{ i, title, tb: { kind, param, id, fileId } }] } or null.
+ * `lists`: TorBox lists already fetched (one request per kind for many books).
+ */
+export async function tbRecipe(book, lists = {}) {
+  const [, code, id] = String(book?.uid || '').split(':');
+  const k = TB_KINDS.find(([, c]) => c === code);
+  if (!k || !id || !tbKey()) return null;
+  const [kind, , param] = k;
+  lists[kind] ||= await tbList(kind, false).catch(() => []);
+  const it = lists[kind].find((x) => String(x.id) === id);
+  if (!it || (code === 't' && !(it.download_finished || it.download_present))) return null;
+  const files = audioOf(it.files, it.name)
+    .map((f) => ({ ...f, name: f.short_name || baseName(f.name) }))
+    .sort(naturalSort);
+  if (!files.length) return null;
+  return { parts: files.map((f, i) => ({ i, title: f.name.replace(TRACK_EXT, ''), tb: { kind, param, id, fileId: f.id } })) };
+}
+export const torboxKey = () => tbKey();
+
 const memo = {};
 const remember = (key, fn) => {
   const hit = memo[key];

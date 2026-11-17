@@ -219,6 +219,8 @@ let openHandler = null;
 /** What to do with a book that just arrived (app.jsx opens it in the reader). */
 export const onIncoming = (fn) => (openHandler = fn);
 function receive(f) {
+  // A link, a list or a picture shared to the app: Find books in it.
+  if (f?.text || f?.image) return void window.dispatchEvent(new CustomEvent('inkwell-find', { detail: f }));
   if (!f?.path) return f?.error && openHandler?.(null, f.error);
   const { author, title } = splitAuthor(cleanTitle(String(f.name || 'Book').replace(EBOOK, '')));
   const book = {

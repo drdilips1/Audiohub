@@ -7,45 +7,45 @@ import { persisted, useStore } from '../lib/store.js';
 import { useBackClose } from '../lib/nav.js';
 
 // Change the id for the next update's notes: everyone sees them once.
-const EDITION = 'nov-2026e';
+const EDITION = 'nov-2026f';
 const seen = persisted('whatsNewSeen', '');
 
 const STEPS = [
   {
-    icon: 'car',
-    title: 'AudioYam in Android Auto',
-    bold: 'Continue listening, Recently played, Downloaded and Now playing — in the car.',
-    text: 'Tap a book or say “Hey Google, play … on AudioYam” and it plays from your place. Search in the car finds your Audiobookshelf even with the app closed, and your phone, cloud and sources with it running in the background. (Phone-installed app: turn on Unknown sources in Android Auto’s developer settings.)',
+    icon: 'home',
+    title: 'A new Home, Discover and Library',
+    bold: 'Calmer pages, made around what you’re listening to.',
+    text: 'Home leads with your book and what’s close to finished. Discover has tabs for you, top lists, new books and moods. The Library opens on a front page — continue, read later, your shelves — with the full list one tap away. Podcasts got the same new look.',
   },
   {
-    icon: 'text',
-    title: 'The transcript follows the ebook',
-    text: 'Attach the ebook and its own text shows at once, then follows the narrator sentence by sentence — tap a sentence to play from there. Choosing the ebook shows the list (the book itself first, EPUB, smaller first) and attaches nothing until you pick.',
+    icon: 'book',
+    title: 'Book pages, authors and narrators',
+    text: 'The book page opens on its cover’s colour, with 👍 / 👎 and names you can tap. Authors and narrators have their own pages: their books, a photo (pick one or add your own) and Follow, so their new books show up for you.',
   },
   {
-    icon: 'chart',
-    title: 'Stats that add up, and when you’ll finish',
-    text: 'All time and Most listened now include everything before the stats began — the same as the Library’s hours. A book’s page says when you started it and about when you’ll finish. Reading time counts page turns and reading along with the audiobook.',
+    icon: 'play',
+    title: 'A player in the cover’s colours',
+    text: 'The controls take the cover’s colour, a ring shows how far through the chapter you are, and the minutes left in the chapter sit under it. At night the player turns dark and warm with bigger buttons, and dims itself after a little while (tap to wake).',
+  },
+  {
+    icon: 'replay',
+    title: 'Back a little, credits skipped, caught up',
+    text: 'After a pause it starts a few seconds back (longer after a long break), so you never lose a sentence. Opening and closing credits can be skipped, and if the sleep timer stopped the book, “Catch me up” tells you what you missed in the last minutes before it stopped.',
   },
   {
     icon: 'bookmark',
-    title: 'Read later, and the books you’ve read',
-    text: 'Press and hold a book → Read later (Library → Read later). Settings → Books you’ve read → Paste list: your read list from notes, with ratings, shapes recommendations and shows in Finished. “Already read it” and “Not for me — fewer like this” on any book.',
+    title: 'Bookmarks with names',
+    text: 'Bookmarks name themselves from what was being said, with a ribbon on the chapter bar and a button in Live text. Live text itself keeps its place better and follows the narrator more smoothly.',
   },
   {
-    icon: 'ai',
-    title: 'AI and voice: your call',
-    text: 'Settings → AI: turn voice off (no mic, answers never read aloud) or AI off altogether — every AI button hidden, nothing sent anywhere. Recommendations still work.',
+    icon: 'sparkle',
+    title: 'Motion',
+    text: 'Small, light animations: play turning into pause, a ripple on skip, sparks on a like, the cover growing into the player. Settings → Appearance → Motion: Off, Gentle or Full (the phone’s “reduce motion” is respected).',
   },
   {
-    icon: 'server',
-    title: 'Send to Audiobookshelf',
-    text: 'Press and hold a cloud book → Send to Audiobookshelf: a torrent goes to your home server’s qBittorrent; anything else is downloaded and uploaded into the folder you choose (Settings → Audiobookshelf → Send books to).',
-  },
-  {
-    icon: 'palette',
-    title: 'Theme dice, top lists and more',
-    text: 'The palette on Home rolls a new look (hold to go back). Top and New audiobooks in Discover, the Podcasts tab can be hidden, your cloud rows show the newest first, and “Hey Google, play … on AudioYam” works on the phone too.',
+    icon: 'covers',
+    title: 'Covers and finding your copy',
+    text: 'Missing covers are filled in by themselves, and Audiobookshelf covers stop disappearing. Your own copy is found even when titles differ in punctuation or a subtitle after a dash, an offline server no longer holds things up, Read later removals stay removed on every device, and a problem report now includes a short log.',
   },
 ];
 

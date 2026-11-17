@@ -341,5 +341,11 @@ export function recommendedEpisodes(latest, prog = progress.get()) {
     .filter((x) => x.s > 0.5)
     .sort((a, b) => b.s - a.s)
     .slice(0, 8)
-    .map((x) => x.e);
+    .map((x) => {
+      // A short reason for the card: the show you keep finishing / liking, else the topic.
+      const sv = show.get(x.e.feedUrl) || 0;
+      const name = x.e.podcast?.title || x.e.show || '';
+      const why = sv >= 1 && name ? `Because you keep listening to ${name}` : sv > 0 && name ? `From ${name}, a show you finish` : 'About things you liked';
+      return { ...x.e, why };
+    });
 }

@@ -25,9 +25,19 @@ try {
   log = JSON.parse(localStorage.getItem(KEY) || '[]');
 } catch {}
 function save() {
+  const text = JSON.stringify(log.slice(-MAX));
   try {
-    localStorage.setItem(KEY, JSON.stringify(log.slice(-MAX)));
-  } catch {}
+    localStorage.setItem(KEY, text);
+  } catch {
+    // Storage full: make room in the caches (looked-up details and the like) and try once more,
+    // so what went wrong is still there after the app is reopened.
+    import('./storage-trim.js')
+      .then(({ emergencyTrim }) => {
+        emergencyTrim();
+        localStorage.setItem(KEY, text);
+      })
+      .catch(() => {});
+  }
 }
 
 /** Note something that went wrong (kept on this device only, last 40). */

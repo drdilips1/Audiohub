@@ -360,7 +360,21 @@ export function TranscriptView({ s }) {
   return (
     <div class="transcript-col">
       <div class="tl-top">
-        {!t?.published ? <EbookStatus b={t?.bookText} /> : <span class="tl-grow" />}
+        {!t?.published && t?.bookText?.state !== 'pod' ? <EbookStatus b={t?.bookText} /> : t?.bookText?.state === 'pod' && !t?.published ? <span class="tl-note">Heard from the audio — some words may be wrong</span> : <span class="tl-grow" />}
+        <button
+          class="icon-btn tl-mark-btn"
+          aria-label="Add a bookmark here"
+          onClick={() => {
+            const bm = player.addBookmark();
+            toast('Bookmark added');
+            import('../lib/bookmarkname.js')
+              .then((m) => m.nameBookmark(s.book, bm))
+              .then((label) => label && toast(`🔖 ${label}`))
+              .catch(() => {});
+          }}
+        >
+          <Icon name="bookmark" size={18} />
+        </button>
         <button class={'icon-btn tl-find-btn' + (finding ? ' active' : '')} aria-label="Search what you've heard" onClick={() => setFinding(!finding)}>
           <Icon name={finding ? 'close' : 'search'} size={18} />
         </button>
