@@ -1,0 +1,11 @@
+{
+  "name": "inkwell-transcribe-ios",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iPhone live transcript for AudioYam: Apple speech recognition, same interface as the Android InkwellTranscribe plugin. Added to the app only by the iPhone build (.github/workflows/ios.yml).",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

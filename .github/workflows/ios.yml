@@ -1,0 +1,135 @@
+name: AudioYam iPhone app
+
+# Unsigned iPhone app (.ipa) for sideloading with AltStore (signed with a free Apple ID on the
+# Mac, renewed every 7 days). Same screens as the Android app; the iOS project is generated
+# here by Capacitor (`cap add ios`), so nothing iOS-specific lives in the repo. The Android-only
+# plugins (InkwellPlayer, InkwellTts, …) are absent on iOS and the app uses its web paths for those.
+on:
+  push:
+    paths:
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: audioyam-ios
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: |
+          npm ci
+          CORE=$(node -p "require('@capacitor/core/package.json').version")
+          # iPhone-only plugin (live transcript via Apple speech recognition). Listed as a
+          # dependency here only, so the Android app and its build are unaffected.
+          npm pkg set "dependencies.inkwell-transcribe-ios=file:ios-plugins/transcribe"
+          npm i --install-links --no-audit --no-fund "@capacitor/ios@$CORE" ./ios-plugins/transcribe
+
+      - name: Build the screens
+        env:
+          VITE_APP_VERSION: ios-${{ github.run_number }}
+        run: npx vite build
+
+      - name: Generate the iOS project
+        run: |
+          npx cap add ios
+          npx cap sync ios
+          ls ios/App
+          echo "--- plugins in the iPhone app:"; cat ios/App/App/capacitor.config.json | grep -A8 packageClassList || true
+          cat ios/App/CapApp-SPM/Package.swift || true
+
+      - name: Icon, splash and permissions
+        run: |
+          A=ios/App/App/Assets.xcassets
+          icon=$(ls $A/AppIcon.appiconset/*.png | head -1)
+          sips -z 1024 1024 public/icon-512.png --out "$icon"
+          for f in $A/Splash.imageset/*.png; do
+            sips -z 512 512 public/icon-512.png --out /tmp/s.png >/dev/null
+            sips -p 2732 2732 --padColor 101012 /tmp/s.png --out "$f" >/dev/null
+          done
+          P=ios/App/App/Info.plist
+          pb() { /usr/libexec/PlistBuddy -c "$1" "$P" 2>/dev/null || true; }
+          pb "Delete :CFBundleDisplayName"
+          pb "Add :CFBundleDisplayName string AudioYam"
+          pb "Add :UIBackgroundModes array"
+          pb "Add :UIBackgroundModes:0 string audio"
+          pb "Add :NSAppTransportSecurity dict"
+          pb "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true"
+          pb "Add :NSAppTransportSecurity:NSAllowsArbitraryLoadsInWebContent bool true"
+          pb "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true"
+          pb "Add :NSLocalNetworkUsageDescription string AudioYam connects to your home server (Audiobookshelf, qBittorrent)."
+          pb "Add :NSMicrophoneUsageDescription string Ask questions about your book by voice."
+          pb "Add :NSSpeechRecognitionUsageDescription string Shows the words of your audiobook as it plays (Text), and lets you ask questions by voice."
+          pb "Add :ITSAppUsesNonExemptEncryption bool false"
+          /usr/libexec/PlistBuddy -c Print "$P"
+
+      - name: Build
+        working-directory: ios/App
+        run: |
+          if [ -d App.xcworkspace ]; then SRC="-workspace App.xcworkspace"; else SRC="-project App.xcodeproj"; fi
+          xcodebuild -quiet $SRC -scheme App -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build" \
+            MARKETING_VERSION="1.0.${{ github.run_number }}" CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry AudioYam.ipa Payload
+          ls -la AudioYam.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudioYam-ipa
+          path: ios/App/AudioYam.ipa
+
+      - name: Publish release
+        working-directory: ios/App
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "ios-${{ github.run_number }}" AudioYam.ipa \
+            --target "${{ github.sha }}" \
+            --title "AudioYam iPhone app (build ${{ github.run_number }})" \
+            --notes "Unsigned iPhone app. Install with AltStore on the Mac (AltServer menu, hold Option → Sideload .ipa), signed with a free Apple ID (renewed every 7 days). Your library stays when you reinstall." \
+            --prerelease
+
+      # AltStore source (add in AltStore → Sources → +): lists this build, so new ones show up as updates.
+      # Fixed link: https://github.com/drdilips1/Audiohub/releases/download/ios-source/altstore.json
+      - name: Update AltStore source
+        working-directory: ios/App
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.run_number }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+        run: |
+          SIZE=$(stat -f%z AudioYam.ipa)
+          DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          node -e '
+            const [run, repo, ref, size, date] = process.argv.slice(1);
+            const url = `https://github.com/${repo}/releases/download/ios-${run}/AudioYam.ipa`;
+            const version = { version: `1.0.${run}`, buildVersion: run, date, downloadURL: url, size: +size, localizedDescription: `Build ${run}`, minOSVersion: "15.0" };
+            const app = {
+              name: "AudioYam", bundleIdentifier: "app.audiohub.player", developerName: "AudioYam",
+              subtitle: "Audiobooks, podcasts and live text", localizedDescription: "AudioYam audiobook player.",
+              iconURL: `https://raw.githubusercontent.com/${repo}/${ref}/public/icon-512.png`, tintColor: "#C9A46A",
+              versions: [version], version: version.version, versionDate: date, downloadURL: url, size: +size,
+              appPermissions: { entitlements: [], privacy: {} },
+            };
+            require("fs").writeFileSync("altstore.json", JSON.stringify({ name: "AudioYam", identifier: "app.audiohub.player.source", apps: [app], news: [] }, null, 2));
+          ' "$RUN" "$REPO" "$REF" "$SIZE" "$DATE"
+          cat altstore.json
+          gh release view ios-source >/dev/null 2>&1 || gh release create ios-source --target "${{ github.sha }}" \
+            --title "AudioYam AltStore source" --notes "Add this source in AltStore: the link to altstore.json below." --prerelease
+          gh release upload ios-source altstore.json --clobber
