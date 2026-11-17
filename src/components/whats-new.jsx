@@ -35,7 +35,7 @@ const STEPS = [
   {
     icon: 'bookmark',
     title: 'Bookmarks with names',
-    text: 'Bookmarks name themselves from what was being said, with a ribbon on the chapter bar and a button in Live text. Live text itself keeps its place better and follows the narrator more smoothly.',
+    text: 'Bookmarks name themselves from what was being said — when Live text is on or the book’s ebook is attached (otherwise they keep the chapter’s name). To save the exact words, press and hold a line in Live text: it becomes a highlight. Bookmarks show as a ribbon on the chapter bar, and Live text keeps its place better and follows the narrator more smoothly.',
   },
   {
     icon: 'sparkle',

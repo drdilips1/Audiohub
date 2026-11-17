@@ -2,7 +2,7 @@
 // beat goals"), not just "Chapter 3 · 12:43" or the first words of the line: named from the
 // transcript (or the book's own text) around that moment — by your AI service when one is
 // set up, else from the moment's most telling words.
-import { heardLines, bookTextBefore, hearAround, stopHearing } from './transcript.js';
+import { heardLines, bookTextBefore } from './transcript.js';
 import { aiReady, askAi } from './ai.js';
 import * as player from './player.js';
 import { bookmarks } from './store.js';
@@ -82,24 +82,8 @@ Give the bookmark a name of 3 to 7 words that says what is happening or the idea
 /** Name the bookmark just made (bm from addBookmark), in the background. */
 export async function nameBookmark(book, bm) {
   if (!book || !bm) return;
-  let text = textAt(book, bm);
-  // No words for that moment yet (Live text was off, no ebook): listen to the minute before it in
-  // the background — speech recognition, when a model is installed — then name it from that.
-  if (!text && bm.track === player.getState().index && player.getState().book?.uid === book.uid && (await hearAround(bm.time).catch(() => false))) {
-    try {
-      for (let waited = 0; waited < 120e3 && !text; waited += 3000) {
-        await new Promise((r) => setTimeout(r, 3000));
-        if (player.getState().book?.uid !== book.uid) break;
-        // Enough heard: the stretch up to the bookmark, or 8+ words once it's been a while.
-        const heard = heardLines(book.uid).filter((l) => l.track === bm.track && l.start >= bm.time - 150 && l.start <= bm.time + 25);
-        const upTo = heard.some((l) => l.start >= bm.time - 8);
-        if (upTo || waited >= 45e3) text = textAt(book, bm);
-      }
-    } finally {
-      stopHearing();
-    }
-  }
-  if (!text) return; // nothing heard: keep the chapter name
+  const text = textAt(book, bm);
+  if (!text) return; // nothing heard yet: keep the chapter name
   const chapter = chapterOf(bm);
   let label = aiReady() ? await aiName(book, text, chapter) : '';
   // No AI (or it failed): the chapter and the moment's telling words, not the line's first words.
