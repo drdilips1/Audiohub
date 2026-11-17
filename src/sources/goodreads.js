@@ -139,8 +139,8 @@ export async function syncProfile() {
     if (e?.status === 404 || e?.status === 403 || e?.status === 401)
       throw new Error(
         key
-          ? 'Goodreads refused that RSS link — open your “Read” shelf on goodreads.com, copy the RSS link at the bottom again and paste it here'
-          : 'Goodreads refused — profiles set to “Goodreads members only” count as private for this. Either set Goodreads → Settings → Privacy → “Who can view my profile” to “anyone”, or open your “Read” shelf on goodreads.com (in a browser), copy the RSS link at the bottom of the page and paste that here instead (it works whatever your privacy setting).'
+          ? 'Goodreads refused that RSS link — open your “Read” shelf on goodreads.com, copy the RSS link at the bottom again and paste it here — or import your Goodreads export file (CSV) below'
+          : 'Goodreads refused — profiles set to “Goodreads members only” count as private for this. Either set Goodreads → Settings → Privacy → “Who can view my profile” to “anyone”, or open your “Read” shelf on goodreads.com (in a browser), copy the RSS link at the bottom of the page and paste that here instead (it works whatever your privacy setting). Or import your Goodreads export file (CSV) below — that always works.'
       );
     throw e;
   }
