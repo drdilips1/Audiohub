@@ -1122,7 +1122,7 @@ function GoodreadsCard() {
           <button class="btn primary" disabled={busy || !link.trim()}>
             {busy ? <span class="spinner" /> : <Icon name="link" size={16} />} Connect Goodreads
           </button>
-          <small class="muted">Your profile must be visible to “anyone” (Goodreads → Settings → Privacy). A private profile works too if you paste the RSS link from one of your shelf pages instead.</small>
+          <small class="muted">Your profile must be visible to “anyone” — “Goodreads members only” counts as private (Goodreads → Settings → Privacy). Or, whatever your privacy setting: open your “Read” shelf on goodreads.com in a browser and paste the RSS link from the bottom of that page instead.</small>
         </form>
       )}
       <div class="set-row">

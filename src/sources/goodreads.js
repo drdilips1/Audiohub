@@ -131,12 +131,17 @@ export async function syncProfile() {
   const { userId, key } = goodreads.get();
   if (!userId) return 0;
   clearHttpCache();
-  let books = [];
-  try {
-    const shelves = await Promise.all(SHELVES.map((sh) => fetchShelf(userId, key, sh)));
-    books = shelves.flat();
-  } catch (e) {
-    if (e.status === 404 || e.status === 403) throw new Error('Goodreads refused — make the profile public (Settings → Privacy) or paste the RSS link from your shelf page');
+  // Each shelf on its own: one Goodreads refuses (or that's empty) doesn't lose the others.
+  const got = await Promise.allSettled(SHELVES.map((sh) => fetchShelf(userId, key, sh)));
+  const books = got.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+  if (got.every((r) => r.status === 'rejected')) {
+    const e = got[0].reason;
+    if (e?.status === 404 || e?.status === 403 || e?.status === 401)
+      throw new Error(
+        key
+          ? 'Goodreads refused that RSS link — open your “Read” shelf on goodreads.com, copy the RSS link at the bottom again and paste it here'
+          : 'Goodreads refused — profiles set to “Goodreads members only” count as private for this. Either set Goodreads → Settings → Privacy → “Who can view my profile” to “anyone”, or open your “Read” shelf on goodreads.com (in a browser), copy the RSS link at the bottom of the page and paste that here instead (it works whatever your privacy setting).'
+      );
     throw e;
   }
   goodreads.set({ ...goodreads.get(), books, importedAt: Date.now() });
