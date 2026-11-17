@@ -236,8 +236,63 @@ export const subscribe = (f) => (subs.add(f), f({ ...state }), () => subs.delete
 export const getState = () => ({ ...state });
 
 function set(p) {
+  if (timing && p.phase && p.phase !== timing.phase) stepTo(p.phase);
+  if (timing && p.error) stopTiming();
   Object.assign(state, p);
   emit();
+}
+
+// ---- how long Play takes (Settings → Report a problem: a "Play timing" line) ----------------
+// Each step from the tap to the first sound, how long the app itself was too busy to move on,
+// and how full the phone's app storage is — so a slow start shows where the seconds went.
+let timing = null;
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+function startTiming(book) {
+  // Still starting (openAndPlay → playBook, or a switch to another copy): one timing for it all.
+  if (timing && now() - timing.t0 < 60e3) return;
+  stopTiming();
+  const t = now();
+  timing = { t0: t, at: t, phase: 'Tap', steps: [], busy: 0, last: t, title: book?.title || '', src: book?.source || '' };
+  timing.iv = setInterval(() => {
+    const n = now();
+    if (!timing) return;
+    timing.busy = Math.max(timing.busy, n - timing.last - 100);
+    timing.last = n;
+    if (n - timing.t0 > 120e3) stopTiming();
+  }, 100);
+}
+function stepTo(phase) {
+  const n = now();
+  timing.steps.push([timing.phase, n - timing.at]);
+  timing.phase = phase;
+  timing.at = n;
+}
+function stopTiming() {
+  if (timing) clearInterval(timing.iv);
+  timing = null;
+}
+function storageMb() {
+  try {
+    let n = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      n += k.length + (localStorage.getItem(k) || '').length;
+    }
+    return (n * 2) / 1e6;
+  } catch {
+    return 0;
+  }
+}
+function endTiming(src) {
+  if (!timing) return;
+  const tm = timing;
+  stepTo('Playing');
+  stopTiming();
+  const sec = (ms) => `${(ms / 1000).toFixed(1)} s`;
+  const total = now() - tm.t0;
+  const steps = tm.steps.filter(([, ms]) => ms >= 50).map(([p, ms]) => `${p.replace(/…$/, '').replace(/ — .*$/, '').slice(0, 48)} ${sec(ms)}`);
+  const line = `${sec(total)} — “${String(tm.title).slice(0, 40)}” (${src || tm.src}): ${steps.join(' · ') || 'at once'}; app busy up to ${sec(tm.busy)}; storage ${storageMb().toFixed(1)} MB`;
+  import('./report.js').then(({ logError }) => logError('Play timing', line)).catch(() => {});
 }
 
 // --- engine -----------------------------------------------------------------
@@ -272,6 +327,7 @@ const handlers = {
   },
   playing(on) {
     if (on) loadingAt = null;
+    if (on && timing) endTiming(state.book?.source);
     // Back after a break: a few seconds again, so the sentence you were in isn't lost
     // (5 s after a call or a notification, 30 s after a pause of hours). Not after a jump.
     if (on) catchUp();
@@ -616,6 +672,7 @@ const freshBook = (book) => (state.book?.uid === book?.uid ? {} : { tracks: [], 
 
 export async function openAndPlay(book, getDetails, opts) {
   stopWaiting();
+  startTiming(book);
   set({ ...freshBook(book), book, loading: true, error: null, playing: false, phase: 'Opening the book…' });
   try {
     const early = ready.get(book.uid);
@@ -752,6 +809,7 @@ function sayGap(i) {
 let pctSeek = null; // { i, frac }: go to this point of part i once its length is known
 let bookStartedAt = 0; // when a copy the app switched to started (one that 'ends' at once isn't finished)
 export async function playBook(details, { index, time, globalStart, percent, autoplay = true, exact = false } = {}) {
+  if (autoplay) startTiming(details);
   bookStartedAt = rescuing ? Date.now() : 0;
   pctSeek = null;
   stopWaiting();
