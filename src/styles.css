@@ -12137,7 +12137,9 @@ button.cr-tile.on > img {
 :root .home .feature-content { flex-direction: row; align-items: center; gap: 16px; padding: 18px 18px 26px; }
 :root .home .feature-poster { flex: none; width: 112px; height: 112px; padding: 0; display: block; }
 :root .home .feature-poster img, :root .home .feature-poster .bg-image { width: 112px; height: 112px; max-height: none; border-radius: 12px; transform: none; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); }
-:root .home .feature-poster-empty { width: 112px; height: 112px; border-radius: 12px; }
+:root .home .feature-poster-empty { width: 112px; height: 112px; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 10px; box-sizing: border-box; }
+/* No cover: the title typed small inside the square (it was the big banner's size, spilling out). */
+:root .home .feature-poster-empty span { font-size: 14px; line-height: 1.2; font-weight: 750; text-align: center; color: #fff; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; text-shadow: none; }
 :root .home .feature-body { flex: 1; min-width: 0; color: #fff; }
 :root .home .feature-badges { margin-bottom: 4px; gap: 0; }
 :root .home .feature-badge { display: none; }
