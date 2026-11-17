@@ -162,9 +162,11 @@ function SafeCard({ book, wide, rec }) {
 
 /** Small lines under the author: file format · length (e.g. "M4B · 11h 10m"), then the narrator. */
 function CardFacts({ book, meta }) {
-  const secs = Number(book.duration) || Number(meta?.runtime) || 0;
-  const narrator = str(book.narrator || meta?.narrator).split(',')[0].trim();
-  const format = str(book.format).toUpperCase() || (Array.isArray(book.files) ? audioFormat(book.files) : ''); // phone books scanned before formats were noted
+  // An ebook: no length or narrator (the online details are the audiobook's), just "Ebook" / its format.
+  const ebook = book.kind === 'text' || /#ebook$/.test(book.uid || '');
+  const secs = ebook ? 0 : Number(book.duration) || Number(meta?.runtime) || 0;
+  const narrator = ebook ? '' : str(book.narrator || meta?.narrator).split(',')[0].trim();
+  const format = str(book.format).toUpperCase() || (ebook ? 'Ebook' : Array.isArray(book.files) ? audioFormat(book.files) : ''); // phone books scanned before formats were noted
   const line = [format, secs ? fmtDuration(secs) : ''].filter(Boolean).join(' · ');
   if (!line && !narrator) return null;
   return (
