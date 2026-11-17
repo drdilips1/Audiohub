@@ -494,6 +494,31 @@ export function followInReader(on) {
   else if (!on && !transcriptCfg.get().open) stopTranscript();
 }
 
+/**
+ * Listen to one moment of the part playing now (a bookmark with no words yet): speech recognition
+ * from a little before `time`, in the background. Resolves once it is running (true) or
+ * can't (false: no speech model, nothing playing). `stopHearing()` ends it again unless Text needs it.
+ */
+let hearing = false;
+export async function hearAround(time) {
+  const ps = player.getState();
+  if (!transcriptAvailable || !ps.book || ps.book.source === 'pod') return false;
+  const key = `${ps.book.uid}#${ps.index}`;
+  if (state.key === key && (state.status === 'running' || state.status === 'loading')) return true; // already listening here
+  if (state.key !== key) {
+    stopTranscript();
+    set({ key, segments: withoutRepeats((saved.get().parts[key] || []).map(({ start, end, text }) => ({ start, end, text }))), status: 'idle', error: '' });
+  }
+  hearing = true;
+  await startJob(ps, Math.max(0, time - 60));
+  return state.status === 'loading' || state.status === 'running';
+}
+export function stopHearing() {
+  if (!hearing) return;
+  hearing = false;
+  if (!transcriptCfg.get().open && !readerFollow) stopTranscript();
+}
+
 /** What's being said right now (the line at the player's position and the one before), or ''. */
 export function heardNow() {
   const ps = player.getState();
