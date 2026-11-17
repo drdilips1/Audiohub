@@ -12700,3 +12700,14 @@ html.mo-opening .full-player .fp-bg { animation: none; }
 html[data-motion='full'] .fp-art.playing .fp-glow { animation: mo-glow-in-full 0.9s ease-out, mo-breathe-full 3.6s ease-in-out 0.9s infinite; }
 @keyframes mo-glow-in { from { opacity: 0; transform: translate(-50%, -50%) scale(1.08); } to { opacity: 0.6; transform: translate(-50%, -50%) scale(1.08); } }
 @keyframes mo-glow-in-full { from { opacity: 0; transform: translate(-50%, -50%) scale(1.12); } to { opacity: 0.75; transform: translate(-50%, -50%) scale(1.12); } }
+
+/* ---- Quiet logo (Nov 2026): one solid colour from your theme — no gradient, no pill, no glow ---- */
+:root .home-top .home-logo { background: none !important; box-shadow: none !important; border: 0 !important; padding: 0 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+:root .home-top .home-logo svg.ay-mark { width: 36px; height: 36px; }
+:root .home-logo .ay-y { background: none !important; color: inherit !important; -webkit-text-fill-color: currentColor !important; }
+/* A book with no cover on the banner: a soft paper square in the theme's own colours, not purple. */
+:root .home .feature-poster-empty { background: color-mix(in srgb, var(--text) 9%, var(--bg)) !important; }
+:root .home .feature-poster-empty span { color: var(--text); font-family: Georgia, 'Times New Roman', serif; font-weight: 700; }
+:root .home-top .home-logo { min-width: 0; flex: 0 1 auto; margin-right: 6px; gap: 9px; }
+:root .home-top .home-logo .home-tagline { font-size: 10.5px; white-space: nowrap; letter-spacing: -0.01em; }
+:root .home-top .home-logo .home-hello b { font-size: 18px; }

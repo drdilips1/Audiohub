@@ -16,6 +16,15 @@ export const qbit = persisted('qbit', { url: '', lanUrl: '', username: '', passw
 const apiKey = () => String(qbit.get().apiKey || '').trim();
 // Hashes already sent (so auto-send never repeats one), newest last.
 export const qbitSent = persisted('qbitSent', { items: {} });
+// This phone's own start for auto-send (never synced): a new install — or this app set up
+// through sync from another — sends only what's added from now on, not the backlog another
+// app already handled (it had sent home books your server already had).
+const autoHere = persisted('qbitAutoHere', { since: 0 });
+function hereSince() {
+  let since = autoHere.get().since;
+  if (!since) autoHere.set({ since: (since = Date.now()) });
+  return since;
+}
 
 export const configured = () => !!(qbit.get().url || qbit.get().lanUrl);
 export const available = Capacitor.isNativePlatform();
@@ -468,6 +477,20 @@ let running = null;
 const friendly = (m) =>
   /failed to fetch|network|timed? ?out|connect|unreachable/i.test(m) ? "couldn't reach qBittorrent — is Tailscale on, or are you on home Wi-Fi? Retrying when you come back to the app" : m;
 
+/** Which of these torrents qBittorrent already has (it's the final word on duplicates). */
+async function inQbit(hashes) {
+  const want = new Set(hashes);
+  const have = new Set();
+  for (let i = 0; i < hashes.length; i += 50) {
+    const list = JSON.parse((await api('torrents/info?' + new URLSearchParams({ hashes: hashes.slice(i, i + 50).join('|') }))) || '[]');
+    for (const t of list) {
+      const h = String(t.hash || '').toLowerCase();
+      if (want.has(h)) have.add(h);
+    }
+  }
+  return have;
+}
+
 export function autoForward({ force = false } = {}) {
   const cfg = qbit.get();
   if (!available || !configured() || !cfg.auto) return Promise.resolve('');
@@ -477,7 +500,8 @@ export function autoForward({ force = false } = {}) {
     try {
       // Only items added to your cloud after auto-send was switched on. Items still
       // downloading on the debrid service count too: qBittorrent fetches the torrent itself.
-      const fresh = (await unsent()).filter((b) => (b.addedAt || 0) >= (cfg.autoSince || 0));
+      const since = Math.max(cfg.autoSince || 0, hereSince());
+      const fresh = (await unsent()).filter((b) => (b.addedAt || 0) >= since);
       // Audiobooks only: ebooks in the cloud stay there.
       const list = [];
       let held = '';
@@ -501,6 +525,16 @@ export function autoForward({ force = false } = {}) {
         if (audio) list.push(b);
         // Remember ebooks as handled (hidden from the list) so they aren't checked again.
         else if (audio === false) qbitSent.set((st) => ({ ...st, items: { ...st.items, [b.hash]: { title: b.title, at: Date.now(), removed: true, skipped: 'ebook' } } }));
+      }
+      // Already in qBittorrent (sent before, by this app or another): remembered, not sent again.
+      if (list.length) {
+        const have = await inQbit(list.map((b) => String(b.hash).toLowerCase()));
+        for (let i = list.length - 1; i >= 0; i--) {
+          const b = list[i];
+          if (!have.has(String(b.hash).toLowerCase())) continue;
+          qbitSent.set((st) => ({ ...st, items: { ...st.items, [b.hash]: { title: b.title, at: Date.now(), removed: true, skipped: 'in-qbit' } } }));
+          list.splice(i, 1);
+        }
       }
       let ok = 0;
       let err = '';
@@ -541,6 +575,10 @@ export async function autoSendAdded({ hash, magnet, title, author, rawName, form
   if (have) {
     qbitSent.set((st) => ({ ...st, items: { ...st.items, [h]: { title, at: Date.now(), removed: true, skipped: 'on-server' } } }));
     return `Already on your Audiobookshelf (“${have.title}”) — not sent home again`;
+  }
+  if ((await inQbit([h]).catch(() => new Set())).has(h)) {
+    qbitSent.set((st) => ({ ...st, items: { ...st.items, [h]: { title, at: Date.now(), removed: true, skipped: 'in-qbit' } } }));
+    return 'Already in qBittorrent — not sent home again';
   }
   try {
     await send({ hash: h, magnet, title, author: author || '', rawName });
