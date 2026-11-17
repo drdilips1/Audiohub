@@ -12690,3 +12690,11 @@ html.mo-opening .full-player .fp-ring,
 html.mo-opening .full-player .fp-glow { visibility: hidden; }
 html.mo-opening .full-player .fp-bg img { animation: none; }
 .full-player .fp-bg img { animation: fadeIn 0.45s ease-out; }
+/* …and once it has landed, the background and the glow fade in (the glow had popped on at full
+   strength the moment it landed, a flash of light behind the cover). */
+.full-player .fp-bg { animation: fadeIn 0.5s ease-out; }
+html.mo-opening .full-player .fp-bg { animation: none; }
+.fp-art.playing .fp-glow { animation: mo-glow-in 0.9s ease-out, mo-breathe 4.5s ease-in-out 0.9s infinite; }
+html[data-motion='full'] .fp-art.playing .fp-glow { animation: mo-glow-in-full 0.9s ease-out, mo-breathe-full 3.6s ease-in-out 0.9s infinite; }
+@keyframes mo-glow-in { from { opacity: 0; transform: translate(-50%, -50%) scale(1.08); } to { opacity: 0.6; transform: translate(-50%, -50%) scale(1.08); } }
+@keyframes mo-glow-in-full { from { opacity: 0; transform: translate(-50%, -50%) scale(1.12); } to { opacity: 0.75; transform: translate(-50%, -50%) scale(1.12); } }
