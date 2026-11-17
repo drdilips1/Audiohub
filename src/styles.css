@@ -12561,7 +12561,7 @@ html[data-motion='full'] .fp-art.playing .fp-glow { animation-name: mo-breathe-f
 
 /* 5 · chapter change: the new name rises in */
 .fp-ch-label { display: inline-block; animation: mo-rise 0.5s var(--mo-ease); }
-@keyframes mo-rise { from { transform: translateY(10px); opacity: 0; filter: blur(2px); } }
+@keyframes mo-rise { from { transform: translateY(10px); opacity: 0; } }
 
 /* 6 · sparks on a like / Read later */
 .book-pill, .btn.sq { position: relative; overflow: visible; }
@@ -12682,3 +12682,11 @@ html[data-motion='off'] .fp-ribbon, html[data-motion='off'] .fp-chapters.mo-flas
 html.mo-opening .full-player { animation: mo-fade 0.3s ease-out !important; }
 html.mo-opening .fp-glow { animation: none !important; opacity: 0 !important; }
 html.mo-opening .fp-sky { opacity: 0; }
+/* Opening the player: the heavy blurs (the full-screen blurred cover behind it, the glow, the
+   cover's soft edge) are drawn only once the cover has landed — drawing them on the same frames
+   as the flying cover made it stutter on phones. Then the backdrop fades in. */
+html.mo-opening .full-player .fp-bg,
+html.mo-opening .full-player .fp-ring,
+html.mo-opening .full-player .fp-glow { visibility: hidden; }
+html.mo-opening .full-player .fp-bg img { animation: none; }
+.full-player .fp-bg img { animation: fadeIn 0.45s ease-out; }
